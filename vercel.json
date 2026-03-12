@@ -2,36 +2,28 @@
   "version": 2,
   "builds": [
     {
-      "src": "backend/main.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxDuration": 10
-      }
-    },
-    {
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist"
       }
+    },
+    {
+      "src": "backend/main.py",
+      "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "backend/main.py"
+      "dest": "/backend/main.py"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "frontend/dist/assets/$1"
-    },
-    {
-      "src": "^/([^/]+\\.[a-z0-9]+)$",
-      "dest": "frontend/dist/$1"
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "frontend/dist/index.html"
+      "dest": "/frontend/index.html"
     }
   ]
 }
