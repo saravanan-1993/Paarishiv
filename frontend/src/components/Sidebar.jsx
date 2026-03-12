@@ -32,15 +32,7 @@ const menuItems = [
     {
         icon: Briefcase,
         label: 'Projects',
-        path: '/projects',
-        subItems: [
-            { label: 'Overview', tabId: 'Overview' },
-            { label: 'Tasks', tabId: 'Tasks' },
-            { label: 'DPR', tabId: 'DPR' },
-            { label: 'Financials', tabId: 'Financials' },
-            { label: 'Documents', tabId: 'Documents' },
-            { label: 'Workflow Tracking', tabId: 'Workflow Tracking' },
-        ]
+        path: '/projects'
     },
     { icon: ListTodo, label: 'Tasks', path: '/tasks' },
     {
