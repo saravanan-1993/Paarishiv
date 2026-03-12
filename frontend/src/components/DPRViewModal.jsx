@@ -160,7 +160,7 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
 
             for (let i = 0; i < dpr.photos.length; i++) {
                 const url = dpr.photos[i];
-                const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`}${url}`;
+                const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || '/api'}${url}`;
 
                 try {
                     const img = await loadImage(fullUrl);
@@ -431,7 +431,7 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                         <TabSection title="Site Photos" icon={Package} count={dpr.photos.length}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
                                 {dpr.photos.map((url, idx) => {
-                                    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`}${url}`;
+                                    const fullUrl = url.startsWith('http') ? url : `${import.meta.env.VITE_API_URL || '/api'}${url}`;
                                     return (
                                         <div key={idx} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #E2E8F0', height: '120px' }}>
                                             <img

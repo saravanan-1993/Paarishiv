@@ -13,7 +13,7 @@ export const NotificationProvider = ({ children }) => {
         if (!user || socketRef.current) return;
 
         const host = window.location.hostname;
-        const WS_URL = `ws://${host}:8000/chat/ws/${user.username}`;
+        const WS_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/chat/ws/${user.username}`;
 
         const ws = new WebSocket(WS_URL);
         socketRef.current = ws;
@@ -68,7 +68,7 @@ export const NotificationProvider = ({ children }) => {
                 // Fetch recent system messages from anyone (e.g. from System to me)
                 // We'll use a hack of fetching chat history with 'System' if it exists,
                 // or just getting unread count.
-                const res = await fetch(`http://${window.location.hostname}:8000/chat/history/System/${user.username}`);
+                const res = await fetch(`/api/chat/history/System/${user.username}`);
                 if (res.ok) {
                     const history = await res.json();
                     const formatted = history.filter(m => m.sender === 'System').slice(-10).map(m => ({

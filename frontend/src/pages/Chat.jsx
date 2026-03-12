@@ -22,8 +22,8 @@ const Chat = () => {
     const messagesEndRef = useRef(null);
 
     const host = window.location.hostname;
-    const API_BASE = `http://${host}:8000`;
-    const WS_BASE = `ws://${host}:8000`;
+    const API_BASE = '/api';
+    const WS_BASE = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api`;
 
     useEffect(() => {
         if (user) {

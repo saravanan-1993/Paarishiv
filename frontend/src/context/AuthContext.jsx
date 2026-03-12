@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
         const cleanPassword = password.trim();
 
         try {
-            const baseUrl = `http://${window.location.hostname}:8000`;
+            const baseUrl = '/api';
             const params = new URLSearchParams();
             params.append('username', cleanUsername);
             params.append('password', cleanPassword);

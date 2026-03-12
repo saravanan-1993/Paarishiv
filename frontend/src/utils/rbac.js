@@ -195,7 +195,7 @@ export const getRoles = () => {
 
 export const fetchAndSyncRoles = async () => {
     try {
-        const baseUrl = `http://${window.location.hostname}:8000`;
+        const baseUrl = '/api';
         const res = await fetch(`${baseUrl}/roles/`);
         if (res.ok) {
             const data = await res.json();
@@ -214,7 +214,7 @@ export const saveRoles = (roles) => {
     window.dispatchEvent(new Event('rolesUpdated'));
     // Fire and forget save to backend
     try {
-        const baseUrl = `http://${window.location.hostname}:8000`;
+        const baseUrl = '/api';
         fetch(`${baseUrl}/roles/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

@@ -16,7 +16,7 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
             const fetchAtt = async () => {
                 setLoading(true);
                 try {
-                    const baseUrl = `http://${window.location.hostname}:8000`;
+                    const baseUrl = '/api';
                     const res = await fetch(`${baseUrl}/hrms/attendance/${employee.id}/summary`);
                     if (res.ok) {
                         const data = await res.json();

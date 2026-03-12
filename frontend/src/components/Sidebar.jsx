@@ -345,7 +345,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                         }}>
                             {companyInfo.logo ? (
                                 <img
-                                    src={companyInfo.logo.startsWith('http') ? companyInfo.logo : `http://${window.location.hostname}:8000${companyInfo.logo}`}
+                                    src={companyInfo.logo.startsWith('http') ? companyInfo.logo : `/api${companyInfo.logo}`}
                                     alt="Logo"
                                     style={{ width: '85%', height: '85%', objectFit: 'contain' }}
                                 />

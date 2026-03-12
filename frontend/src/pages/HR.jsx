@@ -92,7 +92,7 @@ const HR = () => {
     const fetchEmployees = async () => {
         try {
             setIsLoading(true);
-            const baseUrl = `http://${window.location.hostname}:8000`;
+            const baseUrl = '/api';
             const empRes = await axios.get(`${baseUrl}/employees/`);
             const mappedEmployees = empRes.data.map(emp => ({
                 id: emp.employeeCode,
@@ -174,7 +174,7 @@ const HR = () => {
                 daily_wage: parseFloat(newLabour.wageRate) || 0,
                 current_project_id: null
             };
-            const baseUrl = `http://${window.location.hostname}:8000`;
+            const baseUrl = '/api';
             const response = await axios.post(`${baseUrl}/labour/`, backendData);
 
             const addedLabour = {
