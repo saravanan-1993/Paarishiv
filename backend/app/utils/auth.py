@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, List
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import os
@@ -14,7 +13,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key-12345")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 # Hardcoded demo users — replace with DB lookup in production
@@ -53,16 +52,13 @@ DEMO_USERS = {
 
 def verify_password(plain_password, hashed_password):
     try:
-        # Some passlib/bcrypt versions have issues, this is more robust
         return bcrypt.checkpw(
             plain_password.encode('utf-8'), 
             hashed_password.encode('utf-8')
         )
     except Exception as e:
         print(f"Bcrypt verification error: {e}")
-        # Final fallback - try passlib if bcrypt failed
-        try: return pwd_context.verify(plain_password, hashed_password)
-        except: return False
+        return False
 
 def get_password_hash(password):
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
