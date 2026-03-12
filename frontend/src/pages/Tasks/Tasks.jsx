@@ -394,9 +394,9 @@ const Tasks = () => {
                                         {t.status === 'Completed' ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <button
-                                                    style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', color: '#16A34A', cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }}
+                                                    className="btn btn-outline hover-scale"
+                                                    style={{ padding: '4px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
                                                     onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
-                                                    className="hover-scale"
                                                     title="Notify Admin about this completed task"
                                                 >
                                                     <Bell size={12} /> Update Admin

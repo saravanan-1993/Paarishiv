@@ -776,7 +776,8 @@ const ProjectDetails = () => {
 
                                                         {task.status === 'Completed' && (
                                                             <button
-                                                                style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', color: '#16A34A', cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: '700' }}
+                                                                className="btn btn-outline"
+                                                                style={{ padding: '6px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
                                                                 onClick={() => handleNotifyAdmin(task)}
                                                             >
                                                                 <Bell size={12} /> Update Admin
