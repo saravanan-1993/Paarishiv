@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -8,7 +8,7 @@ from app.api import auth, projects, materials, labour, finance, vendors, purchas
 is_vercel = os.environ.get("VERCEL") == "1"
 upload_dir = os.path.join(os.getcwd(), "static", "uploads")
 
-app = FastAPI(title="Civil Construction ERP API", root_path="/api")
+app = FastAPI(title="Civil Construction ERP API", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
 if not is_vercel:
     try:
@@ -27,25 +27,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(projects.router)
-app.include_router(materials.router)
-app.include_router(labour.router)
-app.include_router(employees.router)
-app.include_router(attendance.router)
-app.include_router(finance.router)
-app.include_router(vendors.router)
-app.include_router(purchase_orders.router)
-app.include_router(grns.router)
-app.include_router(chat.router)
-app.include_router(fleet.router)
-app.include_router(hrms.router)
-app.include_router(inventory.router)
-app.include_router(surprise_attendance.router)
-app.include_router(approvals.router)
-app.include_router(roles.router)
-app.include_router(workflow.router)
-app.include_router(settings.router)
+api_router = APIRouter(prefix="/api")
+
+api_router.include_router(auth.router)
+api_router.include_router(projects.router)
+api_router.include_router(materials.router)
+api_router.include_router(labour.router)
+api_router.include_router(employees.router)
+api_router.include_router(attendance.router)
+api_router.include_router(finance.router)
+api_router.include_router(vendors.router)
+api_router.include_router(purchase_orders.router)
+api_router.include_router(grns.router)
+api_router.include_router(chat.router)
+api_router.include_router(fleet.router)
+api_router.include_router(hrms.router)
+api_router.include_router(inventory.router)
+api_router.include_router(surprise_attendance.router)
+api_router.include_router(approvals.router)
+api_router.include_router(roles.router)
+api_router.include_router(workflow.router)
+api_router.include_router(settings.router)
+
+app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup_event():
