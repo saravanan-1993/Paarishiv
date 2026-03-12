@@ -19,8 +19,19 @@
       "dest": "/backend/main.py"
     },
     {
-      "src": "/(.*)",
+      "src": "/assets/(.*)",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      },
+      "dest": "/frontend/dist/assets/$1"
+    },
+    {
+      "src": "/(vite.svg|favicon.ico|manifest.json)",
       "dest": "/frontend/dist/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/dist/index.html"
     }
   ]
 }

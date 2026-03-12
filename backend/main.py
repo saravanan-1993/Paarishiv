@@ -9,7 +9,7 @@ upload_dir = os.path.join(os.getcwd(), "static", "uploads")
 if not os.path.exists(upload_dir):
     os.makedirs(upload_dir)
 
-app = FastAPI(title="Civil Construction ERP API")
+app = FastAPI(title="Civil Construction ERP API", root_path="/api")
 
 # Mount static files
 app.mount("/static/uploads", StaticFiles(directory=upload_dir), name="static")
