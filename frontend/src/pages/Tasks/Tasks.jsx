@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     CheckCircle2, Clock, PlayCircle, Plus, Search, Filter,
-    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2
+    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { projectAPI, employeeAPI } from '../../utils/api';
@@ -124,6 +124,16 @@ const Tasks = () => {
         } catch (err) {
             console.error('Failed to update task status', err);
             alert('Failed to update task status.');
+        }
+    };
+
+    const handleNotifyAdmin = async (task) => {
+        try {
+            await projectAPI.notifyTask(task.pId, task.id);
+            alert('Admin has been notified successfully! 🚀');
+        } catch (err) {
+            console.error('Failed to notify admin:', err);
+            alert('Failed to notify admin. Please check your connection.');
         }
     };
 
@@ -382,9 +392,19 @@ const Tasks = () => {
                                         `}</style>
 
                                         {t.status === 'Completed' ? (
-                                            <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '700', justifyContent: 'flex-end', minWidth: '85px' }}>
-                                                <CheckCircle size={16} /> Done
-                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <button
+                                                    style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '6px', color: '#16A34A', cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '11px', fontWeight: '700', transition: 'all 0.2s' }}
+                                                    onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
+                                                    className="hover-scale"
+                                                    title="Notify Admin about this completed task"
+                                                >
+                                                    <Bell size={12} /> Update Admin
+                                                </button>
+                                                <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '700', justifyContent: 'flex-end' }}>
+                                                    <CheckCircle size={16} /> Done
+                                                </span>
+                                            </div>
                                         ) : (
                                             <button
                                                 className="btn btn-primary btn-sm"

@@ -2,6 +2,11 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import sys
+
+# Ensure backend directory is in the Python path for Vercel
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from app.api import auth, projects, materials, labour, finance, vendors, purchase_orders, grns, employees, attendance, chat, fleet, hrms, inventory, surprise_attendance, approvals, roles, workflow, settings
 
 # Ensure static/uploads exists locally
