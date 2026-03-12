@@ -4,15 +4,20 @@ from fastapi.staticfiles import StaticFiles
 import os
 from app.api import auth, projects, materials, labour, finance, vendors, purchase_orders, grns, employees, attendance, chat, fleet, hrms, inventory, surprise_attendance, approvals, roles, workflow, settings
 
-# Ensure static/uploads exists
+# Ensure static/uploads exists locally
+is_vercel = os.environ.get("VERCEL") == "1"
 upload_dir = os.path.join(os.getcwd(), "static", "uploads")
-if not os.path.exists(upload_dir):
-    os.makedirs(upload_dir)
 
 app = FastAPI(title="Civil Construction ERP API", root_path="/api")
 
-# Mount static files
-app.mount("/static/uploads", StaticFiles(directory=upload_dir), name="static")
+if not is_vercel:
+    try:
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir, exist_ok=True)
+        # Mount static files
+        app.mount("/static/uploads", StaticFiles(directory=upload_dir), name="static")
+    except Exception as e:
+        print(f"Could not setup static files: {e}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,11 +47,14 @@ app.include_router(roles.router)
 app.include_router(workflow.router)
 app.include_router(settings.router)
 
-from app.services.scheduler import start_scheduler
-
 @app.on_event("startup")
 async def startup_event():
-    start_scheduler()
+    if not os.environ.get("VERCEL"):
+        try:
+            from app.services.scheduler import start_scheduler
+            start_scheduler()
+        except Exception as e:
+            print(f"Scheduler failed to start: {e}")
 
 @app.get("/")
 async def root():
