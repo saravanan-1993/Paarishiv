@@ -37,7 +37,11 @@ async def upload_file(file_content, filename="file"):
     try:
         upload_dir = os.path.join(os.getcwd(), "static", "uploads")
         if not os.path.exists(upload_dir):
-            os.makedirs(upload_dir)
+            try:
+                os.makedirs(upload_dir, exist_ok=True)
+            except Exception as e:
+                print(f"Cannot create local upload dir: {e}")
+                return None
 
         # Create unique filename
         ext = os.path.splitext(filename)[1]
