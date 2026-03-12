@@ -243,7 +243,7 @@ async def update_task(project_id: str, task_id: str, task_update: TaskUpdate, db
     return {"success": True, "progress": new_progress}
 
 @router.post("/{project_id}/tasks/{task_id}/notify")
-async def notify_task_update(project_id: str, task_id: str, db = Depends(get_database)):
+async def notify_task_update(project_id: str, task_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -256,7 +256,11 @@ async def notify_task_update(project_id: str, task_id: str, db = Depends(get_dat
     
     status = task.get("status")
     status_label = "✅ Completed" if status == "Completed" else ("⏳ In Progress" if status == "In Progress" else "❗ Update")
-    msg_content = f"{status_label}: '{task.get('name')}' - Site update for Project: {project.get('name')}."
+    
+    username = current_user.get("full_name") or current_user.get("username", "Unknown")
+    role = current_user.get("role", "Staff")
+    
+    msg_content = f"{status_label}: '{task.get('name')}' - Site update for Project: {project.get('name')} by {username} ({role})."
     
     if status == "Completed" and task.get("completionPhoto"):
         msg_content += " (Photo uploaded for verification)"
