@@ -1,0 +1,15 @@
+{
+  "roles": [
+    "Administrator",
+    "Site Engineer",
+    "Project Coordinator",
+    "General Manager",
+    "Accounts Manager",
+    "Purchase Officer",
+    "Inventory Manager",
+    "HR Manager",
+    "Project Manager",
+    "Employee"
+  ],
+  "users": []
+}

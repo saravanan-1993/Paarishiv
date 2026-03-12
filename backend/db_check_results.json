@@ -1,0 +1,61 @@
+{
+    "grns": [
+        {
+            "id": "69991acedf7d5bc7a0f85f9c",
+            "po_id": "6999187ddf7d5bc7a0f85f9b",
+            "items": [
+                {
+                    "name": "TMT Bar",
+                    "po_qty": 10.0,
+                    "received_qty": 10.0,
+                    "rejected_qty": 2.0,
+                    "unit": "Nos",
+                    "remarks": "cancel"
+                }
+            ]
+        },
+        {
+            "id": "69992094df7d5bc7a0f85f9e",
+            "po_id": "69991c94df7d5bc7a0f85f9d",
+            "items": [
+                {
+                    "name": "TMT bar 200",
+                    "po_qty": 10.0,
+                    "received_qty": 8.0,
+                    "rejected_qty": 2.0,
+                    "unit": "Nos",
+                    "remarks": ""
+                }
+            ]
+        },
+        {
+            "id": "699924d5df7d5bc7a0f85fa0",
+            "po_id": "699924bedf7d5bc7a0f85f9f",
+            "items": [
+                {
+                    "name": "tmt",
+                    "po_qty": 10.0,
+                    "received_qty": 10.0,
+                    "rejected_qty": 0.0,
+                    "unit": "Nos",
+                    "remarks": ""
+                }
+            ]
+        }
+    ],
+    "inventory": [],
+    "pos": [
+        {
+            "id": "6999187ddf7d5bc7a0f85f9b",
+            "project_name": "Saravanan Hall"
+        },
+        {
+            "id": "69991c94df7d5bc7a0f85f9d",
+            "project_name": "Metro Project"
+        },
+        {
+            "id": "699924bedf7d5bc7a0f85f9f",
+            "project_name": "Saravanan Hall"
+        }
+    ]
+}

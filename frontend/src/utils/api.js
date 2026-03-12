@@ -1,0 +1,258 @@
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
+
+const api = axios.create({
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
+
+// Attach Bearer token to every request
+api.interceptors.request.use((config) => {
+    const user = localStorage.getItem('erp_user');
+    if (user) {
+        const { token } = JSON.parse(user);
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    return config;
+});
+
+// Auto-logout if the backend returns 401 (expired / invalid token)
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('erp_user');
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+export const authAPI = {
+    login: (username, password) => {
+        const form = new URLSearchParams();
+        form.append('username', username);
+        form.append('password', password);
+        return api.post('/auth/login', form, {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+    },
+};
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+export const projectAPI = {
+    getAll: (params) => api.get('/projects/', { params }),
+    getOne: (id) => api.get(`/projects/${id}`),
+    getAllDPRs: () => api.get('/projects/all-dprs'),
+    create: (data) => api.post('/projects/', data),
+    update: (id, data) => api.put(`/projects/${id}`, data),
+    updateStatus: (id, status) => api.put(`/projects/${id}/status`, { status }),
+    delete: (id) => api.delete(`/projects/${id}`),
+    addTask: (id, task) => api.post(`/projects/${id}/tasks`, task),
+    updateTask: (projectId, taskId, data) => api.put(`/projects/${projectId}/tasks/${taskId}`, data),
+    notifyTask: (projectId, taskId) => api.post(`/projects/${projectId}/tasks/${taskId}/notify`),
+    shareTaskEmail: (projectId, taskId) => api.post(`/projects/${projectId}/tasks/${taskId}/share-email`),
+    deleteTask: (projectId, taskId) => api.delete(`/projects/${projectId}/tasks/${taskId}`),
+    addDpr: (id, dpr) => api.post(`/projects/${id}/dprs`, dpr),
+    updateDprStatus: (projectId, dprId, status) => api.put(`/projects/${projectId}/dprs/${dprId}/status`, { status }),
+    uploadPhoto: (formData) => api.post('/projects/upload-photo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    addDocument: (id, doc) => api.post(`/projects/${id}/documents`, doc),
+};
+
+// ── Materials ─────────────────────────────────────────────────────────────────
+export const materialAPI = {
+    getAll: () => api.get('/materials/'),
+    create: (data) => api.post('/materials/', data),
+    getInventoryByProject: (projectName) => api.get(`/materials/project/${projectName}`),
+    update: (id, data) => api.put(`/materials/${id}`, data),
+    delete: (id) => api.delete(`/materials/${id}`),
+    updateInventory: (inventoryId, data) => api.put(`/materials/inventory/${inventoryId}`, data),
+    getInventoryLedger: (projectName, materialName) => api.get('/materials/inventory/ledger', {
+        params: { project_name: projectName, material_name: materialName }
+    }),
+};
+
+// ── Finance ───────────────────────────────────────────────────────────────────
+export const financeAPI = {
+    getExpenses: () => api.get('/finance/expenses'),
+    createExpense: (data) => api.post('/finance/expenses', data),
+    getIncome: () => api.get('/finance/income'),
+    createIncome: (data) => api.post('/finance/income', data),
+    getPayables: () => api.get('/finance/payables'),
+    getVoucherPayments: (grnId) => api.get(`/finance/payables/${grnId}/payments`),
+    getReceipts: () => api.get('/finance/receipts'),
+    createReceipt: (data) => api.post('/finance/receipts', data),
+};
+
+// ── Labour ────────────────────────────────────────────────────────────────────
+export const labourAPI = {
+    getAll: () => api.get('/labour/'),
+    create: (data) => api.post('/labour/', data),
+};
+
+// ── Vendors ───────────────────────────────────────────────────────────────────
+export const vendorAPI = {
+    getAll: () => api.get('/vendors/'),
+    create: (data) => api.post('/vendors/', data),
+    update: (id, data) => api.put(`/vendors/${id}`, data),
+    delete: (id) => api.delete(`/vendors/${id}`),
+    getLedger: (id) => api.get(`/vendors/${id}/ledger`),
+};
+
+// ── Purchase Orders ───────────────────────────────────────────────────────────
+export const purchaseOrderAPI = {
+    getAll: () => api.get('/purchase-orders/'),
+    create: (data) => api.post('/purchase-orders/', data),
+    update: (id, data) => api.put(`/purchase-orders/${id}/`, data),
+    approve: (id) => api.put(`/purchase-orders/${id}/approve/`),
+    sendEmail: (id) => api.post(`/purchase-orders/${id}/send-email/`),
+};
+
+// ── GRNs ──────────────────────────────────────────────────────────────────────
+export const grnAPI = {
+    getAll: () => api.get('/grns/'),
+    create: (data) => api.post('/grns/', data),
+};
+
+// ── Client Billing ────────────────────────────────────────────────────────────
+export const billingAPI = {
+    getAll: () => api.get('/finance/bills'),
+    create: (data) => api.post('/finance/bills', data),
+    markPaid: (id, data) => api.put(`/finance/bills/${id}/mark-paid`, data),
+    delete: (id) => api.delete(`/finance/bills/${id}`),
+    getPurchaseBills: () => api.get('/finance/purchase-bills'),
+    createPurchaseBill: (data) => api.post('/finance/purchase-bills', data),
+};
+
+// ── Employees ─────────────────────────────────────────────────────────────────
+export const employeeAPI = {
+    getAll: () => api.get('/employees/'),
+    create: (data) => api.post('/employees/', data),
+    update: (id, data) => api.put(`/employees/${id}`, data),
+    delete: (id) => api.delete(`/employees/${id}`),
+};
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+export const chatAPI = {
+    getUsers: () => api.get('/chat/users'),
+    getUsersWithUnread: (currentUserId) => api.get(`/chat/users/${currentUserId}`),
+    getHistory: (u1, u2) => api.get(`/chat/history/${u1}/${u2}`),
+    getHistoryGroup: (groupId) => api.get(`/chat/history/group/${groupId}`),
+    getGroups: (username) => api.get(`/chat/groups/${username}`),
+    createGroup: (groupData) => api.post('/chat/groups', groupData),
+    getNotifications: (userId) => api.get(`/chat/notifications/${userId}`),
+    markAsRead: (userId, senderId, groupId = null) =>
+        api.post(`/chat/mark-read/${userId}/${senderId}${groupId ? `?group_id=${groupId}` : ''}`),
+    uploadFile: (formData) => api.post('/chat/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+};
+
+// ── Fleet Management ────────────────────────────────────────────────────────
+export const fleetAPI = {
+    getVehicles: () => api.get('/fleet/vehicles'),
+    createVehicle: (data) => api.post('/fleet/vehicles', data),
+    updateVehicle: (id, data) => api.put(`/fleet/vehicles/${id}`, data),
+    deleteVehicle: (id) => api.delete(`/fleet/vehicles/${id}`),
+
+    getTrips: () => api.get('/fleet/trips'),
+    createTrip: (data) => api.post('/fleet/trips', data),
+    updateTrip: (id, data) => api.put(`/fleet/trips/${id}`, data),
+    deleteTrip: (id) => api.delete(`/fleet/trips/${id}`),
+
+    getStats: () => api.get('/fleet/stats/summary'),
+
+    getMaintenance: (vehicleId) => api.get(`/fleet/maintenance/${vehicleId}`),
+    addMaintenance: (data) => api.post('/fleet/maintenance', data),
+};
+
+// ── HRMS ──────────────────────────────────────────────────────────────────────
+export const hrmsAPI = {
+    getStats: () => api.get('/hrms/dashboard/stats'),
+    getAttendance: (date) => api.get('/hrms/attendance', { params: { date } }),
+    getAttendanceRange: (fromDate, toDate) => api.get('/hrms/attendance/range', { params: { from_date: fromDate, to_date: toDate } }),
+    saveAttendance: (records) => api.post('/hrms/attendance', records),
+    getLeaves: () => api.get('/hrms/leaves'),
+    applyLeave: (data) => api.post('/hrms/leaves', data),
+    updateLeave: (id, data) => api.put(`/hrms/leaves/${id}`, data),
+    getPayroll: (month) => api.get('/hrms/payroll', { params: { month } }),
+    generatePayroll: (month) => api.post('/hrms/payroll/generate', null, { params: { month } }),
+    getSettings: () => api.get('/hrms/settings'),
+    updateSettings: (data) => api.post('/hrms/settings', data)
+};
+
+// ── Surprise Visit Attendance ────────────────────────────────────────────────
+export const surpriseVisitAPI = {
+    getAll: (params) => api.get('/surprise-attendance/', { params }),
+    create: (formData) => api.post('/surprise-attendance/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+};
+
+// ── Inventory & Warehouse ──────────────────────────────────────────────────
+export const inventoryAPI = {
+    getWarehouseStock: () => api.get('/inventory/warehouse'),
+    getWarehouse: () => api.get('/inventory/warehouse'),
+    getRequests: (params) => api.get('/inventory/requests', { params }),
+    createRequest: (data) => api.post('/inventory/requests', data),
+    issueStock: (requestId, data) => api.post(`/inventory/requests/${requestId}/issue`, data),
+    updateRequestStatus: (requestId, data) => api.put(`/inventory/requests/${requestId}/status`, data),
+    returnStock: (data) => api.post('/inventory/return', data),
+    getLedger: (params) => api.get('/inventory/ledger', { params }),
+    transferMaterials: (data) => api.post('/inventory/transfer', data),
+    requestTransfer: (data) => api.post('/inventory/transfers/request', data),
+    getPendingTransfers: () => api.get('/inventory/transfers/pending'),
+    approveTransfer: (id) => api.put(`/inventory/transfers/${id}/approve`),
+    rejectTransfer: (id) => api.put(`/inventory/transfers/${id}/reject`),
+    getConsolidated: () => api.get('/inventory/consolidated'),
+    consolidateRequests: (data) => api.post('/inventory/requests/consolidate', data),
+};
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+export const attendanceAPI = {
+    getSummary: () => api.get('/attendance/me/summary'),
+    clockIn: (data) => api.post('/attendance/clock-in', data),
+    clockOut: () => api.post('/attendance/clock-out'),
+    startBreak: (data) => api.post('/attendance/start-break', data),
+    endBreak: () => api.post('/attendance/end-break'),
+};
+
+// ── Approvals ─────────────────────────────────────────────────────────────────
+export const approvalsAPI = {
+    getAll: (status) => api.get('/approvals/', { params: { status } }),
+    getPending: () => api.get('/approvals/pending'),
+    action: (type, id, action, payload = {}) => api.put(`/approvals/${type}/${id}/${action}`, payload),
+};
+
+export const rolesAPI = {
+    getRoles: () => api.get('/roles/'),
+    saveRoles: (roles) => api.post('/roles/', roles)
+};
+
+export const workflowAPI = {
+    getTimeline: (projectId) => api.get(`/workflow/${projectId}/timeline`),
+    getActivityLog: (projectId) => api.get(`/workflow/${projectId}/activity-log`),
+    getDashboardOverview: () => api.get('/workflow/dashboard-overview'),
+};
+
+export const settingsAPI = {
+    getCompany: () => api.get('/settings/company'),
+    updateCompany: (data) => api.post('/settings/company', data),
+    getCloudinary: () => api.get('/settings/cloudinary'),
+    updateCloudinary: (data) => api.post('/settings/cloudinary', data),
+    getSMTP: () => api.get('/settings/smtp'),
+    updateSMTP: (data) => api.post('/settings/smtp', data),
+    uploadLogo: (formData) => api.post('/settings/logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+};
+
+export default api;

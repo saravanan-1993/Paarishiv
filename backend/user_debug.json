@@ -1,0 +1,26 @@
+{
+    "_id": "69a68d99c4821febee501c09",
+    "fullName": "Sheik Abdulla",
+    "employeeCode": "EMP0025",
+    "email": "sheik@mntfuture.com",
+    "phone": "9876543210",
+    "designation": "Site Engineer",
+    "department": "Construction ",
+    "joiningDate": "2026-03-03",
+    "basicSalary": 45000.0,
+    "hra": 7000.0,
+    "pfNumber": "1587869652715",
+    "esiNumber": "",
+    "bankAccount": "1001986525611",
+    "bankName": "HDFC BANK",
+    "ifsc": "HDFC25412",
+    "roles": [
+        "Site Engineer"
+    ],
+    "status": "Active",
+    "siteId": "",
+    "siteName": null,
+    "salaryType": "monthly",
+    "dailyWage": 0.0,
+    "password": "123456"
+}
