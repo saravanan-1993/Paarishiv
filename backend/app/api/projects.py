@@ -26,9 +26,9 @@ class TaskCreate(BaseModel):
     name: str
     assignedTo: Optional[str] = ""
     priority: Optional[str] = "Medium"
-    startDate: Optional[str] = ""
-    dueDate: Optional[str] = ""
-    dueTime: Optional[str] = "" # HH:MM format
+    startDate: str
+    dueDate: str
+    dueTime: str # HH:MM format
     status: Optional[str] = "Pending"
     instructions: Optional[str] = ""
 

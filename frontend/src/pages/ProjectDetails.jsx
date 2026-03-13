@@ -322,6 +322,7 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const isEngineer = user?.role === 'Site Engineer';
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState(user?.role === 'Site Engineer' ? 'Tasks' : 'Overview');
@@ -715,9 +716,11 @@ const ProjectDetails = () => {
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'center' }}>
                             <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Task Management</h2>
-                            <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
-                                <Plus size={18} /> Add Task
-                            </button>
+                            {!isEngineer && (
+                                <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
+                                    <Plus size={18} /> Add Task
+                                </button>
+                            )}
                         </div>
 
                         {taskList.length === 0 ? (
@@ -725,9 +728,11 @@ const ProjectDetails = () => {
                                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>No Tasks Yet</h4>
                                 <p style={{ marginBottom: '24px', fontSize: '14px' }}>Add tasks to track work on this project.</p>
-                                <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
-                                    <Plus size={16} /> Add First Task
-                                </button>
+                                {!isEngineer && (
+                                    <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
+                                        <Plus size={16} /> Add First Task
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div style={{ overflowX: 'visible', paddingBottom: '100px' }}>

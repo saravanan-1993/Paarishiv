@@ -196,11 +196,13 @@ const Tasks = () => {
                     <h1 style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Tasks & Workflow</h1>
                     <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Manage site activities and execution progress.</p>
                 </div>
-                <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="btn btn-primary" onClick={() => setIsAddTaskModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Plus size={18} /> NEW TASK
-                    </button>
-                </div>
+                {!isEngineer && (
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button className="btn btn-primary" onClick={() => setIsAddTaskModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Plus size={18} /> NEW TASK
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* ── KPI Row ────────────────────────────────────────── */}
