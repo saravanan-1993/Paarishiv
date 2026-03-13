@@ -726,6 +726,19 @@ const Finance = () => {
                             </div>
                             <div style={{ width: '200px' }}>
                                 <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
+                                />
+                            </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
                                     options={billTypes.map(t => ({ value: t, label: t }))}
                                     value={billTypeFilter}
                                     onChange={setBillTypeFilter}
@@ -873,6 +886,19 @@ const Finance = () => {
                                     }}
                                 />
                             </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
+                                />
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>From</label>
                                 <input
@@ -963,6 +989,19 @@ const Finance = () => {
                                         width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px',
                                         border: '1.5px solid #E2E8F0', fontSize: '14px', background: 'white'
                                     }}
+                                />
+                            </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
                                 />
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1079,6 +1118,19 @@ const Finance = () => {
                                         width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px',
                                         border: '1.5px solid #E2E8F0', fontSize: '14px', background: 'white'
                                     }}
+                                />
+                            </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
                                 />
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1224,7 +1276,20 @@ const Finance = () => {
                                         </button>
                                     ))}
                                 </div>
-                                <div style={{ width: '250px' }}>
+                                <div style={{ width: '220px' }}>
+                                    <CustomSelect
+                                        options={[
+                                            { value: 'All Projects', label: 'All Projects' },
+                                            ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        ]}
+                                        value={selectedProject}
+                                        onChange={setSelectedProject}
+                                        placeholder="Project"
+                                        width="full"
+                                        icon={Briefcase}
+                                    />
+                                </div>
+                                <div style={{ width: '220px' }}>
                                     <CustomSelect
                                         options={ledgerParties.map(t => ({ value: t, label: t }))}
                                         value={ledgerParty}
