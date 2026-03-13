@@ -896,7 +896,8 @@ const HRMS = () => {
                                                 setPayrollEmployee({
                                                     ...emp,
                                                     id: emp.id || emp._id,
-                                                    name: emp.fullName
+                                                    name: emp.fullName,
+                                                    payrollData: p
                                                 });
                                                 setIsProcessPayrollOpen(true);
                                             }
@@ -1092,12 +1093,13 @@ const HRMS = () => {
                 isOpen={isProcessPayrollOpen}
                 onClose={() => setIsProcessPayrollOpen(false)}
                 employee={payrollEmployee}
-                onConfirm={async (empId) => {
+                onConfirm={async (empId, data) => {
                     // Logic to update local state or call API to mark as paid
                     try {
+                        console.log('Processed Payroll Data:', data);
                         // After generating, fetch updated payroll
                         fetchPayroll(selectedMonth);
-                        alert(`Payroll generated successfully for employee ID: ${empId}`);
+                        alert(`Payroll generated successfully for ${payrollEmployee?.name}. Net Amount: ₹${data.netSalary.toLocaleString()}`);
                     } catch (err) {
                         console.error('Failed to confirm individual payroll', err);
                     }

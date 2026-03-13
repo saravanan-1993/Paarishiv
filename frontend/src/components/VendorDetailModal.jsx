@@ -16,6 +16,38 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
         }
     }, [isOpen, vendor]);
 
+    const handleDownloadLedger = () => {
+        if (!ledgerData.ledger || ledgerData.ledger.length === 0) {
+            alert("No ledger data available to download.");
+            return;
+        }
+
+        const headers = ["Date", "Activity Type", "Reference", "Amount", "Mode/Method", "Status"];
+        const rows = ledgerData.ledger.map(row => [
+            row.date || '—',
+            row.type || '—',
+            row.ref || '—',
+            row.amount || 0,
+            row.method || '—',
+            row.status || '—'
+        ]);
+
+        const csvContent = [
+            headers.join(","),
+            ...rows.map(r => r.join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Ledger_${vendor.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     if (!isOpen || !vendor) return null;
 
     const stats = [
@@ -41,7 +73,6 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
                 <div style={{ padding: '24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                     <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: '700', backgroundColor: 'var(--bg-main)', padding: '2px 8px', borderRadius: '4px', color: 'var(--text-muted)' }}>{vendor.id}</span>
                             <span className="badge badge-success" style={{ fontSize: '10px' }}>Active Vendor</span>
                         </div>
                         <h2 style={{ fontSize: '24px', fontWeight: '800' }}>{vendor.name}</h2>
@@ -119,7 +150,7 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
 
                 {/* Footer */}
                 <div style={{ padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                    <button className="btn btn-outline" style={{ padding: '10px 24px' }}>
+                    <button className="btn btn-outline" onClick={handleDownloadLedger} style={{ padding: '10px 24px' }}>
                         <FileText size={18} /> Download Ledger
                     </button>
                     <button className="btn btn-primary" style={{ padding: '10px 24px' }}>
