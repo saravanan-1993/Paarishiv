@@ -22,6 +22,15 @@ const Tasks = () => {
     const [projectsData, setProjectsData] = useState([]);
     const [employeesMap, setEmployeesMap] = useState({});
 
+    // Helper to get a string ID from potential populated object
+    const getStringId = (val, fallback = '') => {
+        if (!val) return fallback;
+        if (typeof val === 'object') {
+            return val.username || val.employeeCode || val._id || val.id || fallback;
+        }
+        return val;
+    };
+
     // Modals
     const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
     const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
@@ -32,7 +41,7 @@ const Tasks = () => {
     // Options for CustomSelect
     const projectOptions = [
         { value: 'All', label: 'All Projects' },
-        ...projectsData.map(p => ({ value: p._id || p.id, label: p.name }))
+        ...projectsData.map(p => ({ value: getStringId(p._id || p.id), label: p.name }))
     ];
 
     const statusOptions = [
@@ -53,11 +62,8 @@ const Tasks = () => {
             projects.forEach(project => {
                 const projectTasks = project.tasks || [];
                 projectTasks.forEach(t => {
-                    // Site engineers only see tasks assigned to them, or if no one is assigned but it's their project
-                    if (isEngineer && t.assignedTo !== user.username && project.engineer_id !== user.username) {
-                        return;
-                    }
-                    allTasks.push({ ...t, pId: project._id || project.id, projectName: project.name });
+                    // Show all tasks from the projects that the backend allowed us to see
+                    allTasks.push({ ...t, pId: getStringId(project._id || project.id), projectName: project.name });
                 });
             });
 

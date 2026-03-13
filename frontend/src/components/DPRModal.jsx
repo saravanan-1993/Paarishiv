@@ -148,7 +148,9 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 issues,
                 notes,
                 photos: uploadedPhotoUrls,
-                submitted_by: project?.engineer_id || 'Site Engineer',
+                submitted_by: (project?.engineer_id && typeof project.engineer_id === 'object' 
+                                ? (project.engineer_id.username || project.engineer_id.employeeCode || project.engineer_id._id) 
+                                : project?.engineer_id) || 'Site Engineer',
             });
             // Reset
             setActiveTab('work');

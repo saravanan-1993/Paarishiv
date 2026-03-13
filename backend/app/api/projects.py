@@ -67,8 +67,12 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
 @router.get("/", response_model=List[ProjectModel])
 async def get_projects(all: bool = False, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    if current_user.get("role") == "Site Engineer" and not all:
-        query["engineer_id"] = current_user.get("username")
+    user_role = (current_user.get("role") or "").lower()
+    if user_role == "site engineer" and not all:
+        query["$or"] = [
+            {"engineer_id": current_user.get("username")},
+            {"engineer_id": current_user.get("id")}
+        ]
 
     projects = await db.projects.find(query).to_list(100)
     for p in projects:
@@ -105,8 +109,9 @@ async def get_project(project_id: str, db = Depends(get_database), current_user:
         raise HTTPException(status_code=404, detail="Project not found")
         
     # RBAC: Site Engineer can only view assigned projects
-    if current_user.get("role") == "Site Engineer":
-        if project.get("engineer_id") != current_user.get("username"):
+    user_role = (current_user.get("role") or "").lower()
+    if user_role == "site engineer":
+        if project.get("engineer_id") != current_user.get("username") and project.get("engineer_id") != current_user.get("id"):
             raise HTTPException(status_code=403, detail="Not authorized to view this project")
 
     new_progress = _calc_progress(project)

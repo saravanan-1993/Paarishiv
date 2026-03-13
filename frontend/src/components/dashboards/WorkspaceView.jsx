@@ -4,14 +4,55 @@ import { useNavigate } from 'react-router-dom';
 import { attendanceAPI } from '../../utils/api';
 
 const WorkspaceView = ({
-    user
+    user,
+    projects = []
 }) => {
     const navigate = useNavigate();
 
-    // Mock user tasks and requests for now, until backend has endpoints
-    const tasks = [];
+    const getStringId = (val) => {
+        if (!val) return '';
+        return typeof val === 'object' ? (val.$oid || val._id || val.id || '') : val;
+    };
 
-    const requests = [];
+    const tasks = React.useMemo(() => {
+        const all = [];
+        projects.forEach(p => {
+            (p.tasks || []).forEach(t => {
+                const assignedTo = getStringId(t.assignedTo);
+                if (assignedTo === user.username || assignedTo === user.id) {
+                    all.push({
+                        ...t,
+                        projectId: getStringId(p._id || p.id),
+                        projectName: p.name,
+                        due: t.dueDate || 'No Date'
+                    });
+                }
+            });
+        });
+        return all;
+    }, [projects, user]);
+
+    const requests = React.useMemo(() => {
+        const all = [];
+        projects.forEach(p => {
+            (p.dprs || []).forEach(dpr => {
+                const nextDay = dpr.next_day_materials || [];
+                if (nextDay.length > 0) {
+                    nextDay.forEach((m, idx) => {
+                        all.push({
+                            id: `${dpr.id}-${idx}`,
+                            item: m.material,
+                            qty: m.qty,
+                            unit: m.unit,
+                            date: dpr.date,
+                            status: dpr.status || 'Pending'
+                        });
+                    });
+                }
+            });
+        });
+        return all;
+    }, [projects, user]);
 
     return (
         <div className="workspace-view">

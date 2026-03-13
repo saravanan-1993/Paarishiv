@@ -23,6 +23,15 @@ const EditProjectModal = ({ isOpen, onClose, project, onProjectUpdated }) => {
 
     useEffect(() => {
         if (project) {
+            // Helper to get a string ID from potential populated object
+            const getStringId = (val, fallback) => {
+                if (!val) return fallback;
+                if (typeof val === 'object') {
+                    return val._id || val.id || val.username || val.employeeCode || fallback;
+                }
+                return val;
+            };
+
             setForm({
                 name: project.name || '',
                 client: project.client || '',
@@ -30,8 +39,8 @@ const EditProjectModal = ({ isOpen, onClose, project, onProjectUpdated }) => {
                 budget: project.budget || '',
                 start_date: project.start_date ? project.start_date.split('T')[0] : '',
                 end_date: project.end_date ? project.end_date.split('T')[0] : '',
-                engineer_id: project.engineer_id || 'engineer',
-                coordinator_id: project.coordinator_id || 'coordinator',
+                engineer_id: getStringId(project.engineer_id, 'engineer'),
+                coordinator_id: getStringId(project.coordinator_id, 'coordinator'),
                 status: project.status || 'Ongoing',
                 latitude: project.latitude || '',
                 longitude: project.longitude || ''
@@ -47,43 +56,49 @@ const EditProjectModal = ({ isOpen, onClose, project, onProjectUpdated }) => {
                 const res = await employeeAPI.getAll();
                 const emps = res.data || [];
 
-                const engList = emps
-                    .filter(emp =>
-                        emp.designation?.toLowerCase().includes('engineer') ||
-                        emp.roles?.some(role => role.toLowerCase().includes('engineer'))
-                    )
-                    .map(emp => ({
-                        value: emp.employeeCode || emp.username || emp._id,
-                        label: emp.fullName
-                    }));
+                // Helper to build unique list from emps
+                const getUniqueStaff = (filterFn, defaultOptions) => {
+                    const list = emps
+                        .filter(filterFn)
+                        .map(emp => ({
+                            // Use _id as the primary unique value
+                            value: (emp._id ? emp._id.toString() : '') || emp.username || emp.employeeCode,
+                            label: emp.fullName
+                        }));
 
-                const coordList = emps
-                    .filter(emp =>
-                        emp.designation?.toLowerCase().includes('coordinator') ||
-                        emp.roles?.some(role => role.toLowerCase().includes('coordinator'))
-                    )
-                    .map(emp => ({
-                        value: emp.employeeCode || emp.username || emp._id,
-                        label: emp.fullName
-                    }));
+                    const uniqueMap = new Map();
+                    // Add default options first so they are preferred/exist
+                    defaultOptions.forEach(opt => uniqueMap.set(opt.value, opt.label));
+                    
+                    // Add employees, overriding defaults if values match (or just adding)
+                    list.forEach(item => {
+                        if (item.value) {
+                            uniqueMap.set(item.value, item.label);
+                        }
+                    });
 
-                const uniqueEngs = [...engList];
-                if (!uniqueEngs.find(e => e.value === 'engineer')) {
-                    uniqueEngs.push({ value: 'engineer', label: 'Suki Engineer' });
-                }
-                if (!uniqueEngs.find(e => e.value === 'admin')) {
-                    uniqueEngs.push({ value: 'admin', label: 'Admin' });
-                }
-                setEngineers(uniqueEngs);
+                    return Array.from(uniqueMap.entries()).map(([value, label]) => ({ value, label }));
+                };
 
-                const uniqueCoords = [...coordList];
-                if (!uniqueCoords.find(e => e.value === 'coordinator')) {
-                    uniqueCoords.push({ value: 'coordinator', label: 'Project Coordinator' });
-                }
-                if (!uniqueCoords.find(e => e.value === 'admin')) {
-                    uniqueCoords.push({ value: 'admin', label: 'Admin' });
-                }
-                setCoordinators(uniqueCoords);
+                const engList = getUniqueStaff(
+                    emp => emp.designation?.toLowerCase().includes('engineer') ||
+                           emp.roles?.some(role => role.toLowerCase().includes('engineer')),
+                    [
+                        { value: 'engineer', label: 'Suki Engineer' },
+                        { value: 'admin', label: 'Admin' }
+                    ]
+                );
+                setEngineers(engList);
+
+                const coordList = getUniqueStaff(
+                    emp => emp.designation?.toLowerCase().includes('coordinator') ||
+                           emp.roles?.some(role => role.toLowerCase().includes('coordinator')),
+                    [
+                        { value: 'coordinator', label: 'Project Coordinator' },
+                        { value: 'admin', label: 'Admin' }
+                    ]
+                );
+                setCoordinators(coordList);
             } catch (err) {
                 console.error('Failed to fetch staff:', err);
             }
