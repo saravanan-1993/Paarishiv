@@ -4,7 +4,9 @@ import { ChevronDown, Briefcase, Check } from 'lucide-react';
 const PremiumSelect = ({ options, value, onChange, placeholder = "Select Project", icon: Icon = Briefcase }) => {
     const [isOpen, setIsOpen] = useState(false);
 
-    const selectedOption = options.find(opt => opt.value === value) || { label: placeholder };
+    const normalizedValue = (value && typeof value === 'object') ? (value.username || value.employeeCode || value._id || value.id) : value;
+
+    const selectedOption = options.find(opt => opt.value === normalizedValue) || { label: placeholder };
 
     return (
         <div style={{ position: 'relative', width: '100%' }}>
@@ -98,17 +100,17 @@ const PremiumSelect = ({ options, value, onChange, placeholder = "Select Project
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    color: value === opt.value ? 'var(--primary)' : 'var(--text-main)',
-                                    backgroundColor: value === opt.value ? '#F1F5F9' : 'transparent',
+                                    color: normalizedValue === opt.value ? 'var(--primary)' : 'var(--text-main)',
+                                    backgroundColor: normalizedValue === opt.value ? '#F1F5F9' : 'transparent',
                                     transition: 'all 0.1s'
                                 }}
-                                onMouseEnter={(e) => { if (value !== opt.value) e.currentTarget.style.backgroundColor = '#F8FAFC'; }}
-                                onMouseLeave={(e) => { if (value !== opt.value) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                onMouseEnter={(e) => { if (normalizedValue !== opt.value) e.currentTarget.style.backgroundColor = '#F8FAFC'; }}
+                                onMouseLeave={(e) => { if (normalizedValue !== opt.value) e.currentTarget.style.backgroundColor = 'transparent'; }}
                             >
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {opt.label}
                                 </span>
-                                {value === opt.value && <Check size={16} />}
+                                {normalizedValue === opt.value && <Check size={16} />}
                             </div>
                         ))}
                     </div>

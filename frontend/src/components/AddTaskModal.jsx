@@ -5,61 +5,100 @@ import CustomSelect from './CustomSelect';
 import CustomTimePicker from './CustomTimePicker';
 import { Briefcase } from 'lucide-react';
 
-const AddTaskModal = ({ isOpen, onClose, project, projects, onTaskAdded }) => {
-    const [selectedProjectId, setSelectedProjectId] = useState(project?._id || project?.id || '');
+const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) => {
+    // Helper to get a string ID from potential populated object
+    const getStringId = (val, fallback = '') => {
+        if (!val) return fallback;
+        if (typeof val === 'object') {
+            return val._id || val.id || val.username || val.employeeCode || fallback;
+        }
+        return val;
+    };
+
+    const [selectedProjectId, setSelectedProjectId] = useState('');
     const [form, setForm] = useState({
         name: '',
         assignedTo: '',
         priority: 'Medium',
         startDate: '',
         dueDate: '',
-        dueTime: '18:00', // Default to 6 PM
+        dueTime: '18:00',
         status: 'Pending',
         instructions: '',
     });
     const [loading, setLoading] = useState(false);
     const [engineerName, setEngineerName] = useState('');
 
-    const engineerNameForm = engineerName || '';
-    const activeProject = project || (projects || []).find(p => (p._id || p.id) === selectedProjectId);
-    const engineerId = activeProject?.engineer_id || '';
+    // Derived values - much safer than keeping in sync via effects
+    const activeProject = project || (projects || []).find(p => getStringId(p._id || p.id) === selectedProjectId) || (projects?.length > 0 ? projects[0] : null);
+    const engineerId = getStringId(activeProject?.engineer_id);
+    const engineerDisplayName = engineerName || (engineerId ? engineerId.charAt(0).toUpperCase() + engineerId.slice(1) : 'Engineer');
+
+    // 1. Reset form and sync internal ID when modal opens or project prop changes
+    useEffect(() => {
+        if (isOpen) {
+            setForm({
+                name: '',
+                assignedTo: '',
+                priority: 'Medium',
+                startDate: '',
+                dueDate: '',
+                dueTime: '18:00',
+                status: 'Pending',
+                instructions: '',
+            });
+
+            if (project) {
+                setSelectedProjectId(getStringId(project._id || project.id));
+            } else if (projects?.length > 0 && !selectedProjectId) {
+                setSelectedProjectId(getStringId(projects[0]._id || projects[0].id));
+            }
+        }
+    }, [isOpen, project]);
+
+    // 2. Fetch/Resolve Engineer Name whenever the engineerId changes
+    useEffect(() => {
+        if (!isOpen) return;
+        
+        const fetchName = async () => {
+            if (!engineerId) {
+                setEngineerName('');
+                return;
+            }
+
+            // Immediate feedback reset
+            setEngineerName('');
+
+            if (engineerId === 'engineer') {
+                setEngineerName('Suki Engineer');
+            } else if (engineerId === 'admin') {
+                setEngineerName('Super Admin');
+            } else {
+                try {
+                    const res = await employeeAPI.getAll();
+                    const emps = res.data || [];
+                    const emp = emps.find(e => 
+                        getStringId(e._id) === engineerId || 
+                        getStringId(e.username) === engineerId ||
+                        getStringId(e.employeeCode) === engineerId
+                    );
+                    if (emp) {
+                        setEngineerName(emp.fullName);
+                    } else {
+                        // Keep ID capitalized as name
+                    }
+                } catch (err) {
+                    console.error('Failed to resolve engineer name:', err);
+                }
+            }
+        };
+
+        fetchName();
+    }, [isOpen, engineerId]);
 
     const handleTimeChange = (time) => {
         setForm(prev => ({ ...prev, dueTime: time }));
     };
-
-    useEffect(() => {
-        const fetchEngineerName = async () => {
-            if (!engineerId) return;
-            if (engineerId === 'engineer') {
-                setEngineerName('Suki Engineer');
-                return;
-            }
-            if (engineerId === 'admin') {
-                setEngineerName('Super Admin');
-                return;
-            }
-
-            try {
-                // If ID is an employeeCode or _id, fetch all and find
-                const res = await employeeAPI.getAll();
-                const emps = res.data || [];
-                const emp = emps.find(e => e.employeeCode === engineerId || e._id === engineerId || e.username === engineerId);
-                if (emp) {
-                    setEngineerName(emp.fullName);
-                } else {
-                    // Fallback to capitalized ID
-                    setEngineerName(engineerId.charAt(0).toUpperCase() + engineerId.slice(1));
-                }
-            } catch (err) {
-                console.error('Failed to resolve engineer name:', err);
-                setEngineerName(engineerId.charAt(0).toUpperCase() + engineerId.slice(1));
-            }
-        };
-        if (isOpen) fetchEngineerName();
-    }, [isOpen, engineerId]);
-
-    const engineerDisplayName = engineerName || (engineerId ? engineerId.charAt(0).toUpperCase() + engineerId.slice(1) : '');
 
     if (!isOpen) return null;
 
@@ -74,7 +113,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects, onTaskAdded }) => {
         }
         setLoading(true);
         try {
-            const targetProjectId = project?._id || project?.id || selectedProjectId;
+            const targetProjectId = getStringId(project?._id || project?.id || selectedProjectId);
             if (!targetProjectId) {
                 alert('Please select a project first.');
                 return;
@@ -136,7 +175,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects, onTaskAdded }) => {
                                     Select Project *
                                 </label>
                                 <CustomSelect
-                                    options={projects.map(p => ({ value: p._id || p.id, label: p.name }))}
+                                    options={(projects?.length > 0 ? projects : (project ? [project] : [])).map(p => ({ value: getStringId(p._id || p.id), label: p.name }))}
                                     value={selectedProjectId}
                                     onChange={(val) => {
                                         setSelectedProjectId(val);

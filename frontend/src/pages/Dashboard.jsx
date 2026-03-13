@@ -532,6 +532,7 @@ const Dashboard = () => {
                         {isESS && (
                             <WorkspaceView
                                 user={user}
+                                projects={projects}
                             />
                         )}
 

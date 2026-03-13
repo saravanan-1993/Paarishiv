@@ -30,7 +30,8 @@ const CustomSelect = ({
         };
     });
 
-    const selectedOption = normalizedOptions.find(opt => opt.value === value);
+    const normalizedValue = (value && typeof value === 'object') ? (value.username || value.employeeCode || value._id || value.id) : value;
+    const selectedOption = normalizedOptions.find(opt => opt.value === normalizedValue);
     const displayValue = selectedOption ? selectedOption.label : placeholder;
 
     const filteredOptions = normalizedOptions.filter(opt => {
@@ -200,7 +201,7 @@ const CustomSelect = ({
                         >
                             {filteredOptions.length > 0 ? (
                                 filteredOptions.map((option) => {
-                                    const isSelected = value === option.value;
+                                    const isSelected = normalizedValue === option.value;
 
                                     return (
                                         <button

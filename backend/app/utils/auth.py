@@ -131,4 +131,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db = Depends(lam
     except:
         pass
 
-    return {"username": username, "role": payload.get("role"), "full_name": payload.get("full_name")}
+    return {
+        "username": username,
+        "role": payload.get("role"),
+        "full_name": payload.get("full_name"),
+        "id": payload.get("id", username)
+    }
