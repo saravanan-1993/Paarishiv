@@ -12,22 +12,16 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
         budget: '',
         start_date: '',
         end_date: '',
-        engineer_id: 'engineer',
-        coordinator_id: 'coordinator',
+        engineer_id: 'admin',
+        coordinator_id: 'admin',
         status: 'Ongoing',
         latitude: '',
         longitude: ''
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [engineers, setEngineers] = useState([
-        { value: 'engineer', label: 'Suki Engineer' },
-        { value: 'admin', label: 'Admin' }
-    ]);
-    const [coordinators, setCoordinators] = useState([
-        { value: 'coordinator', label: 'Project Coordinator' },
-        { value: 'admin', label: 'Admin' }
-    ]);
+    const [engineers, setEngineers] = useState([]);
+    const [coordinators, setCoordinators] = useState([]);
 
     useEffect(() => {
         const fetchEngineers = async () => {
@@ -60,22 +54,24 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
                 };
 
                 const engList = getUniqueStaff(
-                    emp => emp.designation?.toLowerCase().includes('engineer') ||
-                           emp.roles?.some(role => role.toLowerCase().includes('engineer')),
-                    [
-                        { value: 'engineer', label: 'Suki Engineer' },
-                        { value: 'admin', label: 'Admin' }
-                    ]
+                    emp => {
+                        const desig = (emp.designation || '').toLowerCase();
+                        const roles = (emp.roles || []).map(r => r.toLowerCase());
+                        const isEngineer = desig.includes('engineer') || desig.includes('engginer') || desig.includes('supervisor') || roles.some(r => r.includes('engineer') || r.includes('supervisor'));
+                        return isEngineer && (emp.salaryType === 'monthly' || !emp.salaryType);
+                    },
+                    [{ value: 'admin', label: 'Admin' }]
                 );
                 setEngineers(engList);
 
                 const coordList = getUniqueStaff(
-                    emp => emp.designation?.toLowerCase().includes('coordinator') ||
-                           emp.roles?.some(role => role.toLowerCase().includes('coordinator')),
-                    [
-                        { value: 'coordinator', label: 'Project Coordinator' },
-                        { value: 'admin', label: 'Admin' }
-                    ]
+                    emp => {
+                        const desig = (emp.designation || '').toLowerCase();
+                        const roles = (emp.roles || []).map(r => r.toLowerCase());
+                        const isCoord = desig.includes('coordinator') || desig.includes('manager') || desig.includes('admin') || roles.some(r => r.includes('coordinator') || r.includes('manager'));
+                        return isCoord && (emp.salaryType === 'monthly' || !emp.salaryType);
+                    },
+                    [{ value: 'admin', label: 'Admin' }]
                 );
                 setCoordinators(coordList);
             } catch (err) {
@@ -125,7 +121,7 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
             onProjectCreated && onProjectCreated(response.data);
 
             // Reset form
-            setForm({ name: '', client: '', location: '', budget: '', start_date: '', end_date: '', engineer_id: 'engineer', coordinator_id: 'coordinator', status: 'Ongoing', latitude: '', longitude: '' });
+            setForm({ name: '', client: '', location: '', budget: '', start_date: '', end_date: '', engineer_id: 'admin', coordinator_id: 'admin', status: 'Ongoing', latitude: '', longitude: '' });
             onClose();
         } catch (err) {
             console.error('Create project error:', err);
@@ -136,13 +132,13 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
     };
 
     const inputStyle = {
-        width: '100%', padding: '10px 12px', borderRadius: '8px',
-        border: '1px solid var(--border)', fontSize: '14px',
+        width: '100%', padding: '8px 12px', borderRadius: '8px',
+        border: '1px solid var(--border)', fontSize: '13px',
         outline: 'none', backgroundColor: '#FAFAFA',
-        transition: 'border-color 0.2s',
+        transition: 'all 0.2s',
         boxSizing: 'border-box',
     };
-    const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' };
+    const labelStyle = { display: 'block', marginBottom: '4px', fontSize: '12px', fontWeight: '700', color: 'var(--text-main)' };
 
     return (
         <>
@@ -151,15 +147,24 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 zIndex: 1000, backdropFilter: 'blur(4px)', padding: '20px'
             }}>
-                <div className="card animate-fade-in" style={{ width: '600px', backgroundColor: 'white', padding: '32px', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div className="card animate-fade-in" style={{ 
+                    width: 'min(95%, 700px)', 
+                    backgroundColor: 'white', 
+                    padding: '24px', 
+                    maxHeight: 'min(95vh, 800px)', 
+                    display: 'flex',
+                    flexDirection: 'column',
+                    borderRadius: '16px',
+                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+                }}>
                     {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                         <div>
-                            <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Create New Project</h2>
-                            <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>Fill in details to register the project in ERP</p>
+                            <h2 style={{ fontSize: '18px', fontWeight: '800' }}>Create New Project</h2>
+                            <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>Fill in details to register project</p>
                         </div>
                         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
-                            <X size={22} />
+                            <X size={20} />
                         </button>
                     </div>
 
@@ -171,112 +176,113 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                        {/* Project Name */}
-                        <div>
-                            <label style={labelStyle}>Project Name *</label>
-                            <input name="name" value={form.name} onChange={handleChange} type="text" placeholder="e.g. Sunset Heights Phase 2" style={inputStyle} />
-                        </div>
+                    <div className="custom-scrollbar" style={{ overflowY: 'auto', paddingRight: '4px', flex: 1 }}>
+                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Project + Client in one row for better vertical space */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div>
+                                    <label style={labelStyle}>Project Name *</label>
+                                    <input name="name" value={form.name} onChange={handleChange} type="text" placeholder="e.g. Sunset Heights" style={inputStyle} />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Client Name *</label>
+                                    <input name="client" value={form.client} onChange={handleChange} type="text" placeholder="e.g. Lakshmi Developers" style={inputStyle} />
+                                </div>
+                            </div>
 
-                        {/* Client Name */}
-                        <div>
-                            <label style={labelStyle}>Client Name *</label>
-                            <input name="client" value={form.client} onChange={handleChange} type="text" placeholder="e.g. Lakshmi Developers Pvt Ltd" style={inputStyle} />
-                        </div>
+                            {/* Location + Budget in one row */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', gap: '16px' }}>
+                                <div>
+                                    <label style={labelStyle}>Location *</label>
+                                    <input name="location" value={form.location} onChange={handleChange} type="text" placeholder="e.g. Coimbatore, Tamil Nadu" style={inputStyle} />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Total Budget (₹) *</label>
+                                    <input name="budget" value={form.budget} onChange={handleChange} type="number" placeholder="e.g. 25000000" style={inputStyle} min="0" />
+                                </div>
+                            </div>
 
-                        {/* Location */}
-                        <div>
-                            <label style={labelStyle}>Location *</label>
-                            <input name="location" value={form.location} onChange={handleChange} type="text" placeholder="e.g. Coimbatore, Tamil Nadu" style={inputStyle} />
-                        </div>
+                            {/* Coordinates + Status */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                <div>
+                                    <label style={labelStyle}>Latitude</label>
+                                    <input name="latitude" value={form.latitude} onChange={handleChange} type="number" step="any" placeholder="11.0168" style={inputStyle} />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Longitude</label>
+                                    <input name="longitude" value={form.longitude} onChange={handleChange} type="number" step="any" placeholder="76.9558" style={inputStyle} />
+                                </div>
+                                <div style={{ paddingTop: '2px' }}>
+                                    <CustomSelect
+                                        label="Status"
+                                        options={[
+                                            { value: 'Ongoing', label: 'Ongoing' },
+                                            { value: 'On Hold', label: 'On Hold' },
+                                            { value: 'Completed', label: 'Completed' }
+                                        ]}
+                                        value={form.status}
+                                        onChange={(val) => setForm(prev => ({ ...prev, status: val }))}
+                                        icon={CheckCircle}
+                                        width="full"
+                                    />
+                                </div>
+                            </div>
 
-                        {/* Coordinates */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '16px' }}>
-                            <div>
-                                <label style={labelStyle}>Latitude</label>
-                                <input name="latitude" value={form.latitude} onChange={handleChange} type="number" step="any" placeholder="e.g. 11.0168" style={inputStyle} />
+                            {/* Dates */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div>
+                                    <label style={labelStyle}>Start Date *</label>
+                                    <input name="start_date" value={form.start_date} onChange={handleChange} type="date" style={inputStyle} />
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>End Date *</label>
+                                    <input name="end_date" value={form.end_date} onChange={handleChange} type="date" style={inputStyle} />
+                                </div>
                             </div>
-                            <div>
-                                <label style={labelStyle}>Longitude</label>
-                                <input name="longitude" value={form.longitude} onChange={handleChange} type="number" step="any" placeholder="e.g. 76.9558" style={inputStyle} />
-                            </div>
-                        </div>
 
-                        {/* Status + Budget */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '16px' }}>
-                            <div>
-                                <label style={labelStyle}>Total Budget (₹) *</label>
-                                <input name="budget" value={form.budget} onChange={handleChange} type="number" placeholder="e.g. 25000000" style={inputStyle} min="0" />
+                            {/* Engineer + Coordinator */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <div>
+                                    <CustomSelect
+                                        label="Site Engineer"
+                                        options={engineers}
+                                        value={form.engineer_id}
+                                        onChange={(val) => setForm(prev => ({ ...prev, engineer_id: val }))}
+                                        icon={Users}
+                                        width="full"
+                                        searchable={true}
+                                    />
+                                </div>
+                                <div>
+                                    <CustomSelect
+                                        label="Coordinator"
+                                        options={coordinators}
+                                        value={form.coordinator_id}
+                                        onChange={(val) => setForm(prev => ({ ...prev, coordinator_id: val }))}
+                                        icon={Users}
+                                        width="full"
+                                        searchable={true}
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <CustomSelect
-                                    label="Status"
-                                    options={[
-                                        { value: 'Ongoing', label: 'Ongoing' },
-                                        { value: 'On Hold', label: 'On Hold' },
-                                        { value: 'Completed', label: 'Completed' }
-                                    ]}
-                                    value={form.status}
-                                    onChange={(val) => setForm(prev => ({ ...prev, status: val }))}
-                                    icon={CheckCircle}
-                                    width="full"
-                                />
-                            </div>
-                        </div>
+                        </form>
+                    </div>
 
-                        {/* Dates */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '16px' }}>
-                            <div>
-                                <label style={labelStyle}>Start Date *</label>
-                                <input name="start_date" value={form.start_date} onChange={handleChange} type="date" style={inputStyle} />
-                            </div>
-                            <div>
-                                <label style={labelStyle}>End Date *</label>
-                                <input name="end_date" value={form.end_date} onChange={handleChange} type="date" style={inputStyle} />
-                            </div>
-                        </div>
+                    {/* Footer Buttons Fixed at Bottom */}
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn btn-outline" style={{ height: '40px', padding: '0 20px', fontSize: '13px' }} onClick={onClose} disabled={loading}>
+                            Cancel
+                        </button>
+                        <button onClick={handleSubmit} type="button" className="btn btn-primary" style={{ height: '40px', padding: '0 28px', fontSize: '13px', fontWeight: '800' }} disabled={loading}>
+                            {loading ? (
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                                    Creating...
+                                </span>
+                            ) : '+ Create Project'}
+                        </button>
+                    </div>
 
-                        {/* Engineer + Coordinator */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '16px' }}>
-                            <div>
-                                <CustomSelect
-                                    label="Site Engineer"
-                                    options={engineers}
-                                    value={form.engineer_id}
-                                    onChange={(val) => setForm(prev => ({ ...prev, engineer_id: val }))}
-                                    icon={Users}
-                                    width="full"
-                                    searchable={true}
-                                />
-                            </div>
-                            <div>
-                                <CustomSelect
-                                    label="Coordinator"
-                                    options={coordinators}
-                                    value={form.coordinator_id}
-                                    onChange={(val) => setForm(prev => ({ ...prev, coordinator_id: val }))}
-                                    icon={Users}
-                                    width="full"
-                                    searchable={true}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Buttons */}
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '12px', paddingTop: '20px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
-                            <button type="button" className="btn btn-outline" style={{ height: '44px', padding: '0 24px' }} onClick={onClose} disabled={loading}>
-                                Cancel
-                            </button>
-                            <button type="submit" className="btn btn-primary" style={{ height: '44px', padding: '0 32px', fontWeight: '800' }} disabled={loading}>
-                                {loading ? (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                                        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                                        Creating...
-                                    </span>
-                                ) : '+ Create Project'}
-                            </button>
-                        </div>
-                    </form>
 
                     <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                 </div>

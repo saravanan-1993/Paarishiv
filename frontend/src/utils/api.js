@@ -90,6 +90,7 @@ export const financeAPI = {
     getVoucherPayments: (grnId) => api.get(`/finance/payables/${grnId}/payments`),
     getReceipts: () => api.get('/finance/receipts'),
     createReceipt: (data) => api.post('/finance/receipts', data),
+    getProjectSummary: (projectName) => api.get(`/finance/project-summary/${encodeURIComponent(projectName)}`),
 };
 
 // ── Labour ────────────────────────────────────────────────────────────────────
@@ -135,6 +136,7 @@ export const billingAPI = {
 // ── Employees ─────────────────────────────────────────────────────────────────
 export const employeeAPI = {
     getAll: () => api.get('/employees/'),
+    getOne: (id) => api.get(`/employees/${id}`),
     create: (data) => api.post('/employees/', data),
     update: (id, data) => api.put(`/employees/${id}`, data),
     delete: (id) => api.delete(`/employees/${id}`),
@@ -172,6 +174,13 @@ export const fleetAPI = {
 
     getMaintenance: (vehicleId) => api.get(`/fleet/maintenance/${vehicleId}`),
     addMaintenance: (data) => api.post('/fleet/maintenance', data),
+
+    // Fuel Operations
+    getFuelStock: () => api.get('/fleet/fuel/stock'),
+    addFuelStock: (data) => api.post('/fleet/fuel/stock', data),
+    getFuelLogs: () => api.get('/fleet/fuel/logs'),
+    addFuelLog: (data) => api.post('/fleet/fuel/logs', data),
+    getFuelSummary: () => api.get('/fleet/fuel/summary'),
 };
 
 // ── HRMS ──────────────────────────────────────────────────────────────────────

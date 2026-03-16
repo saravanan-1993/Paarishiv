@@ -1,0 +1,19 @@
+Project: Lakshmi Homes (ID: 69b12b64afbf9232d3739fad)
+  DPR: ID=DPR-260311161145, Date='11 Mar 2026', Status=Approved, By=EMP001
+  DPR: ID=DPR-260311162637, Date='11 Mar 2026', Status=Approved, By=EMP001
+  DPR: ID=DPR-260312162543, Date='12 Mar 2026', Status=Approved, By=EMP001
+----------------------------------------
+Project: Lakshmi Developers Pvt Ltd (ID: 69b26eb72bf8981420bba4d1)
+  DPR: ID=DPR-260315125125, Date='15 Mar 2026', Status=Approved, By=engineer
+----------------------------------------
+Project: dk homes (ID: 69b3a89a8a3347f827a32b47)
+----------------------------------------
+Project: Sunset (ID: 69b3a95e8a3347f827a32b59)
+  DPR: ID=DPR-260313113832, Date='13 Mar 2026', Status=Approved, By=EMP002
+  DPR: ID=DPR-260313141855, Date='13 Mar 2026', Status=Approved, By=69b3b0ee8a3347f827a32b6e
+----------------------------------------
+Project: mnt project (ID: 69b3b1b78a3347f827a32b70)
+  DPR: ID=DPR-260313142302, Date='13 Mar 2026', Status=Approved, By=EMP002
+----------------------------------------
+Project: manoj constructions (ID: 69b3b5ba8a3347f827a32b80)
+----------------------------------------

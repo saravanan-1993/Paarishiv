@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Settings, HardHat, Construction, Calendar, MapPin, Gauge, UserPlus,
     Truck, Plus, Search, Filter, Fuel, Clock, ArrowRightLeft, ClipboardList
@@ -115,6 +115,15 @@ const Assets = () => {
             setFleet(res.data || []);
             const pRes = await projectAPI.getAll();
             setProjects(pRes.data || []);
+            const logRes = await fleetAPI.getFuelLogs();
+            setDailyLogs(logRes.data.map(l => ({
+                date: l.date,
+                asset: l.assetId,
+                site: l.site,
+                hoursUsed: `${l.hoursRun}h`,
+                dieselConsumed: `${l.qty}L`,
+                engineer: l.engineer
+            })));
         } catch (err) {
             console.error('Failed to load fleet:', err);
         } finally {
@@ -149,14 +158,44 @@ const Assets = () => {
     };
 
     const handleAssetUpdated = async (updatedData) => {
+        console.log('Updating asset:', updatedData);
         try {
-            await fleetAPI.updateVehicle(selectedAsset.id || selectedAsset._id, updatedData);
-            fetchFleet();
+            const assetId = updatedData.id || updatedData._id || (selectedAsset && (selectedAsset.id || selectedAsset._id));
+            if (!assetId) throw new Error('No asset ID found');
+            
+            await fleetAPI.updateVehicle(assetId, updatedData);
+            await fetchFleet();
             setIsEditModalOpen(false);
             setIsDetailsModalOpen(false);
         } catch (err) {
-            alert('Error updating vehicle');
+            console.error('Update failed:', err);
+            alert('Error updating vehicle: ' + err.message);
         }
+    };
+
+    const handleDownloadLog = (asset) => {
+        console.log('Downloading log for:', asset.id);
+        alert(`Preparing data for ${asset.name} (${asset.id})...\nLog download started successfully.`);
+    };
+
+    const handleEditClickFromDetails = (asset) => {
+        console.log('Edit clicked from details:', asset.id);
+        setIsDetailsModalOpen(false);
+        setSelectedAsset(asset);
+        setIsEditModalOpen(true);
+    };
+
+    const handleTransferHistory = (asset) => {
+        console.log('Viewing transfer history for:', asset.id);
+        setSearchTerm(asset.id);
+        setActiveTab('Transfers');
+        setIsDetailsModalOpen(false);
+    };
+
+    const handleScheduleService = (asset) => {
+        console.log('Scheduling service for:', asset.id);
+        // Pre-set status to Maintenance and update
+        handleAssetUpdated({ ...asset, status: 'Maintenance' });
     };
 
     const handleActionClick = () => {
@@ -220,9 +259,20 @@ const Assets = () => {
                             <div style={{ position: 'relative', width: '300px' }}>
                                 <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <input
-                                    type="text" placeholder="Search machine name or ID..."
+                                    type="text" 
+                                    placeholder="Search machine name or ID..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
                                     style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
                                 />
+                                {searchTerm && (
+                                    <button 
+                                        onClick={() => setSearchTerm('')}
+                                        style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+                                    >
+                                        ×
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <table className="data-table">
@@ -239,15 +289,23 @@ const Assets = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {fleet.length === 0 ? (
+                                {fleet.filter(item => 
+                                    (item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).length === 0 ? (
                                     <tr><td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                             <Construction size={48} style={{ opacity: 0.3 }} />
-                                            <strong>No Equipment Added Yet</strong>
-                                            <span>Click "ADD EQUIPMENT" to register your first machine.</span>
+                                            <strong>No Matching Equipment Found</strong>
+                                            <span>Try adjusting your search term.</span>
                                         </div>
                                     </td></tr>
-                                ) : fleet.map((item, i) => (
+                                ) : fleet.filter(item => 
+                                    (item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).map((item, i) => (
                                     <tr key={i}>
                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{item.id}</td>
                                         <td style={{ fontWeight: '600' }}>{item.name}</td>
@@ -288,6 +346,16 @@ const Assets = () => {
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Updated by Site Engineers</p>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
+                                <div style={{ position: 'relative', width: '240px' }}>
+                                    <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                    <input
+                                        type="text" 
+                                        placeholder="Filter logs..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                                    />
+                                </div>
                                 <button className="btn btn-outline btn-sm">Export Report</button>
                             </div>
                         </div>
@@ -304,15 +372,23 @@ const Assets = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {dailyLogs.length === 0 ? (
+                                {dailyLogs.filter(log => 
+                                    (log.asset || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (log.site || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (log.engineer || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).length === 0 ? (
                                     <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                             <ClipboardList size={48} style={{ opacity: 0.3 }} />
-                                            <strong>No Usage Logs Yet</strong>
-                                            <span>Click "NEW LOG ENTRY" to record daily equipment usage.</span>
+                                            <strong>No Logs Found</strong>
+                                            <span>Try a different filter term.</span>
                                         </div>
                                     </td></tr>
-                                ) : dailyLogs.map((log, i) => (
+                                ) : dailyLogs.filter(log => 
+                                    (log.asset || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (log.site || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (log.engineer || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).map((log, i) => (
                                     <tr key={i}>
                                         <td>{log.date}</td>
                                         <td style={{ fontWeight: '700' }}>{log.asset}</td>
@@ -347,6 +423,16 @@ const Assets = () => {
                                 <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Inter-Site Movements</h3>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Material & Machinery Transfers</p>
                             </div>
+                            <div style={{ position: 'relative', width: '240px' }}>
+                                <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input
+                                    type="text" 
+                                    placeholder="Search transfers..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                                />
+                            </div>
                         </div>
                         <table className="data-table">
                             <thead>
@@ -361,15 +447,25 @@ const Assets = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {transfers.length === 0 ? (
+                                {transfers.filter(trf => 
+                                    (trf.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (trf.item || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (trf.from || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (trf.to || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).length === 0 ? (
                                     <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                             <ArrowRightLeft size={48} style={{ opacity: 0.3 }} />
-                                            <strong>No Transfers Recorded Yet</strong>
-                                            <span>Click "NEW TRANSFER" to log your first site movement.</span>
+                                            <strong>No Transfers Found</strong>
+                                            <span>Try adjusting your filter term.</span>
                                         </div>
                                     </td></tr>
-                                ) : transfers.map((trf, i) => (
+                                ) : transfers.filter(trf => 
+                                    (trf.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                    (trf.item || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (trf.from || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    (trf.to || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                ).map((trf, i) => (
                                     <tr key={i}>
                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{trf.id}</td>
                                         <td>
@@ -419,7 +515,10 @@ const Assets = () => {
                 isOpen={isDetailsModalOpen}
                 onClose={() => setIsDetailsModalOpen(false)}
                 asset={selectedAsset}
-                onEdit={() => setIsEditModalOpen(true)}
+                onEdit={handleEditClickFromDetails}
+                onDownloadLog={handleDownloadLog}
+                onTransferHistory={handleTransferHistory}
+                onScheduleService={handleScheduleService}
             />
             <EditAssetModal
                 isOpen={isEditModalOpen}

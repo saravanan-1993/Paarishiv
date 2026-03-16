@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle } from 'lucide-react';
-import { projectAPI, vendorAPI, materialAPI } from '../utils/api';
+import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
 
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
@@ -24,14 +24,29 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const [contractorRows, setContractorRows] = useState([{ contractor: '', title: '', progress: '', overall: '' }]);
     const [contractors, setContractors] = useState([]);
     const [masterMaterials, setMasterMaterials] = useState([]);
+    const [masterVehicles, setMasterVehicles] = useState([]);
     const [photos, setPhotos] = useState([]);
+
+    // Derived unique labour roles from contractors' rate cards
+    const allLabourRoles = React.useMemo(() => {
+        const roles = new Set();
+        contractors.forEach(c => {
+            if (c.rate_card) {
+                c.rate_card.forEach(rc => {
+                    if (rc.role) roles.add(rc.role);
+                });
+            }
+        });
+        return Array.from(roles).sort();
+    }, [contractors]);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [contractorRes, materialRes] = await Promise.all([
+                const [contractorRes, materialRes, vehicleRes] = await Promise.all([
                     vendorAPI.getAll(),
-                    materialAPI.getAll()
+                    materialAPI.getAll(),
+                    fleetAPI.getVehicles()
                 ]);
 
                 // Filter for labour contractors
@@ -40,6 +55,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 );
                 setContractors(labourContractors);
                 setMasterMaterials(materialRes.data || []);
+                setMasterVehicles(vehicleRes.data || []);
             } catch (err) {
                 console.error('Failed to fetch DPR initial data:', err);
             }
@@ -477,7 +493,20 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                             </tr></thead>
                                             <tbody>{nextDayLabour.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td data-label="Category"><input value={row.category} onChange={e => updateRow('nd_labour', i, 'category', e.target.value)} placeholder="e.g. Mason / Carpenter" className="table-input-clean" /></td>
+                                                    <td data-label="Category">
+                                                        <CustomSelect
+                                                            options={[
+                                                                { value: '', label: 'Select Category' },
+                                                                ...allLabourRoles.map(role => ({ value: role, label: role }))
+                                                            ]}
+                                                            value={row.category}
+                                                            onChange={val => updateRow('nd_labour', i, 'category', val)}
+                                                            placeholder="Select Category"
+                                                            width="full"
+                                                            searchable={true}
+                                                            style={{ border: 'none', background: 'transparent' }}
+                                                        />
+                                                    </td>
                                                     <td data-label="Count"><input value={row.count} onChange={e => updateRow('nd_labour', i, 'count', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('nd_labour', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
@@ -501,7 +530,20 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                             </tr></thead>
                                             <tbody>{nextDayEquipment.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td data-label="Equipment Type"><input value={row.equipment} onChange={e => updateRow('nd_equipment', i, 'equipment', e.target.value)} placeholder="e.g. Concrete Mixer" className="table-input-clean" /></td>
+                                                    <td data-label="Equipment Type">
+                                                        <CustomSelect
+                                                            options={[
+                                                                { value: '', label: 'Select Equipment' },
+                                                                ...Array.from(new Set(masterVehicles.map(v => v.vehicleType))).filter(Boolean).map(type => ({ value: type, label: type }))
+                                                            ]}
+                                                            value={row.equipment}
+                                                            onChange={val => updateRow('nd_equipment', i, 'equipment', val)}
+                                                            placeholder="Select Equipment"
+                                                            width="full"
+                                                            searchable={true}
+                                                            style={{ border: 'none', background: 'transparent' }}
+                                                        />
+                                                    </td>
                                                     <td data-label="Note / Reason"><input value={row.note} onChange={e => updateRow('nd_equipment', i, 'note', e.target.value)} placeholder="Reason for request..." className="table-input-clean" /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('nd_equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
@@ -602,10 +644,45 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         </tr></thead>
                                         <tbody>{equipmentRows.map((row, i) => (
                                             <tr key={i}>
-                                                <td data-label="Equipment Name"><input value={row.name} onChange={e => updateRow('equipment', i, 'name', e.target.value)} placeholder="Mixer / Crane..." className="table-input-clean" /></td>
-                                                <td data-label="Machine No."><input value={row.no} onChange={e => updateRow('equipment', i, 'no', e.target.value)} placeholder="e.g. EQ-01" className="table-input-clean" /></td>
-                                                <td data-label="Hours Used"><input value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0 hrs" className="table-input-clean" /></td>
-                                                <td data-label="Fuel (Ltr)"><input value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Equipment Name">
+                                                    <CustomSelect
+                                                        options={[
+                                                            { value: '', label: 'Select Machinery' },
+                                                            ...masterVehicles.map(v => ({ 
+                                                                value: v.vehicleNumber, 
+                                                                label: `${v.vehicleType} - ${v.vehicleNumber}` 
+                                                            }))
+                                                        ]}
+                                                        value={row.no}
+                                                        onChange={val => {
+                                                            const selected = masterVehicles.find(v => v.vehicleNumber === val);
+                                                            setEquipmentRows(prev => {
+                                                                const updated = [...prev];
+                                                                updated[i] = { 
+                                                                    ...updated[i], 
+                                                                    no: val, 
+                                                                    name: selected?.vehicleType || '' 
+                                                                };
+                                                                return updated;
+                                                            });
+                                                        }}
+                                                        placeholder="Select Machinery"
+                                                        width="full"
+                                                        searchable={true}
+                                                        style={{ border: 'none', background: 'transparent' }}
+                                                    />
+                                                </td>
+                                                <td data-label="Machine No.">
+                                                    <input 
+                                                        value={row.no} 
+                                                        readOnly 
+                                                        placeholder="Auto-filled" 
+                                                        className="table-input-clean" 
+                                                        style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                                                    />
+                                                </td>
+                                                <td data-label="Hours Used"><input type="number" value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Fuel (Ltr)"><input type="number" value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                 <td className="action-cell"><button onClick={() => removeRow('equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                             </tr>
                                         ))}</tbody>

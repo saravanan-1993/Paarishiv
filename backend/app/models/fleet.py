@@ -52,3 +52,24 @@ class MaintenanceRecord(BaseModel):
     cost: float
     description: Optional[str] = None
     odometer: int
+
+class FuelStock(BaseModel):
+    date: datetime = Field(default_factory=datetime.now)
+    qty: float
+    rate: float
+    totalAmount: float
+    supplier: Optional[str] = None
+    billNo: Optional[str] = None
+    remarks: Optional[str] = None
+    addedBy: Optional[str] = None
+
+class FuelLog(BaseModel):
+    date: str
+    assetId: str
+    assetName: str
+    site: str
+    qty: float
+    hoursRun: float
+    engineer: str
+    type: str = "Consumption" # Consumption, Adjustment
+    remarks: Optional[str] = None

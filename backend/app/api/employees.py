@@ -13,6 +13,14 @@ async def get_employees(db = Depends(get_database)):
         emp["_id"] = str(emp["_id"])
     return employees
 
+@router.get("/{emp_id}", response_model=EmployeeResponse)
+async def get_employee(emp_id: str, db = Depends(get_database)):
+    employee = await db.employees.find_one({"_id": ObjectId(emp_id)})
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    employee["_id"] = str(employee["_id"])
+    return employee
+
 @router.post("/", response_model=EmployeeResponse)
 async def create_employee(employee: EmployeeCreate, db = Depends(get_database)):
     employee_dict = employee.dict()

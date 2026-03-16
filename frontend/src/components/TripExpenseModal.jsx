@@ -1,14 +1,55 @@
-import React, { useState } from 'react';
-import { X, Plus, Trash2, IndianRupee } from 'lucide-react';
-import { fleetAPI } from '../utils/api';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Trash2, IndianRupee, Loader2 } from 'lucide-react';
+import { fleetAPI, employeeAPI } from '../utils/api';
 
 const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
-    const [expenses, setExpenses] = useState([
-        { category: 'Driver Bata', amount: 0, remarks: '' },
-        { category: 'Fuel', amount: 0, remarks: '' },
-        { category: 'Toll', amount: 0, remarks: '' }
-    ]);
+    const [expenses, setExpenses] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [initializing, setInitializing] = useState(false);
+
+    const [isPaid, setIsPaid] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && trip) {
+            initExpenses();
+            setIsPaid(trip.paymentStatus === 'Paid');
+        }
+    }, [isOpen, trip]);
+
+    const initExpenses = async () => {
+        setInitializing(true);
+        try {
+            // 1. Load existing expenses if any
+            if (trip.expenses && trip.expenses.length > 0) {
+                setExpenses(trip.expenses);
+            } else {
+                // ... same as before but without re-initializing isPaid here
+                const defaultExpenses = [
+                    { category: 'Driver Bata', amount: 0, remarks: '' },
+                    { category: 'Fuel', amount: 0, remarks: '' },
+                    { category: 'Toll', amount: 0, remarks: '' }
+                ];
+
+                if (trip.driverId) {
+                    try {
+                        const drvRes = await employeeAPI.getOne(trip.driverId);
+                        if (drvRes.data && drvRes.data.dailyWage > 0) {
+                            defaultExpenses.unshift({
+                                category: 'Driver Salary',
+                                amount: drvRes.data.dailyWage,
+                                remarks: `Auto-filled from ${trip.driverName}'s master data`
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch driver daily wage', e);
+                    }
+                }
+                setExpenses(defaultExpenses);
+            }
+        } finally {
+            setInitializing(false);
+        }
+    };
 
     const addExpenseRow = () => {
         setExpenses([...expenses, { category: 'Other', amount: 0, remarks: '' }]);
@@ -31,12 +72,14 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
             const updateData = {
                 expenses: expenses,
                 totalExpense: totalExpense,
-                status: shouldClose ? 'Closed' : trip.status
+                status: shouldClose ? 'Closed' : trip.status,
+                paymentStatus: isPaid ? 'Paid' : 'Pending'
             };
-            await fleetAPI.updateTrip(trip.id, updateData);
+            await fleetAPI.updateTrip(trip.id || trip._id, updateData);
             onSuccess();
             onClose();
         } catch (err) {
+            console.error(err);
             alert('Failed to update expenses');
         } finally {
             setLoading(false);
@@ -64,13 +107,16 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                         <div>AMOUNT</div>
                         <div>ACTION</div>
                     </div>
-                    {expenses.map((exp, i) => (
+                    {initializing ? (
+                        <div style={{ textAlign: 'center', padding: '20px' }}><Loader2 className="animate-spin" /></div>
+                    ) : expenses.map((exp, i) => (
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '12px', marginBottom: '8px' }}>
                             <select
                                 value={exp.category}
                                 onChange={e => updateExpense(i, 'category', e.target.value)}
                                 style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)' }}
                             >
+                                <option>Driver Salary</option>
                                 <option>Driver Bata</option>
                                 <option>Fuel</option>
                                 <option>Toll</option>
@@ -110,6 +156,19 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                             ₹{(trip.totalRevenue - total).toLocaleString()}
                         </span>
                     </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px', padding: '0 4px' }}>
+                    <input
+                        type="checkbox"
+                        id="paidStatus"
+                        checked={isPaid}
+                        onChange={(e) => setIsPaid(e.target.checked)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="paidStatus" style={{ fontWeight: '700', fontSize: '14px', cursor: 'pointer', color: isPaid ? '#10B981' : 'var(--text-muted)' }}>
+                        MARK AS PAYMENT RECEIVED
+                    </label>
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
