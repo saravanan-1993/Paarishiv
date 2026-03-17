@@ -45,6 +45,13 @@ const SiteReports = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDPR, setSelectedDPR] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+    const [processingId, setProcessingId] = useState(null);
+    const [toast, setToast] = useState(null);
+
+    const showToast = (msg, type = 'success') => {
+        setToast({ msg, type });
+        setTimeout(() => setToast(null), 3000);
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -75,47 +82,60 @@ const SiteReports = () => {
     }, [activeTab]);
 
     const handleUpdateDPRStatus = async (dpr, newStatus) => {
-        if (!window.confirm(`Are you sure you want to ${newStatus} this DPR?`)) return;
+        setProcessingId(dpr.id);
         try {
             await projectAPI.updateDprStatus(dpr.project_id, dpr.id, newStatus);
-            fetchData();
+            await fetchData();
+            showToast(`DPR ${newStatus} successfully!`);
         } catch (err) {
-            alert('Failed to update status');
+            console.error("DPR update failed:", err);
+            showToast(`Failed: ${err?.response?.data?.detail || err.message}`, 'error');
+        } finally {
+            setProcessingId(null);
         }
     };
 
-    const handleUpdateReqStatus = async (reqId, newStatus) => {
-        const msg = newStatus === 'Approved' ? 'Authorize this request for Purchase Officer to create PO?' : 'Reject this request?';
-        if (!window.confirm(msg)) return;
+    const handleUpdateReqStatus = async (req, newStatus) => {
+        const reqId = req.id || req._id;
+        setProcessingId(reqId);
         try {
             await inventoryAPI.updateRequestStatus(reqId, {
                 status: newStatus,
-                remarks: `${newStatus} by Coordinator (Authorized for PO)`
+                remarks: `${newStatus} by Coordinator`
             });
-            fetchData();
+            await fetchData();
+            showToast(`Request ${newStatus} successfully!`);
         } catch (err) {
-            alert('Failed to update request');
+            console.error("Request update failed:", err);
+            showToast(`Failed: ${err?.response?.data?.detail || err.message}`, 'error');
+        } finally {
+            setProcessingId(null);
         }
     };
 
     const handleApproveTransfer = async (transferId) => {
-        if (!window.confirm('Approve this transfer? This will update stock and project costs based on LIFO Rates.')) return;
+        setProcessingId(transferId);
         try {
             await inventoryAPI.approveTransfer(transferId);
-            alert('Transfer Approved & Stock Updated!');
-            fetchData();
+            await fetchData();
+            showToast('Transfer Approved & Stock Updated!');
         } catch (err) {
-            alert('Failed to approve transfer');
+            showToast('Failed to approve transfer', 'error');
+        } finally {
+            setProcessingId(null);
         }
     };
 
     const handleRejectTransfer = async (transferId) => {
-        if (!window.confirm('Reject this transfer request?')) return;
+        setProcessingId(transferId);
         try {
             await inventoryAPI.rejectTransfer(transferId);
-            fetchData();
+            await fetchData();
+            showToast('Transfer rejected.');
         } catch (err) {
-            alert('Failed to reject transfer');
+            showToast('Failed to reject transfer', 'error');
+        } finally {
+            setProcessingId(null);
         }
     };
 
@@ -229,7 +249,24 @@ const SiteReports = () => {
 
     return (
         <div className="site-reports-container" style={{ position: 'relative' }}>
+            {/* Toast Notification */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
+                    padding: '14px 22px', borderRadius: '14px', fontWeight: '700', fontSize: '14px',
+                    backgroundColor: toast.type === 'error' ? '#FEF2F2' : '#F0FDF4',
+                    color: toast.type === 'error' ? '#DC2626' : '#16A34A',
+                    border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#BBF7D0'}`,
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    animation: 'slideIn 0.3s ease'
+                }}>
+                    <span style={{ fontSize: '18px' }}>{toast.type === 'error' ? '❌' : '✅'}</span>
+                    {toast.msg}
+                </div>
+            )}
             <div className="animate-fade-in" style={{ padding: '24px' }}>
+
                 {/* Header section */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '20px' }}>
                     <div>
@@ -313,8 +350,23 @@ const SiteReports = () => {
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
                                                             {dpr.status === 'Pending' && (
                                                                 <>
-                                                                    <button className="btn btn-success btn-sm" onClick={() => handleUpdateDPRStatus(dpr, 'Approved')}><CheckCircle size={16} /></button>
-                                                                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}><XCircle size={16} /></button>
+                                                                    <button 
+                                                                        className="btn btn-success btn-sm" 
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Approved')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title="Approve DPR"
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                                                    </button>
+                                                                    <button 
+                                                                        className="btn btn-outline btn-sm" 
+                                                                        style={{ color: '#ef4444' }} 
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title="Reject DPR"
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
+                                                                    </button>
                                                                 </>
                                                             )}
                                                         </div>
@@ -341,8 +393,21 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         {req.status === 'Pending' ? (
                                                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                                                <button className="btn btn-success btn-sm" onClick={() => handleUpdateReqStatus(req.id, 'Approved')}>APPROVE</button>
-                                                                <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleUpdateReqStatus(req.id, 'Rejected')}>REJECT</button>
+                                                                <button 
+                                                                    className="btn btn-success btn-sm" 
+                                                                    onClick={() => handleUpdateReqStatus(req, 'Approved')}
+                                                                    disabled={processingId === (req.id || req._id)}
+                                                                >
+                                                                    {processingId === (req.id || req._id) ? <Loader2 size={16} className="animate-spin" /> : 'APPROVE'}
+                                                                </button>
+                                                                <button 
+                                                                    className="btn btn-outline btn-sm" 
+                                                                    style={{ color: '#ef4444' }} 
+                                                                    onClick={() => handleUpdateReqStatus(req, 'Rejected')}
+                                                                    disabled={processingId === (req.id || req._id)}
+                                                                >
+                                                                    {processingId === (req.id || req._id) ? <Loader2 size={16} className="animate-spin" /> : 'REJECT'}
+                                                                </button>
                                                             </div>
                                                         ) : <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Processed</span>}
                                                     </td>

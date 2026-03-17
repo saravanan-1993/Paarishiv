@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Clock, Gauge, User, MapPin } from 'lucide-react';
+import { fleetAPI } from '../utils/api';
 
 const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
     const [formData, setFormData] = useState({
@@ -10,17 +11,41 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
         dieselConsumed: '',
         engineer: ''
     });
+    const [loading, setLoading] = useState(false);
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onLogAdded({
-            ...formData,
-            hoursUsed: `${formData.hoursUsed}h`,
-            dieselConsumed: `${formData.dieselConsumed}L`
-        });
-        onClose();
+        setLoading(true);
+        try {
+            const selectedAsset = fleet.find(f => f.id === formData.asset);
+            
+            const logData = {
+                date: formData.date,
+                assetId: formData.asset,
+                assetName: selectedAsset?.name || formData.asset,
+                site: formData.site,
+                qty: parseFloat(formData.dieselConsumed),
+                hoursRun: parseFloat(formData.hoursUsed),
+                engineer: formData.engineer,
+                type: 'Consumption'
+            };
+
+            await fleetAPI.addFuelLog(logData);
+            
+            onLogAdded({
+                ...formData,
+                hoursUsed: `${formData.hoursUsed}h`,
+                dieselConsumed: `${formData.dieselConsumed}L`
+            });
+            onClose();
+        } catch (err) {
+            console.error('Error saving fuel log:', err);
+            alert('Failed to save usage log');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -72,8 +97,10 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
                     </div>
 
                     <div className="modal-footer" style={{ borderTop: 'none', padding: '24px 0 0 0', gap: '12px', justifyContent: 'flex-end' }}>
-                        <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
-                        <button type="submit" className="btn btn-primary" style={{ fontWeight: '800' }}>SAVE LOG</button>
+                        <button type="button" className="btn btn-outline" onClick={onClose} disabled={loading}>Cancel</button>
+                        <button type="submit" className="btn btn-primary" style={{ fontWeight: '800' }} disabled={loading}>
+                            {loading ? 'SAVING...' : 'SAVE LOG'}
+                        </button>
                     </div>
                 </form>
             </div>

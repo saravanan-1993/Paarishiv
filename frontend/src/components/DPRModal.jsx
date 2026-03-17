@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle } from 'lucide-react';
-import { projectAPI, vendorAPI, materialAPI } from '../utils/api';
+import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
 
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
@@ -24,14 +24,29 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const [contractorRows, setContractorRows] = useState([{ contractor: '', title: '', progress: '', overall: '' }]);
     const [contractors, setContractors] = useState([]);
     const [masterMaterials, setMasterMaterials] = useState([]);
+    const [masterVehicles, setMasterVehicles] = useState([]);
     const [photos, setPhotos] = useState([]);
+
+    // Derived unique labour roles from contractors' rate cards
+    const allLabourRoles = React.useMemo(() => {
+        const roles = new Set();
+        contractors.forEach(c => {
+            if (c.rate_card) {
+                c.rate_card.forEach(rc => {
+                    if (rc.role) roles.add(rc.role);
+                });
+            }
+        });
+        return Array.from(roles).sort();
+    }, [contractors]);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [contractorRes, materialRes] = await Promise.all([
+                const [contractorRes, materialRes, vehicleRes] = await Promise.all([
                     vendorAPI.getAll(),
-                    materialAPI.getAll()
+                    materialAPI.getAll(),
+                    fleetAPI.getVehicles()
                 ]);
 
                 // Filter for labour contractors
@@ -40,6 +55,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 );
                 setContractors(labourContractors);
                 setMasterMaterials(materialRes.data || []);
+                setMasterVehicles(vehicleRes.data || []);
             } catch (err) {
                 console.error('Failed to fetch DPR initial data:', err);
             }
@@ -234,7 +250,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 </div>
 
                 {/* Main Body with Sidebar Layout */}
-                <div className="dpr-modal-body" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                <div className="dpr-modal-body" style={{ display: 'flex', flex: 1 }}>
 
                     {/* Sidebar / Top Tabs on Mobile */}
                     <div className="dpr-sidebar" style={{
@@ -282,17 +298,17 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         </div>
                                         <div>
                                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#64748B', marginBottom: '8px', textTransform: 'uppercase' }}>Overall Summary</label>
-                                            <input value={summary} onChange={e => setSummary(e.target.value)} placeholder="Highlight of today's work..." className="modern-input" />
+                                            <textarea value={summary} onChange={e => setSummary(e.target.value)} placeholder="Highlight of today's work..." className="modern-input" style={{ height: '44px', minHeight: '44px', resize: 'vertical', paddingTop: '10px' }} />
                                         </div>
                                     </div>
                                 </div>
 
-                                <div style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+                                <div style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                                         <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1E293B' }}>Work Execution Log</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('work')}><Plus size={16} /> Add Task</button>
                                     </div>
-                                    <div className="mobile-table-scroll">
+                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Task / Activity</th>
@@ -303,7 +319,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                 <th style={{ width: '40px' }}></th>
                                             </tr></thead>
                                             <tbody>{workRows.map((row, i) => (
-                                                <tr key={i}>
+                                                <tr key={i} style={{ position: 'relative', zIndex: workRows.length - i }}>
                                                     <td data-label="Task / Activity"><input value={row.task} onChange={e => updateRow('work', i, 'task', e.target.value)} placeholder="e.g. Wall Plastering" className="table-input-clean" /></td>
                                                     <td data-label="Today"><input value={row.today} onChange={e => updateRow('work', i, 'today', e.target.value)} placeholder="e.g. 50 Sq m" className="table-input-clean" /></td>
                                                     <td data-label="Overall"><input value={row.overall} onChange={e => updateRow('work', i, 'overall', e.target.value)} placeholder="300/400" className="table-input-clean" /></td>
@@ -321,7 +337,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                             style={{ border: 'none', background: 'transparent' }}
                                                         />
                                                     </td>
-                                                    <td data-label="Remark"><input value={row.remark} onChange={e => updateRow('work', i, 'remark', e.target.value)} placeholder="Optional note..." className="table-input-clean" /></td>
+                                                    <td data-label="Remark"><textarea value={row.remark} onChange={e => updateRow('work', i, 'remark', e.target.value)} placeholder="Optional note..." className="table-input-clean" style={{ minHeight: '40px', resize: 'vertical', paddingTop: '8px' }} /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('work', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
                                             ))}</tbody>
@@ -345,7 +361,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
 
                         {/* ── Labour Tab ── */}
                         {activeTab === 'labour' && (
-                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Workforce Deployment</h3>
@@ -353,7 +369,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                     </div>
                                     <button className="btn-modern outline" onClick={() => addRow('labour')}><Plus size={16} /> Add Entry</button>
                                 </div>
-                                <div className="mobile-table-scroll">
+                                <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                                     <table className="modern-table">
                                         <thead><tr>
                                             <th>Party / Contractor</th>
@@ -417,12 +433,12 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                         {activeTab === 'next_day' && (
                             <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
                                 {/* Materials */}
-                                <div style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                                <div style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Material Requests</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('nd_material')}><Plus size={16} /> Add Material</button>
                                     </div>
-                                    <div className="mobile-table-scroll">
+                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Material Name</th>
@@ -463,12 +479,12 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                 </div>
 
                                 {/* Labour */}
-                                <div style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                                <div style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Labour Requirements</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('nd_labour')}><Plus size={16} /> Add Role</button>
                                     </div>
-                                    <div className="mobile-table-scroll">
+                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Worker Category / Role</th>
@@ -477,7 +493,20 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                             </tr></thead>
                                             <tbody>{nextDayLabour.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td data-label="Category"><input value={row.category} onChange={e => updateRow('nd_labour', i, 'category', e.target.value)} placeholder="e.g. Mason / Carpenter" className="table-input-clean" /></td>
+                                                    <td data-label="Category">
+                                                        <CustomSelect
+                                                            options={[
+                                                                { value: '', label: 'Select Category' },
+                                                                ...allLabourRoles.map(role => ({ value: role, label: role }))
+                                                            ]}
+                                                            value={row.category}
+                                                            onChange={val => updateRow('nd_labour', i, 'category', val)}
+                                                            placeholder="Select Category"
+                                                            width="full"
+                                                            searchable={true}
+                                                            style={{ border: 'none', background: 'transparent' }}
+                                                        />
+                                                    </td>
                                                     <td data-label="Count"><input value={row.count} onChange={e => updateRow('nd_labour', i, 'count', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('nd_labour', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
@@ -501,7 +530,20 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                             </tr></thead>
                                             <tbody>{nextDayEquipment.map((row, i) => (
                                                 <tr key={i}>
-                                                    <td data-label="Equipment Type"><input value={row.equipment} onChange={e => updateRow('nd_equipment', i, 'equipment', e.target.value)} placeholder="e.g. Concrete Mixer" className="table-input-clean" /></td>
+                                                    <td data-label="Equipment Type">
+                                                        <CustomSelect
+                                                            options={[
+                                                                { value: '', label: 'Select Equipment' },
+                                                                ...Array.from(new Set(masterVehicles.map(v => v.vehicleType))).filter(Boolean).map(type => ({ value: type, label: type }))
+                                                            ]}
+                                                            value={row.equipment}
+                                                            onChange={val => updateRow('nd_equipment', i, 'equipment', val)}
+                                                            placeholder="Select Equipment"
+                                                            width="full"
+                                                            searchable={true}
+                                                            style={{ border: 'none', background: 'transparent' }}
+                                                        />
+                                                    </td>
                                                     <td data-label="Note / Reason"><input value={row.note} onChange={e => updateRow('nd_equipment', i, 'note', e.target.value)} placeholder="Reason for request..." className="table-input-clean" /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('nd_equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
@@ -602,10 +644,45 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         </tr></thead>
                                         <tbody>{equipmentRows.map((row, i) => (
                                             <tr key={i}>
-                                                <td data-label="Equipment Name"><input value={row.name} onChange={e => updateRow('equipment', i, 'name', e.target.value)} placeholder="Mixer / Crane..." className="table-input-clean" /></td>
-                                                <td data-label="Machine No."><input value={row.no} onChange={e => updateRow('equipment', i, 'no', e.target.value)} placeholder="e.g. EQ-01" className="table-input-clean" /></td>
-                                                <td data-label="Hours Used"><input value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0 hrs" className="table-input-clean" /></td>
-                                                <td data-label="Fuel (Ltr)"><input value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Equipment Name">
+                                                    <CustomSelect
+                                                        options={[
+                                                            { value: '', label: 'Select Machinery' },
+                                                            ...masterVehicles.map(v => ({ 
+                                                                value: v.vehicleNumber, 
+                                                                label: `${v.vehicleType} - ${v.vehicleNumber}` 
+                                                            }))
+                                                        ]}
+                                                        value={row.no}
+                                                        onChange={val => {
+                                                            const selected = masterVehicles.find(v => v.vehicleNumber === val);
+                                                            setEquipmentRows(prev => {
+                                                                const updated = [...prev];
+                                                                updated[i] = { 
+                                                                    ...updated[i], 
+                                                                    no: val, 
+                                                                    name: selected?.vehicleType || '' 
+                                                                };
+                                                                return updated;
+                                                            });
+                                                        }}
+                                                        placeholder="Select Machinery"
+                                                        width="full"
+                                                        searchable={true}
+                                                        style={{ border: 'none', background: 'transparent' }}
+                                                    />
+                                                </td>
+                                                <td data-label="Machine No.">
+                                                    <input 
+                                                        value={row.no} 
+                                                        readOnly 
+                                                        placeholder="Auto-filled" 
+                                                        className="table-input-clean" 
+                                                        style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
+                                                    />
+                                                </td>
+                                                <td data-label="Hours Used"><input type="number" value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Fuel (Ltr)"><input type="number" value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                 <td className="action-cell"><button onClick={() => removeRow('equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                             </tr>
                                         ))}</tbody>
@@ -613,6 +690,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                 </div>
                             </div>
                         )}
+                        <div style={{ height: '240px' }} />
                     </div>
                 </div>
 
@@ -641,13 +719,13 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 
                 .modern-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 10px; min-width: 600px; }
                 .modern-table th { text-align: left; padding: 0 16px 8px 16px; color: #64748B; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E2E8F0; white-space: nowrap; }
-                .modern-table td { padding: 4px; background: white; white-space: nowrap; }
+                .modern-table td { padding: 4px; background: white; }
                 .modern-table tbody tr { transition: all 0.2s; }
                 .modern-table tbody tr:hover td { background: #F8FAFC; }
                 .modern-table td:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
                 .modern-table td:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
 
-                .table-input-clean { width: 100%; padding: 10px 14px; border: 1px solid transparent; border-radius: 8px; background: transparent; outline: none; font-size: 14px; color: #1E293B; transition: all 0.2s; }
+                .table-input-clean { width: 100%; padding: 10px 14px; border: 1px solid transparent; border-radius: 8px; background: transparent; outline: none; font-size: 14px; color: #1E293B; transition: all 0.2s; font-family: inherit; }
                 .table-input-clean:hover { background: #F8FAFC; border-color: #E2E8F0; }
                 .table-input-clean:focus { background: white; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 93, 138, 0.1); }
 
@@ -684,7 +762,10 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     }
                     .dpr-content-area { padding: 16px !important; }
                     .dpr-grid-3, .dpr-grid-2 { grid-template-columns: 1fr !important; }
-                    .mobile-table-scroll { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+                     .mobile-table-scroll { overflow: visible; }
+                     @media (max-width: 1024px) {
+                        .mobile-table-scroll { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+                     }
                     .dpr-header-title { font-size: 18px !important; }
                     .hide-mobile { display: none !important; }
                     

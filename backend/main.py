@@ -17,10 +17,12 @@ app = FastAPI(title="Civil Construction ERP API", docs_url="/api/docs", openapi_
 
 if not is_vercel:
     try:
+        static_dir = os.path.join(os.getcwd(), "static")
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir, exist_ok=True)
-        # Mount static files
-        app.mount("/static/uploads", StaticFiles(directory=upload_dir), name="static")
+        # Mount entire static folder under /static
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+        print(f"Static files mounted from: {static_dir}")
     except Exception as e:
         print(f"Could not setup static files: {e}")
 

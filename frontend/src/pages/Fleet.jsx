@@ -13,6 +13,7 @@ import { hasPermission } from '../utils/rbac';
 import VehicleModal from '../components/VehicleModal';
 import TripModal from '../components/TripModal';
 import TripExpenseModal from '../components/TripExpenseModal';
+import DriverModal from '../components/DriverModal';
 
 const Fleet = () => {
     const { user } = useAuth();
@@ -20,7 +21,7 @@ const Fleet = () => {
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Dashboard');
 
-    const availableTabs = useMemo(() => ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'], []);
+    const availableTabs = useMemo(() => ['Dashboard', 'Trips', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'], []);
 
     useEffect(() => {
         if (urlTab && availableTabs.includes(urlTab)) {
@@ -43,8 +44,10 @@ const Fleet = () => {
     // Modals
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
     const [isTripModalOpen, setIsTripModalOpen] = useState(false);
+    const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [selectedTrip, setSelectedTrip] = useState(null);
+    const [selectedDriver, setSelectedDriver] = useState(null);
 
     useEffect(() => {
         fetchData();
@@ -275,9 +278,14 @@ const Fleet = () => {
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                        {trip.paymentStatus === 'Pending' && (
+                                            <button className="icon-btn" style={{ color: '#10B981' }} onClick={() => handleMarkPaid(trip.id || trip._id)} title="Mark as Paid">
+                                                <CheckCircle size={16} />
+                                            </button>
+                                        )}
                                         <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>
                                         <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>
-                                        <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id)} title="Delete Trip"><Trash2 size={16} /></button>
+                                        <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>
                                     </div>
                                 </td>
                             </tr>
@@ -348,6 +356,82 @@ const Fleet = () => {
         </div>
     );
 
+    const renderDrivers = () => (
+        <div className="animate-fade-in">
+            <div className="card" style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '16px', flex: 1 }}>
+                        <div style={{ position: 'relative', flex: 1 }}>
+                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input type="text" placeholder="Search drivers by name or phone..." style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                        </div>
+                    </div>
+                    <button className="btn btn-primary" onClick={() => { setSelectedDriver(null); setIsDriverModalOpen(true); }} style={{ marginLeft: '16px' }}>
+                        <Plus size={18} /> ADD NEW DRIVER
+                    </button>
+                </div>
+            </div>
+
+            <div className="card" style={{ padding: 0 }}>
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>Driver Name</th>
+                            <th>Contact Info</th>
+                            <th>Daily Salary</th>
+                            <th>License Number</th>
+                            <th>License Expiry</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {drivers.map((driver, i) => (
+                            <tr key={i}>
+                                <td style={{ fontWeight: '700' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: '800', fontSize: '12px' }}>
+                                            {driver.fullName?.charAt(0)}
+                                        </div>
+                                        {driver.fullName}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div style={{ fontSize: '13px' }}>{driver.phone}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{driver.email}</div>
+                                </td>
+                                <td style={{ fontWeight: '700' }}>₹{driver.dailyWage || 0} / Day</td>
+                                <td>{driver.licenseNumber || 'N/A'}</td>
+                                <td style={{ color: driver.licenseExpiry && new Date(driver.licenseExpiry) < new Date() ? '#EF4444' : 'inherit' }}>
+                                    {driver.licenseExpiry || 'N/A'}
+                                </td>
+                                <td>
+                                    <span className={`badge ${driver.status === 'Active' ? 'badge-success' : 'badge-danger'}`}>{driver.status}</span>
+                                </td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button className="icon-btn" onClick={() => { setSelectedDriver(driver); setIsDriverModalOpen(true); }} title="Edit Driver"><Edit2 size={16} /></button>
+                                        <button className="icon-btn" style={{ color: '#EF4444' }} onClick={async () => {
+                                            if (window.confirm('Are you sure you want to delete this driver?')) {
+                                                try {
+                                                    await employeeAPI.delete(driver.id || driver._id);
+                                                    fetchData();
+                                                } catch (err) { alert('Failed to delete driver'); }
+                                            }
+                                        }} title="Delete Driver"><Trash2 size={16} /></button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {drivers.length === 0 && (
+                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No drivers found</td></tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+
     return (
         <div className="fleet-container" style={{ position: 'relative' }}>
             <div className="animate-fade-in" style={{ padding: '0 10px 40px 10px' }}>
@@ -390,6 +474,7 @@ const Fleet = () => {
                         {activeTab === 'Dashboard' && renderDashboard()}
                         {activeTab === 'Trips' && renderTrips()}
                         {activeTab === 'Vehicles' && renderVehicles()}
+                        {activeTab === 'Drivers' && renderDrivers()}
                         {activeTab === 'Maintenance' && (
                             <div className="animate-fade-in card">
                                 <h3 style={{ marginBottom: '20px' }}>Vehicle Service & Compliance Tracker</h3>
@@ -481,6 +566,12 @@ const Fleet = () => {
                     projects={projects}
                     drivers={drivers}
                     trip={selectedTrip}
+                />
+                <DriverModal
+                    isOpen={isDriverModalOpen}
+                    onClose={() => setIsDriverModalOpen(false)}
+                    onSaved={fetchData}
+                    driver={selectedDriver}
                 />
                 <TripExpenseModal
                     isOpen={isExpenseModalOpen}

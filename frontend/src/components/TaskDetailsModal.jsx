@@ -40,7 +40,7 @@ const TaskDetailsModal = ({ isOpen, onClose, task }) => {
                             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <User size={14} /> Assigned To
                             </div>
-                            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>{task.assignedTo || 'Unassigned'}</div>
+                            <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>{task.assignedTo || 'Unassigned'}</div>
                         </div>
                         <div style={{ backgroundColor: '#F8FAFC', padding: '16px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
                             <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>

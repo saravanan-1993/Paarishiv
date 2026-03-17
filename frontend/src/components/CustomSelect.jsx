@@ -140,123 +140,117 @@ const CustomSelect = ({
                 />
             </button>
 
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 6, scale: 1 }}
-                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                        transition={{ duration: 0.15, ease: 'easeOut' }}
+            {isOpen && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 1000,
+                        backgroundColor: 'white',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-lg)',
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        overflow: 'hidden',
+                        marginTop: '4px'
+                    }}
+                >
+                    {searchable && (
+                        <div style={{
+                            padding: '10px',
+                            borderBottom: '1px solid var(--border)',
+                            backgroundColor: '#F8FAFC'
+                        }}>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 12px 8px 36px',
+                                        fontSize: '13px',
+                                        backgroundColor: 'white',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '8px',
+                                        outline: 'none',
+                                        transition: 'border-color 0.2s'
+                                    }}
+                                    autoFocus
+                                    onKeyDown={e => e.stopPropagation()}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    <div
+                        className="custom-scrollbar"
                         style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            zIndex: 1000,
-                            backgroundColor: 'white',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-lg)',
-                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                            overflow: 'hidden',
-                            marginTop: '4px'
+                            maxHeight: '280px',
+                            overflowY: 'auto',
+                            padding: '6px'
                         }}
                     >
-                        {searchable && (
-                            <div style={{
-                                padding: '10px',
-                                borderBottom: '1px solid var(--border)',
-                                backgroundColor: '#F8FAFC'
-                            }}>
-                                <div style={{ position: 'relative' }}>
-                                    <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search..."
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map((option) => {
+                                const isSelected = normalizedValue === option.value;
+
+                                return (
+                                    <button
+                                        key={String(option.value)}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(option.value);
+                                            setIsOpen(false);
+                                            setSearchQuery('');
+                                        }}
                                         style={{
                                             width: '100%',
-                                            padding: '8px 12px 8px 36px',
-                                            fontSize: '13px',
-                                            backgroundColor: 'white',
-                                            border: '1px solid var(--border)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 14px',
                                             borderRadius: '8px',
-                                            outline: 'none',
-                                            transition: 'border-color 0.2s'
+                                            fontSize: '14px',
+                                            transition: 'all 0.15s',
+                                            marginBottom: '2px',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
+                                            color: isSelected ? 'var(--primary)' : 'var(--text-main)',
+                                            fontWeight: isSelected ? '700' : '500',
                                         }}
-                                        autoFocus
-                                        onKeyDown={e => e.stopPropagation()}
-                                    />
-                                </div>
+                                        onMouseEnter={e => {
+                                            if (!isSelected) e.currentTarget.style.backgroundColor = '#F1F5F9';
+                                        }}
+                                        onMouseLeave={e => {
+                                            if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
+                                    >
+                                        <span style={{
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                            flex: 1
+                                        }} title={option.label}>
+                                            {option.label}
+                                        </span>
+                                        {isSelected && <Check size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginLeft: '8px' }} />}
+                                    </button>
+                                );
+                            })
+                        ) : (
+                            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                                No options found
                             </div>
                         )}
-
-                        <div
-                            className="custom-scrollbar"
-                            style={{
-                                maxHeight: '280px',
-                                overflowY: 'auto',
-                                padding: '6px'
-                            }}
-                        >
-                            {filteredOptions.length > 0 ? (
-                                filteredOptions.map((option) => {
-                                    const isSelected = normalizedValue === option.value;
-
-                                    return (
-                                        <button
-                                            key={String(option.value)}
-                                            type="button"
-                                            onClick={() => {
-                                                onChange(option.value);
-                                                setIsOpen(false);
-                                                setSearchQuery('');
-                                            }}
-                                            style={{
-                                                width: '100%',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '10px 14px',
-                                                borderRadius: '8px',
-                                                fontSize: '14px',
-                                                transition: 'all 0.15s',
-                                                marginBottom: '2px',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                textAlign: 'left',
-                                                backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
-                                                color: isSelected ? 'var(--primary)' : 'var(--text-main)',
-                                                fontWeight: isSelected ? '700' : '500',
-                                            }}
-                                            onMouseEnter={e => {
-                                                if (!isSelected) e.currentTarget.style.backgroundColor = '#F1F5F9';
-                                            }}
-                                            onMouseLeave={e => {
-                                                if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
-                                            }}
-                                        >
-                                            <span style={{
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                                flex: 1
-                                            }} title={option.label}>
-                                                {option.label}
-                                            </span>
-                                            {isSelected && <Check size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginLeft: '8px' }} />}
-                                        </button>
-                                    );
-                                })
-                            ) : (
-                                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                                    No options found
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

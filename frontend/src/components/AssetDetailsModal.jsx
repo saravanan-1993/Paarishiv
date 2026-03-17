@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Construction, Settings, Calendar, Shield, MapPin, Gauge, Clock } from 'lucide-react';
 
-const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit }) => {
+const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit, onDownloadLog, onTransferHistory, onScheduleService }) => {
     if (!isOpen || !asset) return null;
 
     return (
@@ -66,14 +66,58 @@ const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit }) => {
                     </div>
                 </div>
 
-                <div className="modal-footer" style={{ padding: '20px 24px', justifyContent: 'space-between', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn btn-outline btn-sm">Download Log</button>
-                        <button className="btn btn-outline btn-sm">Transfer History</button>
+                <div className="modal-footer" style={{ 
+                    padding: '20px 24px', 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    justifyContent: 'space-between', 
+                    borderTop: '1px solid var(--border)',
+                    backgroundColor: '#fff',
+                    pointerEvents: 'auto'
+                }}>
+                    <div style={{ display: 'flex', gap: '8px', pointerEvents: 'auto' }}>
+                        <button 
+                            className="btn btn-outline btn-sm" 
+                            style={{ cursor: 'pointer', pointerEvents: 'auto' }} 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(onDownloadLog) onDownloadLog(asset);
+                            }}
+                        >
+                            Download Log
+                        </button>
+                        <button 
+                            className="btn btn-outline btn-sm" 
+                            style={{ cursor: 'pointer', pointerEvents: 'auto' }} 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(onTransferHistory) onTransferHistory(asset);
+                            }}
+                        >
+                            Transfer History
+                        </button>
                     </div>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button className="btn btn-outline" onClick={onEdit}>EDIT DETAILS</button>
-                        <button className="btn btn-primary" style={{ fontWeight: '800' }}>SCHEDULE SERVICE</button>
+                    <div style={{ display: 'flex', gap: '12px', pointerEvents: 'auto' }}>
+                        <button 
+                            className="btn btn-outline" 
+                            style={{ cursor: 'pointer', pointerEvents: 'auto' }} 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(onEdit) onEdit(asset);
+                            }}
+                        >
+                            EDIT DETAILS
+                        </button>
+                        <button 
+                            className="btn btn-primary" 
+                            style={{ fontWeight: '800', cursor: 'pointer', pointerEvents: 'auto' }} 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if(onScheduleService) onScheduleService(asset);
+                            }}
+                        >
+                            SCHEDULE SERVICE
+                        </button>
                     </div>
                 </div>
             </div>

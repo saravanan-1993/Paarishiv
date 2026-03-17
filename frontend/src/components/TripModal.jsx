@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, IndianRupee, Truck, User, MapPin } from 'lucide-react';
+import { X, Save, IndianRupee, Truck, User, MapPin, Briefcase } from 'lucide-react';
 import { fleetAPI, projectAPI, employeeAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
 
@@ -65,7 +65,7 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
     };
 
     const handleProjectChange = (pId) => {
-        const p = projects.find(pro => pro._id === pId);
+        const p = projects.find(pro => (pro.id || pro._id) === pId);
         if (p) {
             setFormData({ ...formData, projectId: pId, projectName: p.name });
         }
@@ -185,7 +185,7 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                             <div style={{ flex: 1 }}>
                                 <CustomSelect
                                     label="Project Site"
-                                    options={projects.map(p => ({ value: p._id, label: p.name }))}
+                                    options={projects.map(p => ({ value: p.id || p._id, label: p.name }))}
                                     value={formData.projectId}
                                     onChange={handleProjectChange}
                                     width="full"
@@ -195,7 +195,7 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                         ) : (
                             <div>
                                 <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>Customer Name *</label>
-                                <input required placeholder="Enter customer name" value={formData.customerName} onChange={e => setFormData({ ...formData, customerName: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <input required placeholder="Enter customer name" value={formData.customerName} onChange={e => setFormData({ ...formData, customerName: e.target.value.trim() })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                             </div>
                         )}
                     </div>

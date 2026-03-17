@@ -368,3 +368,63 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
         
     bill_dict["id"] = str(result.inserted_id)
     return bill_dict
+
+# ── Project Finance Summary ──────────────────────────────────────────────────
+
+@router.get("/project-summary/{project_name}")
+async def get_project_finance_summary(project_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Return all finance data for a specific project: sales bills, purchase bills, expenses, receipts."""
+    
+    from urllib.parse import unquote
+    project_name = unquote(project_name)
+    
+    # Sales Bills (Client Billing)
+    sales_bills = await db.bills.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("created_at", -1).to_list(500)
+    for b in sales_bills:
+        b["id"] = str(b.pop("_id"))
+        for k, v in b.items():
+            if hasattr(v, 'isoformat'):
+                b[k] = v.isoformat()
+
+    # Receipts (Payments received from client)
+    receipts = await db.receipts.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("date", -1).to_list(500)
+    for r in receipts:
+        r["id"] = str(r.pop("_id"))
+
+    # Purchase Bills
+    purchase_bills = await db.purchase_bills.find({"project_name": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("bill_date", -1).to_list(500)
+    for pb in purchase_bills:
+        pb["id"] = str(pb.pop("_id"))
+        for k, v in pb.items():
+            if hasattr(v, 'isoformat'):
+                pb[k] = v.isoformat()
+
+    # Expenses
+    expenses = await db.expenses.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("date", -1).to_list(500)
+    for e in expenses:
+        e["id"] = str(e.pop("_id"))
+        for k, v in e.items():
+            if hasattr(v, 'isoformat'):
+                e[k] = v.isoformat()
+
+    # Compute summary totals
+    total_sales = sum(float(b.get("total_amount", 0)) for b in sales_bills)
+    total_received = sum(float(b.get("collection_amount", 0)) for b in sales_bills)
+    total_purchase = sum(float(pb.get("total_amount", 0)) for pb in purchase_bills)
+    total_expenses = sum(float(e.get("amount", 0)) for e in expenses)
+    total_receipts = sum(float(r.get("amount", 0)) for r in receipts)
+
+    return {
+        "sales_bills": sales_bills,
+        "receipts": receipts,
+        "purchase_bills": purchase_bills,
+        "expenses": expenses,
+        "summary": {
+            "total_sales": total_sales,
+            "total_received": max(total_received, total_receipts),
+            "total_purchase": total_purchase,
+            "total_expenses": total_expenses,
+            "gross_profit": total_sales - total_purchase - total_expenses,
+            "outstanding": total_sales - max(total_received, total_receipts)
+        }
+    }

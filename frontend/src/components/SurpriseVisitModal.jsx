@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Camera, MapPin, Loader2, Save, Users, Calendar, Clock } from 'lucide-react';
+import { X, Camera, MapPin, Loader2, Save, Users, Calendar, Clock, UserX, Shield as ShieldIcon } from 'lucide-react';
 import { projectAPI, employeeAPI, surpriseVisitAPI, labourAPI } from '../utils/api';
 
 const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
@@ -24,18 +24,38 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
         }
     }, [isOpen]);
 
+    useEffect(() => {
+        setPresentIds([]); // Clear selection when project changes
+    }, [selectedProject]);
+
     const loadData = async () => {
         setLoading(true);
         try {
-            const [projRes, empRes] = await Promise.all([
+            const [projRes, empRes, labRes] = await Promise.all([
                 projectAPI.getAll(),
-                employeeAPI.getAll()
+                employeeAPI.getAll(),
+                labourAPI.getAll()
             ]);
             setProjects(projRes.data || []);
-            // For staff, we include engineers (Role SITE_ENGINEER) and maybe others.
-            // Requirement says "Engineer, Labour, Contractor"
-            // We'll treat all active employees/labours as selectable for now
-            setAllPotentialStaff(empRes.data || []);
+            
+            // Normalize employees and labours into a single potential staff list
+            const staff = [
+                ...(empRes.data || []).map(e => ({
+                    ...e,
+                    id: e.id || e._id,
+                    name: e.fullName || e.name,
+                    designation: e.designation || 'Engineer',
+                    siteId: e.siteId || ''
+                })),
+                ...(labRes.data || []).map(l => ({
+                    ...l,
+                    id: l.id || l._id,
+                    name: l.name,
+                    designation: l.category || 'Labour',
+                    siteId: l.current_project_id || ''
+                }))
+            ];
+            setAllPotentialStaff(staff);
         } catch (err) {
             console.error('Failed to load surprise visit data', err);
         } finally {
@@ -200,32 +220,48 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
                                 <div style={{ textAlign: 'center', padding: '20px' }}><Loader2 className="animate-spin" /></div>
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                    {allPotentialStaff.map(staff => (
-                                        <div
-                                            key={staff.id || staff._id}
-                                            onClick={() => togglePresence(staff.id || staff._id)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '10px', padding: '10px',
-                                                borderRadius: '8px', border: '1.5px solid',
-                                                borderColor: presentIds.includes(staff.id || staff._id) ? 'var(--primary)' : '#e2e8f0',
-                                                backgroundColor: presentIds.includes(staff.id || staff._id) ? '#f0f7ff' : 'white',
-                                                cursor: 'pointer', transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            <div style={{
-                                                width: '18px', height: '18px', borderRadius: '4px', border: '2px solid',
-                                                borderColor: presentIds.includes(staff.id || staff._id) ? 'var(--primary)' : '#cbd5e1',
-                                                backgroundColor: presentIds.includes(staff.id || staff._id) ? 'var(--primary)' : 'transparent',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                            }}>
-                                                {presentIds.includes(staff.id || staff._id) && <Check size={12} color="white" />}
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '13px', fontWeight: '700' }}>{staff.fullName || staff.name}</div>
-                                                <div style={{ fontSize: '11px', color: '#64748b' }}>{staff.designation || 'Staff'}</div>
-                                            </div>
+                                    {!selectedProject ? (
+                                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', color: '#64748b', fontSize: '14px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1.5px dashed #e2e8f0' }}>
+                                            <Users size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                                            <p style={{ fontWeight: '600' }}>Please select a project first</p>
+                                            <p style={{ fontSize: '12px', marginTop: '4px' }}>Staff members are displayed based on their assigned project.</p>
                                         </div>
-                                    ))}
+                                    ) : allPotentialStaff.filter(s => s.siteId === selectedProject).length === 0 ? (
+                                        <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px 20px', color: '#64748b', fontSize: '14px', backgroundColor: '#fff7ed', borderRadius: '12px', border: '1.5px dashed #fed7aa' }}>
+                                            <UserX size={32} style={{ margin: '0 auto 12px', opacity: 0.5, color: '#f59e0b' }} />
+                                            <p style={{ fontWeight: '600', color: '#9a3412' }}>No staff assigned to this project</p>
+                                            <p style={{ fontSize: '12px', marginTop: '4px' }}>Please assign employees or labours to this project in the master data.</p>
+                                        </div>
+                                    ) : (
+                                        allPotentialStaff
+                                            .filter(staff => staff.siteId === selectedProject)
+                                            .map(staff => (
+                                                <div
+                                                    key={staff.id}
+                                                    onClick={() => togglePresence(staff.id)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '10px', padding: '10px',
+                                                        borderRadius: '8px', border: '1.5px solid',
+                                                        borderColor: presentIds.includes(staff.id) ? 'var(--primary)' : '#e2e8f0',
+                                                        backgroundColor: presentIds.includes(staff.id) ? '#f0f7ff' : 'white',
+                                                        cursor: 'pointer', transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        width: '18px', height: '18px', borderRadius: '4px', border: '2px solid',
+                                                        borderColor: presentIds.includes(staff.id) ? 'var(--primary)' : '#cbd5e1',
+                                                        backgroundColor: presentIds.includes(staff.id) ? 'var(--primary)' : 'transparent',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                    }}>
+                                                        {presentIds.includes(staff.id) && <Check size={12} color="white" />}
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: '13px', fontWeight: '700' }}>{staff.name}</div>
+                                                        <div style={{ fontSize: '11px', color: '#64748b' }}>{staff.designation}</div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                    )}
                                 </div>
                             )}
                         </div>

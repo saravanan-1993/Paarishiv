@@ -346,7 +346,7 @@ const Settings = () => {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                                     {companyInfo.logo ? (
                                         <img
-                                            src={companyInfo.logo.startsWith('http') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                            src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
                                             alt="Company Logo"
                                             style={{ width: '60px', height: '60px', borderRadius: '8px', objectFit: 'contain', backgroundColor: '#f1f5f9', padding: '4px' }}
                                         />

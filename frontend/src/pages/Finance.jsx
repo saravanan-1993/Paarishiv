@@ -13,7 +13,7 @@ import PaymentHistoryModal from '../components/PaymentHistoryModal';
 import CreateBillModal from '../components/CreateBillModal';
 import BillDetailsModal from '../components/BillDetailsModal';
 import CustomSelect from '../components/CustomSelect';
-import { projectAPI, financeAPI, billingAPI, grnAPI } from '../utils/api';
+import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI } from '../utils/api';
 import { hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
@@ -59,6 +59,7 @@ const Finance = () => {
     const [expenses, setExpenses] = useState([]);
     const [receipts, setReceipts] = useState([]);
     const [grns, setGrns] = useState([]);
+    const [trips, setTrips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [billTypeFilter, setBillTypeFilter] = useState('All Types');
     const [billSearch, setBillSearch] = useState('');
@@ -75,7 +76,7 @@ const Finance = () => {
         { id: 'Purchase', label: `Purchases (${payables.length})`, icon: Wallet },
         { id: 'Payments', label: `Payments (${expenses.length})`, icon: DollarSign },
         { id: 'Ledger', label: `Ledger`, icon: FileText },
-    ].filter(tab => hasSubTabAccess(user, 'Accounts', tab.id)), [user, bills.length, purchaseBills.length, payables.length, expenses.length]);
+    ].filter(tab => hasSubTabAccess(user, 'Accounts', tab.id)), [user, bills.length, purchaseBills.length, payables.length, expenses.length, trips.length]);
 
     useEffect(() => {
         if (urlTab && availableTabs.some(t => t.id === urlTab)) {
@@ -106,7 +107,8 @@ const Finance = () => {
                 billingAPI.getAll(),
                 financeAPI.getExpenses(),
                 financeAPI.getReceipts(),
-                billingAPI.getPurchaseBills()
+                billingAPI.getPurchaseBills(),
+                fleetAPI.getTrips()
             ]);
 
             setProjects(results[0].status === 'fulfilled' ? (results[0].value.data || []) : []);
@@ -115,6 +117,7 @@ const Finance = () => {
             setExpenses(results[3].status === 'fulfilled' ? (results[3].value.data || []) : []);
             setReceipts(results[4].status === 'fulfilled' ? (results[4].value.data || []) : []);
             setPurchaseBills(results[5].status === 'fulfilled' ? (results[5].value.data || []) : []);
+            setTrips(results[6].status === 'fulfilled' ? (results[6].value.data || []) : []);
 
             // Fetch GRNs to show pending billing
             const grnRes = await grnAPI.getAll();
@@ -435,32 +438,37 @@ const Finance = () => {
     const projectDropdown = ['All Projects', ...projects.map(p => p.name).filter(Boolean)];
 
     // Derived Ledger Data
-    const baseBillsForLedger = selectedProject === 'All Projects' ? bills : bills.filter(b => b.project === selectedProject);
-    const basePayablesForLedger = selectedProject === 'All Projects' ? payables : payables.filter(p => p.project === selectedProject);
+    const clientParties = useMemo(() => {
+        const set = new Set();
+        bills.forEach(b => b.project && set.add(b.project));
+        projects.forEach(p => p.name && set.add(p.name));
+        trips.forEach(t => {
+            if (t.tripType === 'Project Trip' && t.projectName) set.add(t.projectName);
+            if (t.tripType === 'Private Trip' && t.customerName) set.add(t.customerName);
+        });
+        return [...set].sort();
+    }, [bills, projects, trips]);
 
-    const clientParties = [...new Set([
-        ...baseBillsForLedger.map(b => b.project),
-        ...projects.map(p => p.name)
-    ].filter(Boolean))];
-    const vendorParties = [...new Set([
-        ...basePayablesForLedger.filter(p => p.vendor && p.vendor.toLowerCase() !== 'internal').map(p => p.vendor),
-        ...purchaseBills.map(pb => pb.vendor_name),
-        ...expenses.filter(e => e.payee).map(e => e.payee)
-    ].filter(Boolean))];
+    const vendorParties = useMemo(() => {
+        const set = new Set();
+        payables.forEach(p => p.vendor && p.vendor.toLowerCase() !== 'internal' && set.add(p.vendor));
+        purchaseBills.forEach(pb => pb.vendor_name && set.add(pb.vendor_name));
+        expenses.forEach(e => e.payee && set.add(e.payee));
+        return [...set].sort();
+    }, [payables, purchaseBills, expenses]);
 
-    let ledgerParties = ['All Parties'];
-    if (ledgerType === 'Client') {
-        ledgerParties = ['All Parties', ...clientParties];
-    } else if (ledgerType === 'Vendor') {
-        ledgerParties = ['All Parties', ...vendorParties];
-    } else {
-        ledgerParties = ['All Parties', ...clientParties, ...vendorParties];
-    }
-    // Remove duplicates
-    ledgerParties = [...new Set(ledgerParties)];
+    const ledgerParties = useMemo(() => {
+        if (ledgerType === 'Client') return ['All Parties', ...clientParties];
+        if (ledgerType === 'Vendor') return ['All Parties', ...vendorParties];
+        return ['All Parties', ...[...new Set([...clientParties, ...vendorParties])].sort()];
+    }, [ledgerType, clientParties, vendorParties]);
 
     const getLedgerEntries = () => {
         let entries = [];
+        const baseBillsForLedger = selectedProject === 'All Projects' ? bills : bills.filter(b => b.project === selectedProject);
+        const basePayablesForLedger = selectedProject === 'All Projects' ? payables : payables.filter(p => p.project === selectedProject);
+        const baseExpensesForLedger = selectedProject === 'All Projects' ? expenses : expenses.filter(e => e.project === selectedProject);
+
         const matchesProject = (pName) => selectedProject === 'All Projects' || pName === selectedProject;
 
         // Sales entries (Debit)
@@ -507,6 +515,48 @@ const Finance = () => {
                 credit: pb.total_amount || parseFloat(pb.amount) || 0,
                 party: pb.vendor_name
             });
+        });
+
+        // ── Fleet Trips (Sale/Income) ───────────────────────────────
+        trips.forEach(t => {
+            const isProjectTrip = t.tripType === 'Project Trip';
+            const partyName = isProjectTrip ? t.projectName : t.customerName;
+            if (!partyName) return;
+
+            // Global Project Filter
+            if (selectedProject !== 'All Projects') {
+                if (isProjectTrip && t.projectName !== selectedProject) return;
+                // Private trips might not be linked to a project site, usually exclude from project filter
+                if (!isProjectTrip) return;
+            }
+
+            const tParty = partyName.trim().toLowerCase();
+            const lParty = ledgerParty.trim().toLowerCase();
+            
+            if (ledgerParty !== 'All Parties' && tParty !== lParty) return;
+            
+            const revenue = parseFloat(t.totalRevenue || 0);
+            if (revenue === 0) return;
+
+            // The Revenue is like a bill (Debit)
+            entries.push({
+                date: t.date || t.created_at || new Date().toISOString(),
+                particulars: `Trip Revenue: ${t.loadType || 'Material'} - ${t.vehicleNumber} (${t.tripId})`,
+                debit: revenue,
+                credit: 0,
+                party: partyName
+            });
+
+            // If Paid, it's a Credit (payment received)
+            if (t.paymentStatus === 'Paid') {
+                entries.push({
+                    date: t.date || t.created_at || new Date().toISOString(),
+                    particulars: `Trip Payment Received - ${t.tripId}`,
+                    debit: 0,
+                    credit: revenue,
+                    party: partyName
+                });
+            }
         });
 
         // Combined Payments & General Expenses

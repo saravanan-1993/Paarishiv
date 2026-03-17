@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
-from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord
+from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog
 from database import get_database
 from bson import ObjectId
 from datetime import datetime
@@ -152,3 +152,50 @@ async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database))
 async def get_vehicle_maintenance(vehicle_id: str, db = Depends(get_database)):
     records = await db.maintenance.find({"vehicleId": vehicle_id}).sort("date", -1).to_list(100)
     return [{"id": str(r["_id"]), **{k: v for k, v in r.items() if k != "_id"}} for r in records]
+
+# ── Fuel Management ──────────────────────────────────────────────────────────
+
+@router.get("/fuel/stock")
+async def get_fuel_stock(db = Depends(get_database)):
+    stocks = await db.fuel_stock.find().sort("date", -1).to_list(500)
+    return [{"id": str(s["_id"]), **{k: v for k, v in s.items() if k != "_id"}} for s in stocks]
+
+@router.post("/fuel/stock")
+async def add_fuel_stock(stock: FuelStock, db = Depends(get_database)):
+    result = await db.fuel_stock.insert_one(stock.dict())
+    return {"id": str(result.inserted_id), **stock.dict()}
+
+@router.get("/fuel/logs")
+async def get_fuel_logs(db = Depends(get_database)):
+    logs = await db.fuel_logs.find().sort("date", -1).to_list(1000)
+    return [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs]
+
+@router.post("/fuel/logs")
+async def add_fuel_log(log: FuelLog, db = Depends(get_database)):
+    result = await db.fuel_logs.insert_one(log.dict())
+    return {"id": str(result.inserted_id), **log.dict()}
+
+@router.get("/fuel/summary")
+async def get_fuel_summary(db = Depends(get_database)):
+    # Total stock in
+    stocks = await db.fuel_stock.find().to_list(5000)
+    total_in = sum(s.get("qty", 0) for s in stocks)
+    
+    # Total consumption
+    logs = await db.fuel_logs.find().to_list(10000)
+    total_out = sum(l.get("qty", 0) for l in logs)
+    
+    # Current stock
+    current_stock = total_in - total_out
+    
+    # Consumption this month
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d")
+    month_logs = [l for l in logs if l.get("date") >= month_start]
+    month_out = sum(l.get("qty", 0) for l in month_logs)
+    
+    return {
+        "currentStock": current_stock,
+        "monthUsage": month_out,
+        "recentLogs": [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs[:10]]
+    }

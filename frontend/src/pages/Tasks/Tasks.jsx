@@ -22,13 +22,22 @@ const Tasks = () => {
     const [projectsData, setProjectsData] = useState([]);
     const [employeesMap, setEmployeesMap] = useState({});
 
-    // Helper to get a string ID from potential populated object
+    // Helper to resolve employee name from ID
+    const resolveEmployeeName = (id) => {
+        if (!id || id === 'Unassigned') return 'Unassigned';
+        // Handle potential object structure
+        const targetId = typeof id === 'object' ? (id._id || id.id || id.$oid || '') : String(id).trim();
+        const emp = employeesMap[targetId];
+        if (emp) return emp.fullName || emp.name || targetId;
+        return targetId;
+    };
+
     const getStringId = (val, fallback = '') => {
         if (!val) return fallback;
         if (typeof val === 'object') {
-            return val.username || val.employeeCode || val._id || val.id || fallback;
+            return val.username || val.employeeCode || val._id || val.id || val.$oid || fallback;
         }
-        return val;
+        return String(val).trim();
     };
 
     // Modals
@@ -83,9 +92,12 @@ const Tasks = () => {
             const emps = res.data || [];
             const empMap = {};
             emps.forEach(e => {
-                const identifier = e.username || e.employeeCode || e._id;
-                empMap[identifier] = e;
-                if (e.fullName) empMap[e.fullName] = e; // Also map by full name just in case
+                // Map ALL possible identifiers to the same object
+                if (e._id) empMap[e._id] = e;
+                if (e.id) empMap[e.id] = e;
+                if (e.username) empMap[e.username] = e;
+                if (e.employeeCode) empMap[e.employeeCode] = e;
+                if (e.fullName) empMap[e.fullName] = e;
             });
             setEmployeesMap(empMap);
         } catch (err) {
@@ -367,8 +379,8 @@ const Tasks = () => {
                                             )}
                                         </div>
                                     </td>
-                                    <td style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
-                                        {t.assignedTo || 'Unassigned'}
+                                    <td style={{ color: 'var(--text-main)', fontSize: '14px', fontWeight: '600' }}>
+                                        {resolveEmployeeName(t.assignedTo)}
                                     </td>
                                     <td style={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center' }}>
                                         {/* Share Action - Only if not completed */}

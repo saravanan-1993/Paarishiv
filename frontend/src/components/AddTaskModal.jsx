@@ -10,9 +10,9 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
     const getStringId = (val, fallback = '') => {
         if (!val) return fallback;
         if (typeof val === 'object') {
-            return val._id || val.id || val.username || val.employeeCode || fallback;
+            return val.$oid || val._id || val.id || val.username || val.employeeCode || fallback;
         }
-        return val;
+        return String(val).trim();
     };
 
     const [selectedProjectId, setSelectedProjectId] = useState('');

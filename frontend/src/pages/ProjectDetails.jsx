@@ -32,7 +32,7 @@ import DPRModal from '../components/DPRModal';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import EditProjectModal from '../components/EditProjectModal';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, chatAPI } from '../utils/api';
+import { projectAPI, chatAPI, employeeAPI, financeAPI } from '../utils/api';
 import DPRViewModal from '../components/DPRViewModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
@@ -337,6 +337,38 @@ const ProjectDetails = () => {
     const [project, setProject] = useState(null);
     const [projLoading, setProjLoading] = useState(true);
     const [projError, setProjError] = useState('');
+    const [employeesMap, setEmployeesMap] = useState({});
+
+    // Helper to resolve employee name from ID
+    const resolveEmployeeName = (id) => {
+        if (!id || id === 'Unassigned') return 'Unassigned';
+        // Handle potential object structure/ObjectId
+        const targetId = typeof id === 'object' ? (id._id || id.id || id.$oid || '') : String(id).trim();
+        const emp = employeesMap[targetId];
+        if (emp) return emp.fullName || emp.name || targetId;
+        return targetId;
+    };
+
+    useEffect(() => {
+        const fetchEmps = async () => {
+            try {
+                const res = await employeeAPI.getAll();
+                const emps = res.data || [];
+                const map = {};
+                emps.forEach(e => {
+                    if (e._id) map[e._id] = e;
+                    if (e.id) map[e.id] = e;
+                    if (e.username) map[e.username] = e;
+                    if (e.employeeCode) map[e.employeeCode] = e;
+                    if (e.fullName) map[e.fullName] = e;
+                });
+                setEmployeesMap(map);
+            } catch (err) {
+                console.error("Failed to fetch employees in project details", err);
+            }
+        };
+        fetchEmps();
+    }, []);
 
     useEffect(() => {
         const load = async () => {
@@ -357,6 +389,9 @@ const ProjectDetails = () => {
 
     const [isDPRViewOpen, setIsDPRViewOpen] = useState(false);
     const [selectedDPR, setSelectedDPR] = useState(null);
+    const [finData, setFinData] = useState(null);
+    const [finLoading, setFinLoading] = useState(false);
+    const [finTab, setFinTab] = useState('sales');
 
     const reloadProject = async () => {
         try {
@@ -461,6 +496,24 @@ const ProjectDetails = () => {
             return hasSubTabAccess(user, 'Projects', tabName);
         });
     }, [user, taskCount, dprCount, docCount]);
+
+    // Load finance data when Financials tab is active
+    useEffect(() => {
+        if (activeTab === 'Financials' && project?.name && !finData) {
+            const loadFin = async () => {
+                setFinLoading(true);
+                try {
+                    const res = await financeAPI.getProjectSummary(project.name);
+                    setFinData(res.data);
+                } catch (err) {
+                    console.error('Failed to load project finance data:', err);
+                } finally {
+                    setFinLoading(false);
+                }
+            };
+            loadFin();
+        }
+    }, [activeTab, project?.name]);
 
     useEffect(() => {
         if (urlTab) {
@@ -749,7 +802,9 @@ const ProjectDetails = () => {
                                             <tr key={i}>
                                                 <td style={{ color: 'var(--text-muted)', fontWeight: '600', fontSize: '12px' }}>{task.id || `T-${i + 1}`}</td>
                                                 <td style={{ fontWeight: '600' }}>{task.name}</td>
-                                                <td>{task.assignedTo}</td>
+                                                <td style={{ fontWeight: '600', color: 'var(--text-main)' }}>
+                                                    {resolveEmployeeName(task.assignedTo)}
+                                                </td>
                                                 <td>
                                                     <span style={{
                                                         padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '700',
@@ -869,50 +924,150 @@ const ProjectDetails = () => {
 
                 {/* Financials Tab */}
                 {activeTab === 'Financials' && (
-                    <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
-                        <div className="card" style={{ padding: '32px' }}>
-                            <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '28px' }}>Budget Overview</h2>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                                {[
-                                    { label: 'Credit (Total Budget)', value: project.budget || 0, color: '#3B82F6', bg: '#EFF6FF' },
-                                    { label: 'Debit (Amount Spent)', value: spent, color: '#EF4444', bg: '#FEF2F2' },
-                                    { label: 'Balance', value: (project.budget || 0) - spent, color: '#10B981', bg: '#ECFDF5' },
-                                ].map((row, ri) => {
-                                    const v = row.value;
-                                    const display = v >= 10000000
-                                        ? `₹${(v / 10000000).toFixed(2)} Cr`
-                                        : v >= 100000
-                                            ? `₹${(v / 100000).toFixed(2)} L`
-                                            : `₹${v.toLocaleString('en-IN')}`;
-                                    return (
-                                        <div key={ri} style={{ padding: '20px', backgroundColor: row.bg, borderRadius: '12px' }}>
-                                            <p style={{ fontSize: '12px', fontWeight: '700', color: row.color, marginBottom: '4px', textTransform: 'uppercase' }}>{row.label}</p>
-                                            <p style={{ fontSize: '28px', fontWeight: '800', color: row.color }}>
-                                                {display}
-                                            </p>
+                    <div className="animate-fade-in">
+                        {finLoading ? (
+                            <div style={{ textAlign: 'center', padding: '80px', color: 'var(--text-muted)' }}>
+                                <Loader2 size={36} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)', margin: '0 auto 12px', display: 'block' }} />
+                                <p style={{ fontWeight: '600' }}>Loading financial data...</p>
+                            </div>
+                        ) : finData ? (
+                            <>
+                                {/* Summary Cards */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '16px', marginBottom: '28px' }}>
+                                    {[
+                                        { label: 'Total Sales', value: finData.summary.total_sales, color: '#3B82F6', bg: '#EFF6FF', icon: '📈' },
+                                        { label: 'Received', value: finData.summary.total_received, color: '#10B981', bg: '#ECFDF5', icon: '✅' },
+                                        { label: 'Outstanding', value: finData.summary.outstanding, color: '#F59E0B', bg: '#FFFBEB', icon: '⏳' },
+                                        { label: 'Purchase Bills', value: finData.summary.total_purchase, color: '#EF4444', bg: '#FEF2F2', icon: '🧾' },
+                                        { label: 'Expenses', value: finData.summary.total_expenses, color: '#8B5CF6', bg: '#F5F3FF', icon: '💸' },
+                                        { label: 'Gross P&L', value: finData.summary.gross_profit, color: finData.summary.gross_profit >= 0 ? '#059669' : '#DC2626', bg: finData.summary.gross_profit >= 0 ? '#ECFDF5' : '#FEF2F2', icon: finData.summary.gross_profit >= 0 ? '💰' : '⚠️' },
+                                    ].map((card, ci) => (
+                                        <div key={ci} style={{ background: card.bg, padding: '20px', borderRadius: '14px', border: `1px solid ${card.bg === '#EFF6FF' ? '#BFDBFE' : card.bg === '#ECFDF5' ? '#A7F3D0' : card.bg === '#FFFBEB' ? '#FDE68A' : card.bg === '#FEF2F2' ? '#FECACA' : card.bg === '#F5F3FF' ? '#DDD6FE' : '#A7F3D0'}` }}>
+                                            <div style={{ fontSize: '20px', marginBottom: '8px' }}>{card.icon}</div>
+                                            <div style={{ fontSize: '11px', fontWeight: '700', color: card.color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{card.label}</div>
+                                            <div style={{ fontSize: '20px', fontWeight: '800', color: card.color }}>{fmtAmt(card.value)}</div>
                                         </div>
-                                    );
-                                })}
+                                    ))}
+                                </div>
 
-                            </div>
-                        </div>
-                        <div className="card" style={{ padding: '32px' }}>
-                            <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '20px' }}>Budget Utilisation</h2>
-                            <div style={{ marginBottom: '20px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                                    <span style={{ fontWeight: '600' }}>Spent vs Budget</span>
-                                    <span style={{ fontWeight: '800', color: budgetUsedPct > 80 ? '#EF4444' : '#10B981' }}>{budgetUsedPct}%</span>
+                                {/* Sub-tabs */}
+                                <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto' }}>
+                                    {[
+                                        { key: 'sales', label: `Sales Bills (${finData.sales_bills.length})` },
+                                        { key: 'receipts', label: `Receipts (${finData.receipts.length})` },
+                                        { key: 'purchase', label: `Purchase Bills (${finData.purchase_bills.length})` },
+                                        { key: 'expenses', label: `Expenses (${finData.expenses.length})` },
+                                    ].map(st => (
+                                        <button key={st.key} onClick={() => setFinTab(st.key)} style={{
+                                            padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer',
+                                            fontWeight: finTab === st.key ? '700' : '600', fontSize: '13px',
+                                            color: finTab === st.key ? 'var(--primary)' : 'var(--text-muted)',
+                                            borderBottom: finTab === st.key ? '3px solid var(--primary)' : '3px solid transparent',
+                                            marginBottom: '-2px', whiteSpace: 'nowrap'
+                                        }}>{st.label}</button>
+                                    ))}
                                 </div>
-                                <div style={{ width: '100%', height: '16px', backgroundColor: '#F1F5F9', borderRadius: '8px', overflow: 'hidden' }}>
-                                    <div style={{ width: `${budgetUsedPct}%`, height: '100%', borderRadius: '8px', background: budgetUsedPct > 80 ? 'linear-gradient(to right,#F59E0B,#EF4444)' : '#3B82F6', transition: 'width 0.6s ease' }} />
-                                </div>
+
+                                {/* Sales Bills */}
+                                {finTab === 'sales' && (
+                                    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                                        {finData.sales_bills.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}><div style={{ fontSize: '40px', marginBottom: '12px' }}>📄</div><p style={{ fontWeight: '600' }}>No Sales Bills for this project yet.</p></div>
+                                        ) : (
+                                            <table className="data-table">
+                                                <thead><tr><th>Bill No</th><th>Date</th><th>Description</th><th>Amount</th><th>GST</th><th>Total</th><th>Received</th><th>Status</th></tr></thead>
+                                                <tbody>{finData.sales_bills.map((b, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{b.bill_no}</td>
+                                                        <td style={{ fontSize: '13px' }}>{b.date || b.created_at?.slice(0, 10)}</td>
+                                                        <td>{b.description || 'Running Account Bill'}</td>
+                                                        <td style={{ fontWeight: '600' }}>{fmtAmt(b.amount)}</td>
+                                                        <td style={{ color: '#6366F1' }}>{fmtAmt(b.gst_amount)}</td>
+                                                        <td style={{ fontWeight: '800' }}>{fmtAmt(b.total_amount)}</td>
+                                                        <td style={{ color: '#10B981', fontWeight: '700' }}>{fmtAmt(b.collection_amount || 0)}</td>
+                                                        <td><span className={`badge ${b.status === 'Paid' ? 'badge-success' : b.status === 'Partially Paid' ? 'badge-info' : 'badge-warning'}`}>{b.status}</span></td>
+                                                    </tr>
+                                                ))}</tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Receipts */}
+                                {finTab === 'receipts' && (
+                                    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                                        {finData.receipts.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}><div style={{ fontSize: '40px', marginBottom: '12px' }}>💳</div><p style={{ fontWeight: '600' }}>No payment receipts recorded yet.</p></div>
+                                        ) : (
+                                            <table className="data-table">
+                                                <thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>From</th><th>Description</th></tr></thead>
+                                                <tbody>{finData.receipts.map((r, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontSize: '13px' }}>{r.date}</td>
+                                                        <td style={{ fontWeight: '800', color: '#10B981' }}>{fmtAmt(r.amount)}</td>
+                                                        <td><span className="badge badge-info">{r.payment_mode || 'Bank'}</span></td>
+                                                        <td style={{ fontWeight: '600' }}>{r.received_from || '—'}</td>
+                                                        <td style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{r.description || '—'}</td>
+                                                    </tr>
+                                                ))}</tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Purchase Bills */}
+                                {finTab === 'purchase' && (
+                                    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                                        {finData.purchase_bills.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}><div style={{ fontSize: '40px', marginBottom: '12px' }}>🧾</div><p style={{ fontWeight: '600' }}>No Purchase Bills for this project yet.</p></div>
+                                        ) : (
+                                            <table className="data-table">
+                                                <thead><tr><th>Bill No</th><th>Date</th><th>Vendor</th><th>Items</th><th>Tax</th><th>Total</th><th>Status</th></tr></thead>
+                                                <tbody>{finData.purchase_bills.map((pb, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{pb.bill_no}</td>
+                                                        <td style={{ fontSize: '13px' }}>{pb.bill_date}</td>
+                                                        <td style={{ fontWeight: '600' }}>{pb.vendor_name}</td>
+                                                        <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{(pb.items || []).length} items</td>
+                                                        <td style={{ color: '#6366F1' }}>{fmtAmt(pb.tax_amount || 0)}</td>
+                                                        <td style={{ fontWeight: '800', color: '#EF4444' }}>{fmtAmt(pb.total_amount)}</td>
+                                                        <td><span className={`badge ${pb.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{pb.status || 'Unpaid'}</span></td>
+                                                    </tr>
+                                                ))}</tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Expenses */}
+                                {finTab === 'expenses' && (
+                                    <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+                                        {finData.expenses.length === 0 ? (
+                                            <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}><div style={{ fontSize: '40px', marginBottom: '12px' }}>💸</div><p style={{ fontWeight: '600' }}>No Expenses recorded for this project yet.</p></div>
+                                        ) : (
+                                            <table className="data-table">
+                                                <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Paid By</th></tr></thead>
+                                                <tbody>{finData.expenses.map((e, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ fontSize: '13px' }}>{e.date}</td>
+                                                        <td><span className="badge badge-info">{e.category || '—'}</span></td>
+                                                        <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{e.description || '—'}</td>
+                                                        <td style={{ fontWeight: '800', color: '#8B5CF6' }}>{fmtAmt(e.amount)}</td>
+                                                        <td style={{ fontSize: '13px' }}>{e.paid_by || '—'}</td>
+                                                    </tr>
+                                                ))}</tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '80px' }}>
+                                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+                                <p style={{ fontWeight: '700', color: 'var(--text-main)', marginBottom: '8px' }}>No financial data loaded.</p>
+                                <button className="btn btn-primary" onClick={() => { setFinData(null); setActiveTab('Financials'); }}>Retry</button>
                             </div>
-                            <div style={{ padding: '20px', border: '2px dashed var(--border)', borderRadius: '12px', textAlign: 'center', color: 'var(--text-muted)', marginTop: '28px' }}>
-                                <IndianRupee size={32} style={{ margin: '0 auto 12px', opacity: 0.4 }} />
-                                <p style={{ fontWeight: '600' }}>Detailed expense entries</p>
-                                <p style={{ fontSize: '13px' }}>Add expenses from the Finance module to see breakdown.</p>
-                            </div>
-                        </div>
+                        )}
                     </div>
                 )}
 
@@ -985,7 +1140,10 @@ const ProjectDetails = () => {
             <TaskDetailsModal
                 isOpen={!!viewTask}
                 onClose={() => setViewTask(null)}
-                task={viewTask}
+                task={viewTask ? {
+                    ...viewTask,
+                    assignedTo: resolveEmployeeName(viewTask.assignedTo)
+                } : null}
             />
             <UploadDocumentModal
                 isOpen={isUploadDocOpen}

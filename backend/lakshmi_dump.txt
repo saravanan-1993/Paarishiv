@@ -1,0 +1,8 @@
+Project: Lakshmi Homes (ID: 69b12b64afbf9232d3739fad)
+  DPR: ID=DPR-260311161145, Date='11 Mar 2026', Status=Approved
+  DPR: ID=DPR-260311162637, Date='11 Mar 2026', Status=Approved
+  DPR: ID=DPR-260312162543, Date='12 Mar 2026', Status=Approved
+----------------------------------------
+Project: Lakshmi Developers Pvt Ltd (ID: 69b26eb72bf8981420bba4d1)
+  DPR: ID=DPR-260315125125, Date='15 Mar 2026', Status=Approved
+----------------------------------------

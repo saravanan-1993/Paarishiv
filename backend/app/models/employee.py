@@ -4,8 +4,8 @@ from datetime import datetime
 
 class EmployeeBase(BaseModel):
     fullName: str
-    employeeCode: str
-    email: str
+    employeeCode: Optional[str] = None
+    email: Optional[str] = None
     phone: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
@@ -24,6 +24,8 @@ class EmployeeBase(BaseModel):
     siteName: Optional[str] = None
     salaryType: str = "monthly" # monthly, daily
     dailyWage: float = 0.0
+    licenseNumber: Optional[str] = None
+    licenseExpiry: Optional[str] = None
 
 class EmployeeCreate(EmployeeBase):
     password: str
@@ -50,6 +52,8 @@ class EmployeeUpdate(BaseModel):
     siteId: Optional[str] = None
     salaryType: Optional[str] = None
     dailyWage: Optional[float] = None
+    licenseNumber: Optional[str] = None
+    licenseExpiry: Optional[str] = None
 
 class EmployeeResponse(EmployeeBase):
     id: Optional[str] = Field(default=None, alias="_id")
