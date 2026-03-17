@@ -70,6 +70,7 @@ const menuItems = [
             { label: 'Leave Management', tabId: 'Leave Management' },
             { label: 'Payroll', tabId: 'Payroll' },
             { label: 'Surprise Visits', tabId: 'Surprise Visits' },
+            { label: 'Manpower Req', tabId: 'Manpower Req' },
         ]
     },
     {
@@ -128,6 +129,7 @@ const menuItems = [
             { label: 'Purchase Orders', tabId: 'Purchase Orders' },
             { label: 'Materials', tabId: 'Materials' },
             { label: 'Expenses', tabId: 'Expenses' },
+            { label: 'Manpower', tabId: 'Manpower' },
         ]
     },
     {
@@ -216,6 +218,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                         count += (res.data.purchase_orders?.length || 0);
                         count += (res.data.materials?.length || 0);
                         count += (res.data.expenses?.length || 0);
+                        count += (res.data.manpower?.length || 0);
                     }
                     setPendingApprovalsCount(count);
                 } catch (err) {

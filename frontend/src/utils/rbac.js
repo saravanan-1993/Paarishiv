@@ -29,7 +29,7 @@ export const SYSTEM_FEATURES = [
 
 export const SUB_TABS = {
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
-    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits'],
+    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Manpower Req'],
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
@@ -37,7 +37,7 @@ export const SUB_TABS = {
     'Fleet Management': ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
     'User Management': ['Authorized Users', 'Roles & Permissions'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower'],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };
 
@@ -103,6 +103,7 @@ export const DEFAULT_ROLES = [
             { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
             { name: 'Fleet Management', actions: { view: true, edit: true, delete: false } },
             { name: 'Site Reports', actions: { view: true, edit: true, delete: false } },
+            { name: 'Approvals', actions: { view: true, edit: true, delete: false }, subTabs: ['Manpower'] },
         ],
         dashboardCards: ['overview_stats', 'active_projects_list', 'my_tasks', 'recent_activities'],
         features: ['add_project', 'edit_project'],

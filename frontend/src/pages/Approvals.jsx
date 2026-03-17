@@ -18,7 +18,8 @@ const Approvals = () => {
         'Leaves': 'leaves',
         'Purchase Orders': 'purchase_orders',
         'Materials': 'materials',
-        'Expenses': 'expenses'
+        'Expenses': 'expenses',
+        'Manpower': 'manpower'
     }), []);
 
     useEffect(() => {
@@ -50,7 +51,8 @@ const Approvals = () => {
         leaves: [],
         purchase_orders: [],
         materials: [],
-        expenses: []
+        expenses: [],
+        manpower: []
     });
 
     const fetchData = async () => {
@@ -61,7 +63,8 @@ const Approvals = () => {
                 leaves: res.data.leaves || [],
                 purchase_orders: res.data.purchase_orders || [],
                 materials: res.data.materials || [],
-                expenses: res.data.expenses || []
+                expenses: res.data.expenses || [],
+                manpower: res.data.manpower || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -115,6 +118,7 @@ const Approvals = () => {
         { id: 'purchase_orders', label: 'Purchase Orders', count: data.purchase_orders?.length || 0, icon: ShoppingCart, color: '#8b5cf6' },
         { id: 'materials', label: 'Materials', count: data.materials?.length || 0, icon: Package, color: '#f59e0b' },
         { id: 'expenses', label: 'Expenses', count: data.expenses?.length || 0, icon: CreditCard, color: '#ec4899' },
+        { id: 'manpower', label: 'Manpower', count: data.manpower?.length || 0, icon: User, color: '#10b981' },
     ];
 
     const filteredData = (data[activeTab] || []).filter(item => {
@@ -373,6 +377,69 @@ const Approvals = () => {
         </div>
     );
 
+    const renderManpowerCard = (item) => (
+        <div key={item._id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                        <User size={24} />
+                    </div>
+                    <div>
+                        <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Manpower Request</h4>
+                        <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0 0', fontWeight: '600' }}>Project: {item.projectName || item.project_name || 'N/A'}</p>
+                    </div>
+                </div>
+                <div style={{ padding: '6px 12px', borderRadius: '8px', background: item.status === 'Pending' ? '#fef3c7' : (item.status === 'Approved' ? '#dcfce7' : '#fee2e2'), color: item.status === 'Pending' ? '#b45309' : (item.status === 'Approved' ? '#166534' : '#991b1b'), fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={14} /> {item.status}
+                </div>
+            </div>
+
+            <div style={{ marginTop: '0px', display: 'flex', gap: '16px', marginBottom: '16px' }}>
+                <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: Site Engineer</p>
+                {item.status !== 'Pending' && item.approvedBy && (
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                )}
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
+                <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '8px' }}>Resource Requirements</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {(item.requested_items || []).map((li, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
+                            <span style={{ fontWeight: '600', color: '#334155' }}>{li.role || li.category}</span>
+                            <span style={{ fontWeight: '800', color: '#0f172a', background: '#e2e8f0', padding: '2px 8px', borderRadius: '4px' }}>{li.count} Labours</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                {item.status === 'Pending' && (
+                    <>
+                        <button
+                            onClick={() => handleAction('manpower', item._id, 'reject')}
+                            disabled={actionLoading}
+                            style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#ef4444', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                            {actionLoading === `${item._id}-reject` ? <Loader2 size={18} className="animate-spin" /> : <XCircle size={18} />} Reject
+                        </button>
+                        <button
+                            onClick={() => handleAction('manpower', item._id, 'approve')}
+                            disabled={actionLoading}
+                            style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}
+                        >
+                            {actionLoading === `${item._id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Verify & Forward to HR
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+
     const renderExpenseCard = (item) => (
         <div key={item._id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -620,6 +687,7 @@ const Approvals = () => {
                                 if (activeTab === 'purchase_orders') return renderPOCard(item);
                                 if (activeTab === 'materials') return renderMaterialCard(item);
                                 if (activeTab === 'expenses') return renderExpenseCard(item);
+                                if (activeTab === 'manpower') return renderManpowerCard(item);
                                 return null;
                             })}
                         </div>

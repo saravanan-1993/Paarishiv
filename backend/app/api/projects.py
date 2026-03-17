@@ -88,6 +88,15 @@ async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(
     if current_user.get("role") not in ["Project Coordinator", "Super Admin", "Administrator"]:
          raise HTTPException(status_code=403, detail="Not authorized")
     
+    # Pre-fetch employees to resolve IDs/usernames to names
+    employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "username": 1, "employeeCode": 1}).to_list(1000)
+    emp_map = {}
+    for e in employees:
+        full_name = e.get("fullName", "Unknown")
+        if "_id" in e: emp_map[str(e["_id"])] = full_name
+        if "username" in e: emp_map[e["username"]] = full_name
+        if "employeeCode" in e: emp_map[e["employeeCode"]] = full_name
+
     projects = await db.projects.find({}, {"name": 1, "dprs": 1}).to_list(1000)
     all_dprs = []
     for p in projects:
@@ -96,6 +105,12 @@ async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(
         for dpr in p.get("dprs", []):
             dpr["project_name"] = project_name
             dpr["project_id"] = project_id
+            
+            # Resolve submitted_by to fullName if it looks like an ID/code/username
+            raw_sub = dpr.get("submitted_by")
+            if raw_sub and raw_sub in emp_map:
+                dpr["submitted_by"] = emp_map[raw_sub]
+                
             all_dprs.append(dpr)
             
     # Sort by date / created_at DESC
@@ -448,7 +463,7 @@ async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), c
             mat_request = {
                 "project_id": project_id,
                 "project_name": project.get("name", "Unknown"),
-                "engineer_id": current_user.get("username", "Site Engineer"),
+                "engineer_id": current_user.get("full_name") or current_user.get("username", "Site Engineer"),
                 "requested_items": requested_items,
                 "priority": "Medium",
                 "status": "Pending",
@@ -458,6 +473,38 @@ async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), c
                 "issued_items": []
             }
             await db.material_requests.insert_one(mat_request)
+
+    # Automatically create a Manpower Request if next_day_labour is provided
+    if dpr.next_day_labour and len(dpr.next_day_labour) > 0:
+        requested_roles = []
+        for item in dpr.next_day_labour:
+            role = item.get("role") or item.get("category") or item.get("designation")
+            count_val = item.get("count") or item.get("quantity") or item.get("qty")
+            
+            if role and count_val:
+                try:
+                    count = int(count_val)
+                    if count > 0:
+                        requested_roles.append({
+                            "role": role,
+                            "count": count
+                        })
+                except:
+                    continue
+
+        if requested_roles:
+            labour_request = {
+                "project_id": project_id,
+                "project_name": project.get("name", "Unknown"),
+                "engineer_id": current_user.get("full_name") or current_user.get("username", "Site Engineer"),
+                "requested_items": requested_roles,
+                "priority": "Medium",
+                "status": "Pending", # PC needs to verify
+                "created_at": datetime.now(),
+                "source": "DPR",
+                "source_id": dpr_dict["id"]
+            }
+            await db.manpower_requests.insert_one(labour_request)
     
     await trigger_workflow_event(project_id, "dpr_submitted", current_user, db, f"DPR attached for {dpr_dict['date']}")
     
