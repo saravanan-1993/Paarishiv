@@ -264,4 +264,17 @@ export const settingsAPI = {
     }),
 };
 
+export const profileAPI = {
+    getProfile: () => api.get('/settings/profile'),
+    updateProfile: (data) => api.post('/settings/profile', data),
+    uploadAvatar: (formData) => api.post('/settings/profile/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+};
+
+export const logsAPI = {
+    getLogs: (limit = 100) => api.get(`/logs/?limit=${limit}`),
+    clearLogs: () => api.delete('/logs/clear'),
+};
+
 export default api;

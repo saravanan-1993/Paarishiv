@@ -9,6 +9,7 @@ from app.utils.auth import get_current_user
 from app.utils.cloudinary import upload_file
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
+from app.utils.logging import log_activity
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -61,7 +62,15 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
         await trigger_workflow_event(pid, "engineer_assigned", current_user, db, f"Engineer: {project_dict['engineer_id']}")
     if project_dict.get("coordinator_id"):
         await trigger_workflow_event(pid, "coordinator_assigned", current_user, db, f"Coordinator: {project_dict['coordinator_id']}")
-        
+    
+    await log_activity(
+        db,
+        str(current_user.get("_id", current_user["username"])),
+        current_user["username"],
+        "Create Project",
+        f"New project '{project_dict.get('name')}' created",
+        "success"
+    )
     return project_dict
 
 @router.get("/", response_model=List[ProjectModel])

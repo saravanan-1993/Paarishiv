@@ -5,6 +5,7 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime
 from app.utils.auth import get_current_user
+from app.utils.logging import log_activity
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
@@ -63,12 +64,21 @@ async def get_project_inventory(project_name: str, db = Depends(get_database), c
     ]
 
 @router.put("/inventory/{inventory_id}")
-async def update_inventory(inventory_id: str, data: dict, db = Depends(get_database)):
+async def update_inventory(inventory_id: str, data: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Allow updating min_stock limit
     if "min_stock" in data:
          await db.inventory.update_one(
              {"_id": ObjectId(inventory_id)},
              {"$set": {"min_stock": float(data["min_stock"])}}
+         )
+         inv = await db.inventory.find_one({"_id": ObjectId(inventory_id)})
+         await log_activity(
+             db, 
+             str(current_user.get("_id", current_user["username"])), 
+             current_user["username"], 
+             "Update Inventory", 
+             f"Min stock for {inv.get('material_name')} updated to {data['min_stock']} for {inv.get('project_name')}", 
+             "info"
          )
     return {"success": True}
 

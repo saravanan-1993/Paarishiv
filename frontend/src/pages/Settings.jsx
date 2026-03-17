@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     User,
@@ -13,19 +13,33 @@ import {
     Lock,
     Eye,
     EyeOff,
-    Building2
+    Building2,
+    Camera,
+    CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { hasSubTabAccess } from '../utils/rbac';
-import { settingsAPI } from '../utils/api';
+import { settingsAPI, profileAPI } from '../utils/api';
 import { Loader2 } from 'lucide-react';
 
 const Settings = () => {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Profile');
     const [loading, setLoading] = useState(false);
+    const [profileSaved, setProfileSaved] = useState(false);
+    const avatarInputRef = useRef(null);
+
+    // Profile State
+    const [profile, setProfile] = useState({
+        fullName: '',
+        email: '',
+        phone: '',
+        designation: '',
+        avatar: ''
+    });
+    const [avatarPreview, setAvatarPreview] = useState('');
 
     // Company Info State
     const [companyInfo, setCompanyInfo] = useState({
@@ -69,16 +83,33 @@ const Settings = () => {
         const fetchSettings = async () => {
             setLoading(true);
             try {
-                const [companyRes, cloudinaryRes, smtpRes] = await Promise.all([
+                const [companyRes, cloudinaryRes, smtpRes, profileRes] = await Promise.all([
                     settingsAPI.getCompany(),
                     settingsAPI.getCloudinary(),
-                    settingsAPI.getSMTP()
+                    settingsAPI.getSMTP(),
+                    profileAPI.getProfile()
                 ]);
                 if (companyRes.data) setCompanyInfo(companyRes.data);
                 if (cloudinaryRes.data) setCloudinaryConfig(cloudinaryRes.data);
                 if (smtpRes.data) setSmtpConfig(smtpRes.data);
+                if (profileRes.data) {
+                    setProfile({
+                        fullName: profileRes.data.fullName || user?.name || '',
+                        email: profileRes.data.email || '',
+                        phone: profileRes.data.phone || '',
+                        designation: profileRes.data.designation || user?.role || '',
+                        avatar: profileRes.data.avatar || ''
+                    });
+                    setAvatarPreview(profileRes.data.avatar || '');
+                }
             } catch (err) {
                 console.error("Failed to fetch settings:", err);
+                // Set defaults from auth
+                setProfile(prev => ({
+                    ...prev,
+                    fullName: prev.fullName || user?.name || '',
+                    designation: prev.designation || user?.role || ''
+                }));
             } finally {
                 setLoading(false);
             }
@@ -91,6 +122,48 @@ const Settings = () => {
             setActiveTab(urlTab);
         }
     }, [urlTab, tabs]);
+
+    // ── Profile Save ──────────────────────────────────────────────────────────
+    const handleSaveProfile = async () => {
+        setLoading(true);
+        try {
+            await profileAPI.updateProfile(profile);
+            // Update the local auth context so header name updates immediately
+            updateUser({ name: profile.fullName, avatar: profile.avatar });
+            setProfileSaved(true);
+            setTimeout(() => setProfileSaved(false), 3000);
+        } catch (err) {
+            console.error('Failed to save profile', err);
+            alert('Failed to save profile changes.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ── Avatar Upload ─────────────────────────────────────────────────────────
+    const handleAvatarChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        // Show preview immediately
+        const reader = new FileReader();
+        reader.onload = (ev) => setAvatarPreview(ev.target.result);
+        reader.readAsDataURL(file);
+        // Upload to server
+        const formData = new FormData();
+        formData.append('file', file);
+        setLoading(true);
+        try {
+            const res = await profileAPI.uploadAvatar(formData);
+            setProfile(prev => ({ ...prev, avatar: res.data.url }));
+            setAvatarPreview(res.data.url);
+            updateUser({ avatar: res.data.url });
+        } catch (err) {
+            console.error('Failed to upload avatar', err);
+            alert('Failed to upload photo. Please check Cloudinary settings.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleSaveCompanyInfo = async () => {
         setLoading(true);
@@ -178,34 +251,94 @@ const Settings = () => {
                     <div className="card" style={{ padding: '32px' }}>
                         <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '24px' }}>User Profile</h3>
                         <div style={{ display: 'flex', gap: '32px', alignItems: 'flex-start' }}>
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px', overflow: 'hidden' }}>
-                                    <User size={64} color="var(--text-muted)" />
+                            {/* Avatar */}
+                            <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                                <div
+                                    style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', overflow: 'hidden', border: '3px solid var(--border)', position: 'relative', cursor: 'pointer' }}
+                                    onClick={() => avatarInputRef.current?.click()}
+                                    title="Click to change photo"
+                                >
+                                    {avatarPreview ? (
+                                        <img src={avatarPreview} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    ) : (
+                                        <User size={64} color="var(--text-muted)" />
+                                    )}
+                                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px', gap: '4px' }}>
+                                        <Camera size={13} color="white" />
+                                        <span style={{ color: 'white', fontSize: '10px', fontWeight: '700' }}>CHANGE</span>
+                                    </div>
                                 </div>
-                                <button className="btn btn-outline btn-sm" style={{ fontSize: '12px' }}>Change Photo</button>
+                                <input
+                                    ref={avatarInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleAvatarChange}
+                                    style={{ display: 'none' }}
+                                />
+                                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>JPG, PNG — Max 2MB</p>
                             </div>
+
+                            {/* Fields */}
                             <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Full Name</label>
-                                    <input type="text" defaultValue="Saravanan" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Full Name</label>
+                                    <input
+                                        type="text"
+                                        value={profile.fullName}
+                                        onChange={e => setProfile(prev => ({ ...prev, fullName: e.target.value }))}
+                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                        placeholder="Your full name"
+                                    />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Email Address</label>
-                                    <input type="email" defaultValue="admin@civil-erp.com" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Email Address</label>
+                                    <input
+                                        type="email"
+                                        value={profile.email}
+                                        onChange={e => setProfile(prev => ({ ...prev, email: e.target.value }))}
+                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                        placeholder="you@example.com"
+                                    />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Phone Number</label>
-                                    <input type="text" defaultValue="+91 9876543210" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Phone Number</label>
+                                    <input
+                                        type="text"
+                                        value={profile.phone}
+                                        onChange={e => setProfile(prev => ({ ...prev, phone: e.target.value }))}
+                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                        placeholder="+91 98765 43210"
+                                    />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Designation</label>
-                                    <input type="text" defaultValue="Administrator" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Designation</label>
+                                    <input
+                                        type="text"
+                                        value={profile.designation}
+                                        onChange={e => setProfile(prev => ({ ...prev, designation: e.target.value }))}
+                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                        placeholder="e.g. Administrator"
+                                    />
                                 </div>
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <button className="btn btn-primary" style={{ fontWeight: '800' }}><Save size={18} /> SAVE CHANGES</button>
+                                <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <button
+                                        className="btn btn-primary"
+                                        disabled={loading}
+                                        onClick={handleSaveProfile}
+                                        style={{ fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={18} />}
+                                        SAVE CHANGES
+                                    </button>
+                                    {profileSaved && (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10B981', fontWeight: '700', fontSize: '14px' }}>
+                                            <CheckCircle size={18} /> Profile saved successfully!
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
+                        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                     </div>
                 )}
 

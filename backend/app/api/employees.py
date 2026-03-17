@@ -3,6 +3,8 @@ from typing import List
 from app.models.employee import EmployeeBase, EmployeeCreate, EmployeeUpdate, EmployeeResponse
 from database import get_database
 from bson import ObjectId
+from app.utils.auth import get_current_user
+from app.utils.logging import log_activity
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -53,6 +55,7 @@ async def create_employee(employee: EmployeeCreate, db = Depends(get_database)):
     
     result = await db.employees.insert_one(employee_dict)
     employee_dict["_id"] = str(result.inserted_id)
+    await log_activity(db, "system", "Admin", "Create Employee", f"New employee {employee_dict.get('fullName', employee_dict.get('employeeCode'))} added", "success")
     return employee_dict
 
 @router.put("/{emp_id}", response_model=EmployeeResponse)
@@ -78,11 +81,21 @@ async def update_employee(emp_id: str, employee: EmployeeUpdate, db = Depends(ge
         
     updated = await db.employees.find_one({"_id": ObjectId(emp_id)})
     updated["_id"] = str(updated["_id"])
+    await log_activity(db, emp_id, updated.get("username", "admin"), "Update Employee", f"Employee {updated.get('fullName', emp_id)} profile updated", "info")
     return updated
 
 @router.delete("/{emp_id}")
-async def delete_employee(emp_id: str, db = Depends(get_database)):
+async def delete_employee(emp_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    emp = await db.employees.find_one({"_id": ObjectId(emp_id)})
     result = await db.employees.delete_one({"_id": ObjectId(emp_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Employee not found")
+    await log_activity(
+        db, 
+        str(current_user.get("_id", current_user["username"])), 
+        current_user["username"], 
+        "Delete Employee", 
+        f"Employee {emp.get('fullName', emp_id)} removed from system", 
+        "danger"
+    )
     return {"message": "Employee deleted successfully"}

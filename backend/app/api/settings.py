@@ -5,8 +5,64 @@ import shutil
 import os
 from datetime import datetime
 from app.utils.cloudinary import upload_file
+from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# ── User Profile ─────────────────────────────────────────────────────────────
+
+@router.get("/profile")
+async def get_profile(current_user: dict = Depends(get_current_user), db = Depends(get_database)):
+    username = current_user.get("username")
+    profile = await db.user_profiles.find_one({"username": username})
+    if not profile:
+        # Return defaults from the auth token
+        return {
+            "username": username,
+            "fullName": current_user.get("full_name") or current_user.get("name") or username,
+            "email": "",
+            "phone": "",
+            "designation": current_user.get("role", ""),
+            "avatar": ""
+        }
+    profile["id"] = str(profile["_id"])
+    del profile["_id"]
+    return profile
+
+@router.post("/profile")
+async def update_profile(data: Dict[Any, Any], current_user: dict = Depends(get_current_user), db = Depends(get_database)):
+    username = current_user.get("username")
+    if "id" in data: del data["id"]
+    data["username"] = username
+    data["updated_at"] = datetime.now().isoformat()
+    await db.user_profiles.update_one(
+        {"username": username},
+        {"$set": data},
+        upsert=True
+    )
+    # Also update the employee record name if it exists
+    if data.get("fullName"):
+        await db.employees.update_one(
+            {"username": username},
+            {"$set": {"fullName": data["fullName"]}}
+        )
+    return {"success": True}
+
+@router.post("/profile/avatar")
+async def upload_avatar(file: UploadFile = File(...), current_user: dict = Depends(get_current_user), db = Depends(get_database)):
+    content = await file.read()
+    result = await upload_file(content, filename=f"avatar_{current_user.get('username')}_{file.filename}")
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to upload avatar. Check Cloudinary settings.")
+    url = result["url"]
+    # Save avatar URL to profile
+    await db.user_profiles.update_one(
+        {"username": current_user.get("username")},
+        {"$set": {"avatar": url, "username": current_user.get("username")}},
+        upsert=True
+    )
+    return {"url": url}
+
 
 @router.get("/company")
 async def get_company_settings(db = Depends(get_database)):

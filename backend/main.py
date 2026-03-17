@@ -7,7 +7,7 @@ import sys
 # Ensure backend directory is in the Python path for Vercel
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.api import auth, projects, materials, labour, finance, vendors, purchase_orders, grns, employees, attendance, chat, fleet, hrms, inventory, surprise_attendance, approvals, roles, workflow, settings
+from app.api import auth, projects, materials, labour, finance, vendors, purchase_orders, grns, employees, attendance, chat, fleet, hrms, inventory, surprise_attendance, approvals, roles, workflow, settings, logs
 
 # Ensure static/uploads exists locally
 is_vercel = os.environ.get("VERCEL") == "1"
@@ -55,6 +55,7 @@ api_router.include_router(approvals.router)
 api_router.include_router(roles.router)
 api_router.include_router(workflow.router)
 api_router.include_router(settings.router)
+api_router.include_router(logs.router)
 
 app.include_router(api_router)
 
