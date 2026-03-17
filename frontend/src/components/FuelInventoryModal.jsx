@@ -3,7 +3,7 @@ import { X, Fuel, ArrowUpRight, ArrowDownLeft, Droplets, History, Plus } from 'l
 import { fleetAPI } from '../utils/api';
 import FuelStockModal from './FuelStockModal';
 
-const FuelInventoryModal = ({ isOpen, onClose }) => {
+const FuelInventoryModal = ({ isOpen, onClose, projectName = 'All Sites' }) => {
     const [activeTab, setActiveTab] = useState('Stock');
     const [isStockModalOpen, setIsStockModalOpen] = useState(false);
     const [summary, setSummary] = useState({ currentStock: 0, monthUsage: 0 });
@@ -13,11 +13,11 @@ const FuelInventoryModal = ({ isOpen, onClose }) => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const sumRes = await fleetAPI.getFuelSummary();
+            const sumRes = await fleetAPI.getFuelSummary(projectName);
             setSummary(sumRes.data);
             
-            const logRes = await fleetAPI.getFuelLogs();
-            const stockRes = await fleetAPI.getFuelStock();
+            const logRes = await fleetAPI.getFuelLogs(projectName);
+            const stockRes = await fleetAPI.getFuelStock(projectName);
             
             // Combine and sort logs
             const combined = [
@@ -31,7 +31,7 @@ const FuelInventoryModal = ({ isOpen, onClose }) => {
                     date: new Date(s.date).toLocaleDateString(),
                     type: 'Stock In',
                     qty: `+${s.qty} L`,
-                    info: s.supplier || 'Direct Purchase'
+                    info: s.supplier ? `${s.supplier} ${s.site && projectName === 'All Sites' ? `(@${s.site})` : ''}` : (projectName === 'All Sites' ? `@${s.site}` : 'Direct Purchase')
                 }))
             ].sort((a, b) => new Date(b.date) - new Date(a.date));
             
@@ -47,7 +47,7 @@ const FuelInventoryModal = ({ isOpen, onClose }) => {
         if (isOpen) {
             fetchData();
         }
-    }, [isOpen]);
+    }, [isOpen, projectName]);
 
     if (!isOpen) return null;
 
@@ -61,7 +61,7 @@ const FuelInventoryModal = ({ isOpen, onClose }) => {
                                 <Fuel size={20} />
                             </div>
                             <div>
-                                <h3 style={{ fontSize: '18px', fontWeight: '800' }}>SITE FUEL INVENTORY</h3>
+                                <h3 style={{ fontSize: '18px', fontWeight: '800' }}>{projectName === 'All Sites' ? 'TOTAL' : projectName.toUpperCase()} FUEL INVENTORY</h3>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Monitor diesel stock and consumption</p>
                             </div>
                         </div>
@@ -161,6 +161,7 @@ const FuelInventoryModal = ({ isOpen, onClose }) => {
                 isOpen={isStockModalOpen}
                 onClose={() => setIsStockModalOpen(false)}
                 onStockAdded={fetchData}
+                projectName={projectName}
             />
         </>
     );

@@ -29,7 +29,7 @@ import GRNModal from '../components/GRNModal';
 import VendorDetailModal from '../components/VendorDetailModal';
 import PODetailModal from '../components/PODetailModal';
 import GRNDetailModal from '../components/GRNDetailModal';
-import { vendorAPI, purchaseOrderAPI, grnAPI, inventoryAPI } from '../utils/api';
+import { vendorAPI, purchaseOrderAPI, grnAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
@@ -94,6 +94,13 @@ const Workflow = () => {
     const [requests, setRequests] = useState([]);
     const [consolidatedRequests, setConsolidatedRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [companyInfo, setCompanyInfo] = useState({
+        name: "Civil ERP Construction Pvt Ltd",
+        address: "123, Build Avenue, Engineering Block, Chennai - 600001",
+        phone: "+91 9876543210",
+        email: "admin@civil-erp.com",
+        gst: "33AAAAA0000A1Z5"
+    });
 
     const fetchVendors = async () => {
         try {
@@ -137,11 +144,32 @@ const Workflow = () => {
         }
     };
 
+    const fetchCompanyInfo = async () => {
+        try {
+            const res = await settingsAPI.getCompany();
+            if (res.data) {
+                setCompanyInfo({
+                    name: res.data.companyName || companyInfo.name,
+                    address: res.data.address || companyInfo.address,
+                    phone: res.data.contactNumber || companyInfo.phone,
+                    email: res.data.email || companyInfo.email,
+                    gst: res.data.gstin || companyInfo.gst
+                });
+            }
+        } catch (err) {
+            console.error('Failed to fetch company info:', err);
+        }
+    };
+
     React.useEffect(() => {
         fetchVendors();
         fetchPOs();
         fetchGRNs();
         fetchRequests();
+        fetchCompanyInfo();
+
+        window.addEventListener('companyInfoUpdated', fetchCompanyInfo);
+        return () => window.removeEventListener('companyInfoUpdated', fetchCompanyInfo);
     }, []);
 
     // Handle direct action from navigation
@@ -207,13 +235,6 @@ const Workflow = () => {
         }
     };
 
-    const companyInfo = {
-        name: "Civil ERP Construction Pvt Ltd",
-        address: "123, Build Avenue, Engineering Block, Chennai - 600001",
-        phone: "+91 9876543210",
-        email: "admin@civil-erp.com",
-        gst: "33AAAAA0000A1Z5"
-    };
 
     const handleDownloadPO = (po) => {
         try {

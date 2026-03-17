@@ -13,7 +13,7 @@ import PaymentHistoryModal from '../components/PaymentHistoryModal';
 import CreateBillModal from '../components/CreateBillModal';
 import BillDetailsModal from '../components/BillDetailsModal';
 import CustomSelect from '../components/CustomSelect';
-import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI } from '../utils/api';
+import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI } from '../utils/api';
 import { hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
@@ -64,6 +64,10 @@ const Finance = () => {
     const [billTypeFilter, setBillTypeFilter] = useState('All Types');
     const [billSearch, setBillSearch] = useState('');
     const [ledgerParty, setLedgerParty] = useState('All Parties');
+    const [companyInfo, setCompanyInfo] = useState({
+        companyName: 'CIVIL ERP',
+        logo: ''
+    });
 
     const [purchaseSearch, setPurchaseSearch] = useState('');
     const [purchaseDateFrom, setPurchaseDateFrom] = useState('');
@@ -133,8 +137,20 @@ const Finance = () => {
         }
     };
 
+    const fetchCompanyInfo = async () => {
+        try {
+            const compRes = await settingsAPI.getCompany();
+            if (compRes.data) setCompanyInfo(compRes.data);
+        } catch (err) {
+            console.error("Failed to fetch company info", err);
+        }
+    };
+
     useEffect(() => {
         loadData();
+        fetchCompanyInfo();
+        window.addEventListener('companyInfoUpdated', fetchCompanyInfo);
+        return () => window.removeEventListener('companyInfoUpdated', fetchCompanyInfo);
     }, []);
 
     const handleProcessPayment = (invoice) => {
@@ -292,7 +308,7 @@ const Finance = () => {
             doc.setFontSize(22);
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
-            doc.text("CIVIL ERP", 14, 20);
+            doc.text(companyInfo.companyName || "CIVIL ERP", 14, 20);
 
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');

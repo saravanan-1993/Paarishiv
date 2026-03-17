@@ -4,12 +4,31 @@ import {
     Landmark, Shield, FileText, Download, ExternalLink,
     Loader2, User, Building, Award, Clock, Cake
 } from 'lucide-react';
+import { settingsAPI } from '../utils/api';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
     const [attSummary, setAttSummary] = useState({ present_days: 0, absent_days: 0, total_hours: 0 });
     const [loading, setLoading] = useState(false);
+    const [companyInfo, setCompanyInfo] = useState({
+        companyName: 'CIVIL ERP',
+        logo: ''
+    });
+
+    useEffect(() => {
+        const fetchCompany = async () => {
+            try {
+                const res = await settingsAPI.getCompany();
+                if (res.data) setCompanyInfo(res.data);
+            } catch (err) {
+                console.error("Failed to fetch company info", err);
+            }
+        };
+        fetchCompany();
+        window.addEventListener('companyInfoUpdated', fetchCompany);
+        return () => window.removeEventListener('companyInfoUpdated', fetchCompany);
+    }, []);
 
     useEffect(() => {
         if (isOpen && employee?.id) {
@@ -38,7 +57,7 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
 
         doc.setFontSize(20);
         doc.setTextColor(47, 93, 138);
-        doc.text('SUKI CONSTRUCTION PVT LTD', 105, 20, { align: 'center' });
+        doc.text(companyInfo.companyName || 'CIVIL ERP', 105, 20, { align: 'center' });
 
         doc.setFontSize(14);
         doc.setTextColor(100);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Building2, Eye, EyeOff, LayoutDashboard, ChevronRight } from 'lucide-react';
+import { settingsAPI } from '../utils/api';
 
 const Login = () => {
     const [username, setUsername] = useState('');
@@ -11,6 +12,22 @@ const Login = () => {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const { login, user } = useAuth();
     const navigate = useNavigate();
+    const [companyInfo, setCompanyInfo] = useState({
+        companyName: 'Civil ERP',
+        logo: ''
+    });
+
+    useEffect(() => {
+        const fetchCompany = async () => {
+            try {
+                const res = await settingsAPI.getCompany();
+                if (res.data) setCompanyInfo(res.data);
+            } catch (err) {
+                console.error("Failed to fetch company info", err);
+            }
+        };
+        fetchCompany();
+    }, []);
 
     useEffect(() => {
         if (user) {
@@ -89,19 +106,29 @@ const Login = () => {
                         <div style={{
                             width: '48px',
                             height: '48px',
-                            backgroundColor: 'var(--primary)',
+                            backgroundColor: 'white',
                             borderRadius: '14px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            color: 'white',
+                            color: 'var(--primary)',
                             marginBottom: '20px',
-                            boxShadow: '0 8px 16px rgba(47, 93, 138, 0.2)'
+                            boxShadow: '0 8px 16px rgba(47, 93, 138, 0.1)',
+                            overflow: 'hidden',
+                            border: '1px solid var(--border)'
                         }}>
-                            <Building2 size={24} />
+                            {companyInfo.logo ? (
+                                <img
+                                    src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                    alt="Logo"
+                                    style={{ width: '85%', height: '85%', objectFit: 'contain' }}
+                                />
+                            ) : (
+                                <Building2 size={24} />
+                            )}
                         </div>
                         <h1 style={{ fontSize: '32px', color: 'var(--text-main)', fontWeight: '800', marginBottom: '8px' }}>Welcome Back</h1>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Sign in to continue to Civil ERP Site Management.</p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Sign in to continue to {companyInfo.companyName} Management.</p>
                     </div>
 
                     <form onSubmit={handleSubmit}>
@@ -319,8 +346,18 @@ const Login = () => {
                 }}>
                     <div style={{ maxWidth: '450px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-                            <LayoutDashboard size={40} />
-                            <h2 style={{ fontSize: '40px', fontWeight: '800' }}>Civil ERP</h2>
+                            {companyInfo.logo ? (
+                                <div style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                                    <img
+                                        src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                        alt="Logo"
+                                        style={{ width: '85%', height: '85%', objectFit: 'contain' }}
+                                    />
+                                </div>
+                            ) : (
+                                <LayoutDashboard size={40} />
+                            )}
+                            <h2 style={{ fontSize: '40px', fontWeight: '800' }}>{companyInfo.companyName}</h2>
                         </div>
                         <h3 style={{ fontSize: '24px', fontWeight: '400', lineHeight: '1.4', marginBottom: '32px', opacity: '0.9' }}>
                             Building the future with data-driven site management and real-time project tracking.
@@ -351,7 +388,7 @@ const Login = () => {
                     gap: '12px'
                 }}>
                     <div style={{ textAlign: 'right' }}>
-                        <p style={{ fontSize: '12px', fontWeight: 'bold' }}>Suki Construction Pvt Ltd</p>
+                        <p style={{ fontSize: '12px', fontWeight: 'bold' }}>{companyInfo.companyName}</p>
                         <p style={{ fontSize: '10px', opacity: '0.6' }}>Authorized Portal</p>
                     </div>
                     <div style={{

@@ -1,9 +1,26 @@
-import React, { useState } from 'react';
-import { X, ClipboardList, HardHat, Package, Truck, User, Calendar, Download, Loader2 } from 'lucide-react';
+import { X, ClipboardList, HardHat, Package, Truck, User, Calendar, Download, Loader2, Building2 } from 'lucide-react';
+import { settingsAPI } from '../utils/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
     const [isDownloading, setIsDownloading] = useState(false);
+    const [companyInfo, setCompanyInfo] = useState({
+        companyName: 'CIVIL ERP',
+        logo: ''
+    });
+
+    React.useEffect(() => {
+        if (isOpen) {
+            const fetchInfo = () => {
+                settingsAPI.getCompany().then(res => {
+                    if (res.data) setCompanyInfo(res.data);
+                }).catch(err => console.error("Failed to fetch company info", err));
+            };
+            fetchInfo();
+            window.addEventListener('companyInfoUpdated', fetchInfo);
+            return () => window.removeEventListener('companyInfoUpdated', fetchInfo);
+        }
+    }, [isOpen]);
 
     if (!isOpen || !dpr) return null;
 
@@ -25,7 +42,11 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         // Header
         doc.setFontSize(22);
         doc.setTextColor(30, 58, 95);
-        doc.text('Daily Progress Report', 105, 20, { align: 'center' });
+        doc.text(companyInfo.companyName || 'CIVIL ERP', 14, 20);
+
+        doc.setFontSize(18);
+        doc.setTextColor(59, 130, 246);
+        doc.text('Daily Progress Report', 105, 30, { align: 'center' });
 
         doc.setFontSize(10);
         doc.setTextColor(100);
@@ -34,20 +55,22 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         // Project Info
         doc.setFontSize(12);
         doc.setTextColor(0);
-        doc.text(`Project: ${projectName}`, 14, 35);
-        doc.text(`Date: ${dpr.date}`, 14, 42);
-        doc.text(`Submitted By: ${dpr.submitted_by}`, 14, 49);
-        doc.text(`Status: ${dpr.status || 'Pending'}`, 200, 35, { align: 'right' });
+        doc.text(`Project: ${projectName}`, 14, 45);
+        doc.text(`Date: ${dpr.date}`, 14, 52);
+        doc.text(`Submitted By: ${dpr.submitted_by}`, 14, 59);
+        doc.text(`Status: ${dpr.status || 'Pending'}`, 200, 45, { align: 'right' });
+        
+        let finalY = 65;
 
         // Summary
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
-        doc.text('WORK SUMMARY:', 14, 62);
+        doc.text('WORK SUMMARY:', 14, finalY);
         doc.setFont('helvetica', 'normal');
         const summaryLines = doc.splitTextToSize(dpr.progress || 'No summary provided.', 180);
-        doc.text(summaryLines, 14, 68);
-
-        let finalY = 68 + (summaryLines.length * 7);
+        doc.text(summaryLines, 14, finalY + 6);
+        
+        finalY = finalY + 6 + (summaryLines.length * 7);
 
         // Work Table
         if (dpr.work_rows?.length > 0) {

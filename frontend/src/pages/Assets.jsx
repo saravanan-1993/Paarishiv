@@ -11,6 +11,8 @@ import TransferModal from '../components/TransferModal';
 import AddAssetModal from '../components/AddAssetModal';
 import FuelInventoryModal from '../components/FuelInventoryModal';
 import AssetDetailsModal from '../components/AssetDetailsModal';
+import CustomSelect from '../components/CustomSelect';
+import { Briefcase } from 'lucide-react';
 
 const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) => {
     const [formData, setFormData] = useState({
@@ -101,6 +103,7 @@ const Assets = () => {
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedAsset, setSelectedAsset] = useState(null);
+    const [selectedProject, setSelectedProject] = useState('all');
 
     const [fleet, setFleet] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -115,7 +118,8 @@ const Assets = () => {
             setFleet(res.data || []);
             const pRes = await projectAPI.getAll();
             setProjects(pRes.data || []);
-            const logRes = await fleetAPI.getFuelLogs();
+            const projName = selectedProject === 'all' ? 'All Sites' : pRes.data.find(p => (p._id || p.id) === selectedProject)?.name;
+            const logRes = await fleetAPI.getFuelLogs(projName);
             setDailyLogs(logRes.data.map(l => ({
                 date: l.date,
                 asset: l.assetId,
@@ -133,7 +137,7 @@ const Assets = () => {
 
     useEffect(() => {
         fetchFleet();
-    }, []);
+    }, [selectedProject]);
 
     const handleLogAdded = (newLog) => {
         setDailyLogs([newLog, ...dailyLogs]);
@@ -226,6 +230,18 @@ const Assets = () => {
                                 <Plus size={18} /> ADD EQUIPMENT
                             </button>
                         )}
+                        <div style={{ width: '240px' }}>
+                            <CustomSelect
+                                options={[
+                                    { value: 'all', label: 'All Sites' },
+                                    ...projects.map(p => ({ value: p._id || p.id, label: p.name }))
+                                ]}
+                                value={selectedProject}
+                                onChange={setSelectedProject}
+                                icon={Briefcase}
+                                placeholder="Select Site"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -510,6 +526,7 @@ const Assets = () => {
             <FuelInventoryModal
                 isOpen={isFuelModalOpen}
                 onClose={() => setIsFuelModalOpen(false)}
+                projectName={selectedProject === 'all' ? 'All Sites' : projects.find(p => (p._id || p.id) === selectedProject)?.name}
             />
             <AssetDetailsModal
                 isOpen={isDetailsModalOpen}

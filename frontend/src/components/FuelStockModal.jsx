@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { X, Droplets, Calendar, User, DollarSign } from 'lucide-react';
 import { fleetAPI } from '../utils/api';
 
-const FuelStockModal = ({ isOpen, onClose, onStockAdded }) => {
+const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Sites' }) => {
     const [formData, setFormData] = useState({
         qty: '',
         rate: '',
         totalAmount: 0,
         supplier: '',
+        site: projectName !== 'All Sites' ? projectName : '',
         billNo: '',
         remarks: '',
         date: new Date().toISOString()
@@ -33,6 +34,7 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded }) => {
                 qty: parseFloat(formData.qty),
                 rate: parseFloat(formData.rate),
                 totalAmount: parseFloat(formData.totalAmount),
+                site: formData.site || 'Main Office',
                 addedBy: user.username || 'System'
             };
             await fleetAPI.addFuelStock(dataToSave);
@@ -93,6 +95,26 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded }) => {
                             <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Bill / Voucher No</label>
                             <input type="text" placeholder="Reference #" value={formData.billNo} onChange={(e) => setFormData({ ...formData, billNo: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                         </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Site / Project *</label>
+                        <input 
+                            type="text" 
+                            required 
+                            placeholder="Assign to Site" 
+                            value={formData.site} 
+                            onChange={(e) => setFormData({ ...formData, site: e.target.value })} 
+                            readOnly={projectName !== 'All Sites'}
+                            style={{ 
+                                width: '100%', 
+                                padding: '12px', 
+                                borderRadius: '8px', 
+                                border: '1px solid var(--border)', 
+                                backgroundColor: projectName !== 'All Sites' ? '#F1F5F9' : 'white' 
+                            }} 
+                        />
+                        {projectName !== 'All Sites' && <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Locked to current site: {projectName}</p>}
                     </div>
 
                     <div className="form-group">

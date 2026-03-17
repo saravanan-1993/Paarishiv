@@ -389,7 +389,7 @@ const Approvals = () => {
                         <User size={24} />
                     </div>
                     <div>
-                        <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Manpower Request</h4>
+                        <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>Workforce Request</h4>
                         <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0 0', fontWeight: '600' }}>Project: {item.projectName || item.project_name || 'N/A'}</p>
                     </div>
                 </div>

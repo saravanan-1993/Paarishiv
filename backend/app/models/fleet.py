@@ -60,6 +60,7 @@ class FuelStock(BaseModel):
     totalAmount: float
     supplier: Optional[str] = None
     billNo: Optional[str] = None
+    site: Optional[str] = None # Project/Site name
     remarks: Optional[str] = None
     addedBy: Optional[str] = None
 
