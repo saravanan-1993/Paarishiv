@@ -176,11 +176,11 @@ export const fleetAPI = {
     addMaintenance: (data) => api.post('/fleet/maintenance', data),
 
     // Fuel Operations
-    getFuelStock: () => api.get('/fleet/fuel/stock'),
+    getFuelStock: (projectName) => api.get('/fleet/fuel/stock', { params: { project_name: projectName } }),
     addFuelStock: (data) => api.post('/fleet/fuel/stock', data),
-    getFuelLogs: () => api.get('/fleet/fuel/logs'),
+    getFuelLogs: (projectName) => api.get('/fleet/fuel/logs', { params: { project_name: projectName } }),
     addFuelLog: (data) => api.post('/fleet/fuel/logs', data),
-    getFuelSummary: () => api.get('/fleet/fuel/summary'),
+    getFuelSummary: (projectName) => api.get('/fleet/fuel/summary', { params: { project_name: projectName } }),
 };
 
 // ── HRMS ──────────────────────────────────────────────────────────────────────

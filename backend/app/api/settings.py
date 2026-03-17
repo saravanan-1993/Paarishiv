@@ -101,6 +101,6 @@ async def upload_logo(file: UploadFile = File(...)):
     # Upload to Cloudinary
     result = await upload_file(content, filename=file.filename)
     if not result:
-        raise HTTPException(status_code=500, detail="Failed to upload logo to Cloudinary")
+        raise HTTPException(status_code=500, detail="Failed to upload logo. Please check Cloudinary credentials in Vercel Environment Variables.")
         
     return {"url": result["url"]}

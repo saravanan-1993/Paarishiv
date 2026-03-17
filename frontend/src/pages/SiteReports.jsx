@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, MapPin, User, LayoutDashboard, Calendar, Package, Download, ArrowRight } from 'lucide-react';
-import { projectAPI, inventoryAPI } from '../utils/api';
+import { projectAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import DPRViewModal from '../components/DPRViewModal';
 import { jsPDF } from 'jspdf';
@@ -46,6 +46,10 @@ const SiteReports = () => {
     const [selectedDPR, setSelectedDPR] = useState(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [processingId, setProcessingId] = useState(null);
+    const [companyInfo, setCompanyInfo] = useState({
+        companyName: 'CIVIL ERP',
+        logo: ''
+    });
     const [toast, setToast] = useState(null);
 
     const showToast = (msg, type = 'success') => {
@@ -77,8 +81,20 @@ const SiteReports = () => {
         }
     };
 
+    const fetchCompanyInfo = async () => {
+        try {
+            const compRes = await settingsAPI.getCompany();
+            if (compRes.data) setCompanyInfo(compRes.data);
+        } catch (err) {
+            console.error("Failed to fetch company info", err);
+        }
+    };
+
     useEffect(() => {
         fetchData();
+        fetchCompanyInfo();
+        window.addEventListener('companyInfoUpdated', fetchCompanyInfo);
+        return () => window.removeEventListener('companyInfoUpdated', fetchCompanyInfo);
     }, [activeTab]);
 
     const handleUpdateDPRStatus = async (dpr, newStatus) => {
@@ -147,14 +163,18 @@ const SiteReports = () => {
         const title = activeTab === 'DPR' ? 'Site Daily Progress Report (DPR) Summary' :
             activeTab === 'Requests' ? 'Material Requests Summary' : 'Material Transfers Summary';
 
-        doc.setFontSize(20);
+        doc.setFontSize(22);
+        doc.setTextColor(30, 58, 95);
+        doc.text(companyInfo.companyName || 'CIVIL ERP', 14, 20);
+
+        doc.setFontSize(16);
         doc.setTextColor(59, 130, 246);
-        doc.text(title, 14, 20);
+        doc.text(title, 14, 30);
 
         doc.setFontSize(10);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
-        doc.text(`Project Filter: ${selectedProject === 'all' ? 'All Projects' : selectedProject}`, 14, 33);
+        doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 38);
+        doc.text(`Project Filter: ${selectedProject === 'all' ? 'All Projects' : selectedProject}`, 14, 43);
 
         let headers = [];
         let body = [];
@@ -185,7 +205,7 @@ const SiteReports = () => {
         }
 
         autoTable(doc, {
-            startY: 40,
+            startY: 50,
             head: headers,
             body: body,
             theme: 'grid',

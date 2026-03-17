@@ -29,7 +29,7 @@ const HRMS = () => {
     const [activeTab, setActiveTab] = useState('Dashboard');
 
     const availableTabs = useMemo(() => [
-        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Manpower Req'
+        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce'
     ].filter(tab => hasSubTabAccess(user, 'HRMS', tab)), [user]);
 
     useEffect(() => {
@@ -85,6 +85,7 @@ const HRMS = () => {
     const [selectedAttendanceSite, setSelectedAttendanceSite] = useState('All');
     const [manpowerFilter, setManpowerFilter] = useState('Approved');
     const [selectedManpowerProject, setSelectedManpowerProject] = useState('All');
+    const [refreshingManpower, setRefreshingManpower] = useState(false);
 
     useEffect(() => {
         fetchInitialData();
@@ -177,11 +178,14 @@ const HRMS = () => {
     };
 
     const fetchManpowerRequests = async () => {
+        setRefreshingManpower(true);
         try {
             const mpRes = await approvalsAPI.getAll(manpowerFilter);
             setManpowerRequests(mpRes.data.manpower || []);
         } catch (err) {
             console.error('Failed to fetch manpower requests', err);
+        } finally {
+            setTimeout(() => setRefreshingManpower(false), 500);
         }
     };
 
@@ -193,7 +197,7 @@ const HRMS = () => {
         if (activeTab === 'Leave Management') fetchLeaves();
         if (activeTab === 'Payroll') fetchPayroll(selectedMonth);
         if (activeTab === 'Surprise Visits') fetchSurpriseVisits();
-        if (activeTab === 'Manpower Req') fetchManpowerRequests();
+        if (activeTab === 'Workforce') fetchManpowerRequests();
     }, [activeTab, selectedDate, selectedMonth, manpowerFilter]);
 
     useEffect(() => {
@@ -1090,7 +1094,7 @@ const HRMS = () => {
             <div className="animate-fade-in">
                 <div className="card" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
-                        <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: 'var(--text-main)' }}>Manpower Requirements History</h3>
+                        <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: 'var(--text-main)' }}>Workforce Requirements History</h3>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Track site requisitions and arrangements</p>
                     </div>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -1106,6 +1110,18 @@ const HRMS = () => {
                             ))}
                         </select>
                         <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
+                            <button 
+                                onClick={() => setManpowerFilter('Pending')}
+                                style={{ 
+                                    padding: '6px 16px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '800', 
+                                    background: manpowerFilter === 'Pending' ? 'white' : 'transparent',
+                                    color: manpowerFilter === 'Pending' ? '#2563EB' : '#64748b',
+                                    boxShadow: manpowerFilter === 'Pending' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                REQUESTED
+                            </button>
                             <button 
                                 onClick={() => setManpowerFilter('Approved')}
                                 style={{ 
@@ -1143,8 +1159,13 @@ const HRMS = () => {
                                 ALL
                             </button>
                         </div>
-                        <button className="btn btn-outline btn-sm" onClick={fetchManpowerRequests}>
-                            <Clock size={16} />
+                        <button 
+                            className="btn btn-outline btn-sm" 
+                            onClick={fetchManpowerRequests}
+                            disabled={refreshingManpower}
+                            title="Refresh Workforce Requests"
+                        >
+                            <Clock size={16} className={refreshingManpower ? "animate-spin" : ""} />
                         </button>
                     </div>
                 </div>
@@ -1358,7 +1379,7 @@ const HRMS = () => {
                         )}
                         {activeTab === 'Leave Management' && renderLeaves()}
                         {activeTab === 'Payroll' && renderPayroll()}
-                        {activeTab === 'Manpower Req' && renderManpowerReq()}
+                        {activeTab === 'Workforce' && renderManpowerReq()}
                     </>
                 )}
             </div>

@@ -800,7 +800,7 @@ const Materials = () => {
             <AssetUsageModal isOpen={isUsageModalOpen} onClose={() => setIsUsageModalOpen(false)} onLogAdded={handleLogAdded} fleet={fleet} />
             <TransferModal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} onTransferAdded={handleTransferAdded} projects={projects} />
             <AddAssetModal isOpen={isAddAssetModalOpen} onClose={() => setIsAddAssetModalOpen(false)} onAssetAdded={handleAssetAdded} />
-            <FuelInventoryModal isOpen={isFuelModalOpen} onClose={() => setIsFuelModalOpen(false)} />
+            <FuelInventoryModal isOpen={isFuelModalOpen} onClose={() => setIsFuelModalOpen(false)} projectName={currentProjectName} />
             <AssetDetailsModal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} asset={selectedAsset} />
 
             <CreateMaterialModal isOpen={isCreateMaterialOpen} onClose={() => setIsCreateMaterialOpen(false)} onSuccess={() => { fetchWarehouseStock(); setIsCreateMaterialOpen(false); }} />

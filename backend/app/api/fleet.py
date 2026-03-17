@@ -156,8 +156,12 @@ async def get_vehicle_maintenance(vehicle_id: str, db = Depends(get_database)):
 # ── Fuel Management ──────────────────────────────────────────────────────────
 
 @router.get("/fuel/stock")
-async def get_fuel_stock(db = Depends(get_database)):
-    stocks = await db.fuel_stock.find().sort("date", -1).to_list(500)
+async def get_fuel_stock(project_name: Optional[str] = None, db = Depends(get_database)):
+    query = {}
+    if project_name and project_name not in ["all", "All Sites"]:
+        query["site"] = project_name
+        
+    stocks = await db.fuel_stock.find(query).sort("date", -1).to_list(500)
     return [{"id": str(s["_id"]), **{k: v for k, v in s.items() if k != "_id"}} for s in stocks]
 
 @router.post("/fuel/stock")
@@ -166,8 +170,12 @@ async def add_fuel_stock(stock: FuelStock, db = Depends(get_database)):
     return {"id": str(result.inserted_id), **stock.dict()}
 
 @router.get("/fuel/logs")
-async def get_fuel_logs(db = Depends(get_database)):
-    logs = await db.fuel_logs.find().sort("date", -1).to_list(1000)
+async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_database)):
+    query = {}
+    if project_name and project_name not in ["all", "All Sites"]:
+        query["site"] = project_name
+        
+    logs = await db.fuel_logs.find(query).sort("date", -1).to_list(1000)
     return [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs]
 
 @router.post("/fuel/logs")
@@ -176,13 +184,17 @@ async def add_fuel_log(log: FuelLog, db = Depends(get_database)):
     return {"id": str(result.inserted_id), **log.dict()}
 
 @router.get("/fuel/summary")
-async def get_fuel_summary(db = Depends(get_database)):
+async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_database)):
+    query = {}
+    if project_name and project_name not in ["all", "All Sites"]:
+        query["site"] = project_name
+        
     # Total stock in
-    stocks = await db.fuel_stock.find().to_list(5000)
+    stocks = await db.fuel_stock.find(query).to_list(5000)
     total_in = sum(s.get("qty", 0) for s in stocks)
     
     # Total consumption
-    logs = await db.fuel_logs.find().to_list(10000)
+    logs = await db.fuel_logs.find(query).to_list(10000)
     total_out = sum(l.get("qty", 0) for l in logs)
     
     # Current stock
@@ -191,11 +203,11 @@ async def get_fuel_summary(db = Depends(get_database)):
     # Consumption this month
     now = datetime.now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d")
-    month_logs = [l for l in logs if l.get("date") >= month_start]
+    month_logs = [l for l in logs if str(l.get("date")) >= month_start]
     month_out = sum(l.get("qty", 0) for l in month_logs)
     
     return {
-        "currentStock": current_stock,
-        "monthUsage": month_out,
+        "currentStock": round(current_stock, 2),
+        "monthUsage": round(month_out, 2),
         "recentLogs": [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs[:10]]
     }

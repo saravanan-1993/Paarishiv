@@ -8,7 +8,7 @@ import {
 import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI } from '../utils/api';
+import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI } from '../utils/api';
 
 const fmt = (n) => {
     if (!n && n !== 0) return '₹0';
@@ -132,6 +132,21 @@ const ReportPreview = ({
     report, onClose, budgetData = [], progressData = [], inventoryData = [],
     expenseData = [], attendanceData = [], bills = [], payables = []
 }) => {
+    const [companyInfo, setCompanyInfo] = useState({ companyName: 'CIVIL ERP' });
+
+    useEffect(() => {
+        if (report) {
+            const fetchInfo = () => {
+                settingsAPI.getCompany().then(res => {
+                    if (res.data) setCompanyInfo(res.data);
+                }).catch(err => console.error("Failed to fetch company info", err));
+            };
+            fetchInfo();
+            window.addEventListener('companyInfoUpdated', fetchInfo);
+            return () => window.removeEventListener('companyInfoUpdated', fetchInfo);
+        }
+    }, [report]);
+
     if (!report) return null;
 
     const handlePrint = () => window.print();
@@ -247,6 +262,9 @@ const ReportPreview = ({
                             <report.icon size={22} />
                         </div>
                         <div>
+                            <h1 style={{ fontSize: '24px', fontWeight: '900', color: 'var(--text-main)', display: 'none' }} className="print-only">
+                                {companyInfo.companyName}
+                            </h1>
                             <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{report.title}</h2>
                             <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
                                 Generated: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -641,6 +659,7 @@ const ReportPreview = ({
                         }
                         .modal-overlay { background: none !important; }
                         button, .modal-header button { display: none !important; }
+                        .print-only { display: block !important; margin-bottom: 20px; text-align: center; }
                     }
                 `}</style>
             </div>

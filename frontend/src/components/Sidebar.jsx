@@ -70,7 +70,7 @@ const menuItems = [
             { label: 'Leave Management', tabId: 'Leave Management' },
             { label: 'Payroll', tabId: 'Payroll' },
             { label: 'Surprise Visits', tabId: 'Surprise Visits' },
-            { label: 'Manpower Req', tabId: 'Manpower Req' },
+            { label: 'Workforce', tabId: 'Workforce' },
         ]
     },
     {
