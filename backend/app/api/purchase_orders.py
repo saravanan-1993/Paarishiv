@@ -7,6 +7,7 @@ from datetime import datetime
 from app.utils.email import send_email, generate_po_html
 from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
+from app.utils.logging import log_activity
 router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
 class POItem(BaseModel):
@@ -99,6 +100,7 @@ async def create_po(po: POCreate):
         user = {"username": "System", "role": "Purchase Officer"}
         await trigger_workflow_event(str(project["_id"]), "po_created", user, db, f"PO generated for {po.vendor_name}")
 
+    await log_activity(db, "system", "Purchase Officer", "Create PO", f"PO created for {po.vendor_name} | Project: {po.project_name}", "info")
     return po_helper(new_po)
 
 @router.put("/{id}")
@@ -129,10 +131,19 @@ async def update_po(id: str, po_data: dict = Body(...)):
 
 @router.put("/{id}/approve")
 @router.put("/{id}/approve/")
-async def approve_po(id: str):
+async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
+    po = await db.purchase_orders.find_one({"_id": ObjectId(id)})
     await db.purchase_orders.update_one({"_id": ObjectId(id)}, {"$set": {"status": "Approved"}})
+    await log_activity(
+        db,
+        str(current_user.get("_id", current_user["username"])),
+        current_user["username"],
+        "Approve PO",
+        f"Purchase Order for {po.get('vendor_name')} approved for {po.get('project_name')}",
+        "success"
+    )
     return {"message": "PO Approved"}
 
 @router.post("/{id}/send-email")
