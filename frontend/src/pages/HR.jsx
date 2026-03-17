@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -67,7 +68,7 @@ const HR = () => {
                 'Contractor': 'Contractor',
                 'Labour': 'Labour',
                 'Payroll': 'Payroll',
-                'Manpower Req': 'ManpowerReq'
+                'Workforce': 'ManpowerReq'
             };
             if (tabMap[queryTab]) {
                 setActiveMainTab(tabMap[queryTab]);
@@ -84,7 +85,7 @@ const HR = () => {
             'Contractor': 'Contractor',
             'Labour': 'Labour',
             'Payroll': 'Payroll',
-            'ManpowerReq': 'Manpower Req'
+            'ManpowerReq': 'Workforce'
         };
         setSearchParams({ tab: labelMap[tabId] || tabId });
     };
@@ -313,7 +314,7 @@ const HR = () => {
                         { name: 'Employees', id: 'Employees', icon: Users },
                         { name: 'Contractor', id: 'Contractor', icon: Building2 },
                         { name: 'Labour', id: 'Labour', icon: HardHat },
-                        { name: 'Manpower Req', id: 'ManpowerReq', icon: Clock },
+                        { name: 'Workforce', id: 'ManpowerReq', icon: Clock },
                         { name: 'Payroll', id: 'Payroll', icon: Wallet },
                     ].map((tab) => {
                         const isActive = activeMainTab === tab.id;

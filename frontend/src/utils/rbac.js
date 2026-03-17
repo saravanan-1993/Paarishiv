@@ -75,7 +75,7 @@ export const DEFAULT_ROLES = [
             { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
             { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR'] },
             { name: 'HRMS', actions: { view: true, edit: false, delete: false }, subTabs: ['Dashboard', 'Attendance', 'Leave Management'] },
-            { name: 'Inventory Management', actions: { view: true, edit: true, delete: false }, subTabs: ['Materials', 'Warehouse'] },
+            { name: 'Inventory Management', actions: { view: true, edit: true, delete: false }, subTabs: ['Materials', 'Warehouse', 'Machinery'] },
             { name: 'Accounts', actions: { view: false, edit: false, delete: false } },
             { name: 'Procurement', actions: { view: true, edit: true, delete: false }, subTabs: ['POs', 'Requests', 'GRN'] },
             { name: 'Reports', actions: { view: true, edit: false, delete: false } },

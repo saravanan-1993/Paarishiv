@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { X, ClipboardList, HardHat, Package, Truck, User, Calendar, Download, Loader2, Building2 } from 'lucide-react';
 import { settingsAPI } from '../utils/api';
 import jsPDF from 'jspdf';

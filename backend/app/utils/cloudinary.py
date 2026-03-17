@@ -23,8 +23,29 @@ async def upload_file(file_content, filename="file"):
     """
     Uploads a file to Cloudinary if configured, otherwise saves locally.
     """
-    if CLOUD_NAME and API_KEY and API_SECRET:
+    c_name = CLOUD_NAME
+    c_key = API_KEY
+    c_secret = API_SECRET
+
+    # Try to fetch from DB if not in ENV
+    if not (c_name and c_key and c_secret):
+        from database import db
+        settings = await db.settings.find_one({"type": "cloudinary_config"})
+        if settings:
+            c_name = settings.get("cloudName")
+            c_key = settings.get("apiKey")
+            c_secret = settings.get("apiSecret")
+
+    if c_name and c_key and c_secret:
         try:
+            # Re-configure if needed (thread-safe? Cloudinary config is global, 
+            # but we only do this if ENV is missing)
+            cloudinary.config(
+                cloud_name=c_name,
+                api_key=c_key,
+                api_secret=c_secret,
+                secure=True
+            )
             response = cloudinary.uploader.upload(file_content, folder="civil_erp_chat")
             return {
                 "url": response.get("secure_url"),

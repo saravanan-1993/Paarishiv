@@ -217,7 +217,10 @@ const Tasks = () => {
 
             {/* ── KPI Row ────────────────────────────────────────── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
-                <div className="card" style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #64748B', borderRadius: '12px' }}>
+                <div 
+                    className="card kpi-card-clickable" 
+                    onClick={() => setStatusFilter('All')}
+                    style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #64748B', borderRadius: '12px', cursor: 'pointer', transition: 'transform 0.2s ease' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: '#F1F5F9', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <FileText size={22} />
                     </div>
@@ -227,7 +230,10 @@ const Tasks = () => {
                     </div>
                 </div>
 
-                <div className="card" style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #F59E0B', borderRadius: '12px' }}>
+                <div 
+                    className="card kpi-card-clickable" 
+                    onClick={() => setStatusFilter('Pending')}
+                    style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #F59E0B', borderRadius: '12px', cursor: 'pointer', transition: 'transform 0.2s ease' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: '#FFFBEB', color: '#F59E0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Clock size={22} />
                     </div>
@@ -237,7 +243,10 @@ const Tasks = () => {
                     </div>
                 </div>
 
-                <div className="card" style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #3B82F6', borderRadius: '12px' }}>
+                <div 
+                    className="card kpi-card-clickable" 
+                    onClick={() => setStatusFilter('In Progress')}
+                    style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #3B82F6', borderRadius: '12px', cursor: 'pointer', transition: 'transform 0.2s ease' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: '#EFF6FF', color: '#3B82F6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <PlayCircle size={22} />
                     </div>
@@ -247,7 +256,10 @@ const Tasks = () => {
                     </div>
                 </div>
 
-                <div className="card" style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #10B981', borderRadius: '12px' }}>
+                <div 
+                    className="card kpi-card-clickable" 
+                    onClick={() => setStatusFilter('Completed')}
+                    style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: '4px solid #10B981', borderRadius: '12px', cursor: 'pointer', transition: 'transform 0.2s ease' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '10px', backgroundColor: '#ECFDF5', color: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CheckCircle2 size={22} />
                     </div>

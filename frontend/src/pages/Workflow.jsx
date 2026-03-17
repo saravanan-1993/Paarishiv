@@ -95,11 +95,11 @@ const Workflow = () => {
     const [consolidatedRequests, setConsolidatedRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const [companyInfo, setCompanyInfo] = useState({
-        name: "Civil ERP Construction Pvt Ltd",
-        address: "123, Build Avenue, Engineering Block, Chennai - 600001",
-        phone: "+91 9876543210",
-        email: "admin@civil-erp.com",
-        gst: "33AAAAA0000A1Z5"
+        name: "—",
+        address: "—",
+        phone: "—",
+        email: "—",
+        gst: "—"
     });
 
     const fetchVendors = async () => {
@@ -368,7 +368,21 @@ const Workflow = () => {
                 {/* ── KPI Row ────────────────────────────────────────────────── */}
                 <div className="kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
                     {kpis.map((kpi, i) => (
-                        <div key={i} className="card" style={{ padding: '20px', display: 'flex', gap: '16px', borderTop: `4px solid ${kpi.color}`, borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                        <div 
+                            key={i} 
+                            className="card kpi-card-clickable" 
+                            onClick={() => kpi.id && handleTabChange(kpi.id)}
+                            style={{ 
+                                padding: '20px', 
+                                display: 'flex', 
+                                gap: '16px', 
+                                borderTop: `4px solid ${kpi.color}`, 
+                                borderRadius: '12px', 
+                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+                                cursor: kpi.id ? 'pointer' : 'default',
+                                transition: 'transform 0.2s ease'
+                            }}
+                        >
                             <div style={{
                                 width: '44px', height: '44px', borderRadius: '10px',
                                 backgroundColor: kpi.bgColor, color: kpi.color,
