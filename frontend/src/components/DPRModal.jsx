@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle } from 'lucide-react';
 import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import CustomSelect from './CustomSelect';
 
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('work');
     const [loading, setLoading] = useState(false);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -164,7 +166,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 issues,
                 notes,
                 photos: uploadedPhotoUrls,
-                submitted_by: (project?.engineer_id && typeof project.engineer_id === 'object' 
+                submitted_by: user?.fullName || user?.username || (project?.engineer_id && typeof project.engineer_id === 'object' 
                                 ? (project.engineer_id.username || project.engineer_id.employeeCode || project.engineer_id._id) 
                                 : project?.engineer_id) || 'Site Engineer',
             });
@@ -217,7 +219,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
             alignItems: 'center', justifyContent: 'center',
             zIndex: 1000, backdropFilter: 'blur(8px)'
         }}>
-            <div className="animate-fade-in" style={{
+            <div className="animate-fade-in dpr-modal-main" style={{
                 width: '95vw', maxWidth: '1280px', height: '90vh',
                 backgroundColor: '#F8FAFC', display: 'flex', flexDirection: 'column',
                 padding: '0', overflow: 'hidden', borderRadius: '24px',
@@ -250,12 +252,13 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 </div>
 
                 {/* Main Body with Sidebar Layout */}
-                <div className="dpr-modal-body" style={{ display: 'flex', flex: 1 }}>
+                <div className="dpr-modal-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
                     {/* Sidebar / Top Tabs on Mobile */}
-                    <div className="dpr-sidebar" style={{
+                    <div className="dpr-sidebar custom-scrollbar" style={{
                         width: '280px', backgroundColor: 'white', borderRight: '1px solid #E2E8F0',
-                        padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 5, boxShadow: '2px 0 10px rgba(0,0,0,0.02)'
+                        padding: '24px 16px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 5, 
+                        boxShadow: '2px 0 10px rgba(0,0,0,0.02)', overflowY: 'auto'
                     }}>
                         <TabButton id="work" label="Work" icon={ClipboardList} />
                         <TabButton id="labour" label="Labour" icon={HardHat} />
@@ -266,7 +269,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     </div>
 
                     {/* Content Area */}
-                    <div className="custom-scrollbar dpr-content-area" style={{ flex: 1, overflowY: 'auto', padding: '32px 40px', backgroundColor: '#F8FAFC' }}>
+                    <div className="custom-scrollbar dpr-content-area" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '32px 40px', backgroundColor: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
 
                         {/* ── Work Tab ── */}
                         {activeTab === 'work' && (
@@ -308,7 +311,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1E293B' }}>Work Execution Log</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('work')}><Plus size={16} /> Add Task</button>
                                     </div>
-                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                                    <div className="mobile-table-scroll">
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Task / Activity</th>
@@ -369,7 +372,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                     </div>
                                     <button className="btn-modern outline" onClick={() => addRow('labour')}><Plus size={16} /> Add Entry</button>
                                 </div>
-                                <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                                <div className="mobile-table-scroll">
                                     <table className="modern-table">
                                         <thead><tr>
                                             <th>Party / Contractor</th>
@@ -438,7 +441,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Material Requests</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('nd_material')}><Plus size={16} /> Add Material</button>
                                     </div>
-                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                                    <div className="mobile-table-scroll">
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Material Name</th>
@@ -484,7 +487,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Labour Requirements</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('nd_labour')}><Plus size={16} /> Add Role</button>
                                     </div>
-                                    <div className="mobile-table-scroll" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                                    <div className="mobile-table-scroll">
                                         <table className="modern-table">
                                             <thead><tr>
                                                 <th>Worker Category / Role</th>
@@ -516,7 +519,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                 </div>
 
                                 {/* Equipment */}
-                                <div style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                                <div style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Equipment Requests</h3>
                                         <button className="btn-modern outline" onClick={() => addRow('nd_equipment')}><Plus size={16} /> Add Equipment</button>
@@ -556,7 +559,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
 
                         {/* ── Contractor Summary Tab ── */}
                         {activeTab === 'contractor' && (
-                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Subcontractor Work Summary</h3>
@@ -625,7 +628,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
 
                         {/* ── Equipment Tab ── */}
                         {activeTab === 'equipment' && (
-                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Machinery & Equipment Log</h3>
@@ -690,7 +693,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                 </div>
                             </div>
                         )}
-                        <div style={{ height: '240px' }} />
+                        <div style={{ height: '300px' }} />
                     </div>
                 </div>
 
@@ -717,7 +720,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 .modern-input:focus { border-color: var(--primary); background-color: white; box-shadow: 0 0 0 3px rgba(47, 93, 138, 0.1); }
                 .modern-input::placeholder { color: #94A3B8; }
                 
-                .modern-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 10px; min-width: 600px; }
+                .modern-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 10px; min-width: 600px; margin-bottom: 150px; }
                 .modern-table th { text-align: left; padding: 0 16px 8px 16px; color: #64748B; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #E2E8F0; white-space: nowrap; }
                 .modern-table td { padding: 4px; background: white; }
                 .modern-table tbody tr { transition: all 0.2s; }
@@ -739,12 +742,18 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 .action-btn.delete { color: #94A3B8; }
                 .action-btn.delete:hover { background: #FEE2E2; color: #EF4444; }
 
-                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar { width: 8px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #CBD5E0; border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #A0AEC0; border-radius: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #A0AEC0; }
                 
+                .mobile-table-scroll { overflow: visible; }
+                @media (max-width: 1024px) {
+                    .mobile-table-scroll { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+                }
+                
                 @media (max-width: 768px) {
+                    .dpr-modal-main { width: 100vw !important; height: 100vh !important; border-radius: 0 !important; max-width: none !important; }
                     .dpr-modal-body { flex-direction: column !important; }
                     .dpr-sidebar { 
                         width: 100% !important; 
@@ -762,12 +771,9 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     }
                     .dpr-content-area { padding: 16px !important; }
                     .dpr-grid-3, .dpr-grid-2 { grid-template-columns: 1fr !important; }
-                     .mobile-table-scroll { overflow: visible; }
-                     @media (max-width: 1024px) {
-                        .mobile-table-scroll { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
-                     }
                     .dpr-header-title { font-size: 18px !important; }
                     .hide-mobile { display: none !important; }
+                    .mobile-table-scroll { overflow: visible !important; }
                     
                     /* Modern Responsive Table to Cards */
                     .modern-table thead { display: none; }

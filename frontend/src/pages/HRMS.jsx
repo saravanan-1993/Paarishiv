@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Users, UserPlus, CheckCircle, Clock, Calendar, IndianRupee,
     Briefcase, Wallet, FileText, Plus, Search, Filter,
     Check, X, XCircle, AlertCircle, TrendingUp, BarChart2, Shield, Edit3, Loader2, Eye, Power, Trash2, UserCheck, UserX, Save
 } from 'lucide-react';
-import { employeeAPI, hrmsAPI, projectAPI } from '../utils/api';
+import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, hasSubTabAccess, DEFAULT_ROLES } from '../utils/rbac';
 import AddEmployeeModal from '../components/AddEmployeeModal';
@@ -28,7 +29,7 @@ const HRMS = () => {
     const [activeTab, setActiveTab] = useState('Dashboard');
 
     const availableTabs = useMemo(() => [
-        'Dashboard', 'Employee Master', 'Attendance', 'Surprise Visits', 'Leave Management', 'Payroll'
+        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Manpower Req'
     ].filter(tab => hasSubTabAccess(user, 'HRMS', tab)), [user]);
 
     useEffect(() => {
@@ -69,6 +70,7 @@ const HRMS = () => {
     const [isProcessPayrollOpen, setIsProcessPayrollOpen] = useState(false);
     const [payrollEmployee, setPayrollEmployee] = useState(null);
     const [surpriseVisits, setSurpriseVisits] = useState([]);
+    const [manpowerRequests, setManpowerRequests] = useState([]);
     const [attendanceData, setAttendanceData] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRole, setSelectedRole] = useState('All');
@@ -81,6 +83,8 @@ const HRMS = () => {
     const [projects, setProjects] = useState([]);
     const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
     const [selectedAttendanceSite, setSelectedAttendanceSite] = useState('All');
+    const [manpowerFilter, setManpowerFilter] = useState('Approved');
+    const [selectedManpowerProject, setSelectedManpowerProject] = useState('All');
 
     useEffect(() => {
         fetchInitialData();
@@ -172,6 +176,15 @@ const HRMS = () => {
         }
     };
 
+    const fetchManpowerRequests = async () => {
+        try {
+            const mpRes = await approvalsAPI.getAll(manpowerFilter);
+            setManpowerRequests(mpRes.data.manpower || []);
+        } catch (err) {
+            console.error('Failed to fetch manpower requests', err);
+        }
+    };
+
     useEffect(() => {
         if (activeTab === 'Attendance') {
             fetchAttendance(selectedDate);
@@ -180,7 +193,8 @@ const HRMS = () => {
         if (activeTab === 'Leave Management') fetchLeaves();
         if (activeTab === 'Payroll') fetchPayroll(selectedMonth);
         if (activeTab === 'Surprise Visits') fetchSurpriseVisits();
-    }, [activeTab, selectedDate, selectedMonth]);
+        if (activeTab === 'Manpower Req') fetchManpowerRequests();
+    }, [activeTab, selectedDate, selectedMonth, manpowerFilter]);
 
     useEffect(() => {
         if (employees.length > 0) {
@@ -1067,6 +1081,149 @@ const HRMS = () => {
         </div>
     );
 
+    const renderManpowerReq = () => {
+        const filteredRequests = manpowerRequests.filter(req => 
+            selectedManpowerProject === 'All' || req.project_name === selectedManpowerProject
+        );
+
+        return (
+            <div className="animate-fade-in">
+                <div className="card" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                    <div>
+                        <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: 'var(--text-main)' }}>Manpower Requirements History</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Track site requisitions and arrangements</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <select 
+                            className="form-control" 
+                            style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', width: '200px' }}
+                            value={selectedManpowerProject}
+                            onChange={(e) => setSelectedManpowerProject(e.target.value)}
+                        >
+                            <option value="All">All Sites</option>
+                            {projects.map(p => (
+                                <option key={p._id} value={p.name}>{p.name}</option>
+                            ))}
+                        </select>
+                        <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
+                            <button 
+                                onClick={() => setManpowerFilter('Approved')}
+                                style={{ 
+                                    padding: '6px 16px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '800', 
+                                    background: manpowerFilter === 'Approved' ? 'white' : 'transparent',
+                                    color: manpowerFilter === 'Approved' ? '#2563EB' : '#64748b',
+                                    boxShadow: manpowerFilter === 'Approved' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                TO ARRANGE
+                            </button>
+                            <button 
+                                onClick={() => setManpowerFilter('Completed')}
+                                style={{ 
+                                    padding: '6px 16px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '800', 
+                                    background: manpowerFilter === 'Completed' ? 'white' : 'transparent',
+                                    color: manpowerFilter === 'Completed' ? '#2563EB' : '#64748b',
+                                    boxShadow: manpowerFilter === 'Completed' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                COMPLETED
+                            </button>
+                            <button 
+                                onClick={() => setManpowerFilter('all')}
+                                style={{ 
+                                    padding: '6px 16px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '800', 
+                                    background: manpowerFilter === 'all' ? 'white' : 'transparent',
+                                    color: manpowerFilter === 'all' ? '#2563EB' : '#64748b',
+                                    boxShadow: manpowerFilter === 'all' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                ALL
+                            </button>
+                        </div>
+                        <button className="btn btn-outline btn-sm" onClick={fetchManpowerRequests}>
+                            <Clock size={16} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="card" style={{ padding: 0 }}>
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Project</th>
+                                <th>Requirements</th>
+                                <th>Verified By</th>
+                                <th>Status</th>
+                                <th style={{ textAlign: 'right' }}>Action</th>
+                            </tr>
+                        </thead>
+                    <tbody>
+                        {filteredRequests.map((req, i) => (
+                            <tr key={i}>
+                                <td style={{ fontSize: '12px', whiteSpace: 'nowrap', fontWeight: '600' }}>
+                                    {req.created_at ? new Date(req.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                                </td>
+                                <td style={{ fontWeight: '700', color: '#1e293b' }}>{req.project_name}</td>
+                                <td>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {(req.requested_items || []).map((item, idx) => (
+                                            <span key={idx} style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '800', color: '#475569' }}>
+                                                {item.role}: {item.count}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </td>
+                                <td style={{ fontSize: '12px' }}>{req.approvedBy || 'Admin'}</td>
+                                <td>
+                                    <span className={`badge ${req.status === 'Approved' ? 'badge-info' : (req.status === 'Completed' ? 'badge-success' : 'badge-warning')}`} style={{ fontSize: '10px' }}>
+                                        {req.status === 'Approved' ? 'Verified' : req.status.toUpperCase()}
+                                    </span>
+                                </td>
+                                <td>
+                                    {req.status === 'Approved' && (
+                                        <button
+                                            className="btn btn-success btn-sm"
+                                            style={{ padding: '6px 12px', fontSize: '11px', fontWeight: '800' }}
+                                            onClick={async () => {
+                                                if (!window.confirm("Mark this manpower request as arranged and completed?")) return;
+                                                console.log("Processing Manpower Req:", req);
+                                                try {
+                                                    await approvalsAPI.action('manpower', req._id, 'complete');
+                                                    alert('Manpower arranged successfully!');
+                                                    fetchManpowerRequests();
+                                                } catch (err) {
+                                                    const errorMsg = err.response?.data?.detail || err.message || 'Failed to update status';
+                                                    alert(`Error: ${errorMsg}`);
+                                                }
+                                            }}
+                                        >
+                                            MARK ARRANGED
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                        {filteredRequests.length === 0 && (
+                            <tr>
+                                <td colSpan={6} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                        <AlertCircle size={32} opacity={0.3} />
+                                        <p style={{ fontWeight: '600' }}>No manpower requests found for this selection.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
     return (
         <div style={{ padding: '0 10px 40px 10px', position: 'relative' }}>
             <div className="animate-fade-in">
@@ -1201,6 +1358,7 @@ const HRMS = () => {
                         )}
                         {activeTab === 'Leave Management' && renderLeaves()}
                         {activeTab === 'Payroll' && renderPayroll()}
+                        {activeTab === 'Manpower Req' && renderManpowerReq()}
                     </>
                 )}
             </div>

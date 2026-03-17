@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import {
     Users,
     UserPlus,
@@ -53,6 +53,41 @@ const HR = () => {
     const [editingEmployee, setEditingEmployee] = useState(null);
     const [payrollEmployee, setPayrollEmployee] = useState(null);
     const [payrollStatuses, setPayrollStatuses] = useState({});
+    const [manpowerRequests, setManpowerRequests] = useState([]);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const queryTab = searchParams.get('tab');
+
+    useEffect(() => {
+        if (queryTab) {
+            // Map common tab names to internal IDs if needed, 
+            // but here we can just try to match the case or normalize
+            const tabMap = {
+                'Roles': 'Roles',
+                'Employees': 'Employees',
+                'Contractor': 'Contractor',
+                'Labour': 'Labour',
+                'Payroll': 'Payroll',
+                'Manpower Req': 'ManpowerReq'
+            };
+            if (tabMap[queryTab]) {
+                setActiveMainTab(tabMap[queryTab]);
+            }
+        }
+    }, [queryTab]);
+
+    const handleMainTabChange = (tabId) => {
+        setActiveMainTab(tabId);
+        // Find the label for URL
+        const labelMap = {
+            'Roles': 'Roles',
+            'Employees': 'Employees',
+            'Contractor': 'Contractor',
+            'Labour': 'Labour',
+            'Payroll': 'Payroll',
+            'ManpowerReq': 'Manpower Req'
+        };
+        setSearchParams({ tab: labelMap[tabId] || tabId });
+    };
 
     const [contractors, setContractors] = useState([]);
 
@@ -116,6 +151,10 @@ const HR = () => {
                 ...lab
             }));
             setLabours(mappedLabours);
+
+            // Fetch verified manpower requests
+            const mpRes = await axios.get(`${baseUrl}/approvals/?status=Approved`);
+            setManpowerRequests(mpRes.data.manpower || []);
         } catch (error) {
             console.error('Error fetching HR data:', error);
         } finally {
@@ -274,6 +313,7 @@ const HR = () => {
                         { name: 'Employees', id: 'Employees', icon: Users },
                         { name: 'Contractor', id: 'Contractor', icon: Building2 },
                         { name: 'Labour', id: 'Labour', icon: HardHat },
+                        { name: 'Manpower Req', id: 'ManpowerReq', icon: Clock },
                         { name: 'Payroll', id: 'Payroll', icon: Wallet },
                     ].map((tab) => {
                         const isActive = activeMainTab === tab.id;
@@ -281,7 +321,7 @@ const HR = () => {
                         return (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveMainTab(tab.id)}
+                                onClick={() => handleMainTabChange(tab.id)}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '8px', border: 'none',
                                     background: isActive ? '#f1f5f9' : 'transparent', color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
@@ -658,6 +698,79 @@ const HR = () => {
                                     <tr>
                                         <td colSpan={8} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                             No employees found for payroll generation.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {activeMainTab === 'ManpowerReq' && (
+                    <div className="card">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Next Day Manpower Requirements</h3>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Verified requests from site coordinators</p>
+                            </div>
+                            <button className="btn btn-outline btn-sm" onClick={fetchEmployees}>
+                                <RotateCw size={16} /> Refresh
+                            </button>
+                        </div>
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Requirements</th>
+                                    <th>Verified By</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {manpowerRequests.map((req, i) => (
+                                    <tr key={i}>
+                                        <td style={{ fontWeight: '600' }}>{req.project_name}</td>
+                                        <td>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                {(req.requested_items || []).map((item, idx) => (
+                                                    <span key={idx} style={{ background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>
+                                                        {item.role}: {item.count}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td style={{ fontSize: '12px' }}>{req.approvedBy || 'Admin'}</td>
+                                        <td>
+                                            <span className={`badge ${req.status === 'Approved' ? 'badge-info' : (req.status === 'Completed' ? 'badge-success' : 'badge-warning')}`}>
+                                                {req.status === 'Approved' ? 'Verified' : req.status}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {req.status === 'Approved' && (
+                                                <button
+                                                    className="btn btn-primary btn-sm"
+                                                    style={{ padding: '4px 12px', fontSize: '11px' }}
+                                                    onClick={async () => {
+                                                        try {
+                                                            await axios.put(`/api/approvals/manpower/${req._id}/complete`);
+                                                            alert('Manpower arranged successfully!');
+                                                            fetchEmployees();
+                                                        } catch (err) {
+                                                            alert('Failed to update status');
+                                                        }
+                                                    }}
+                                                >
+                                                    Mark Arranged
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {manpowerRequests.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                            No verified manpower requests found.
                                         </td>
                                     </tr>
                                 )}
