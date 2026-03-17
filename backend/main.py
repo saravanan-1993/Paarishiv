@@ -19,7 +19,7 @@ if not is_vercel:
     try:
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir, exist_ok=True)
-        # Mount static files
+        # Mount static files under /static to match backend's returned URLs
         app.mount("/static/uploads", StaticFiles(directory=upload_dir), name="static")
     except Exception as e:
         print(f"Could not setup static files: {e}")

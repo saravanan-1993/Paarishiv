@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, Calendar, Users } from 'lucide-react';
 import { hrmsAPI } from '../utils/api';
 
-const AttendanceCalendar = ({ employeeId, employeeName }) => {
+const AttendanceCalendar = ({ employeeId, employeeName, employeeCode }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [attendanceDays, setAttendanceDays] = useState({});
     const [loading, setLoading] = useState(false);
@@ -22,7 +22,10 @@ const AttendanceCalendar = ({ employeeId, employeeName }) => {
             const empRecords = (res.data || []).filter(r => 
                 r.employeeId === employeeId || 
                 r.user_id === employeeId || 
-                r.username === employeeId
+                r.username === employeeId ||
+                r.employeeCode === employeeCode ||
+                r.employeeId === employeeCode ||
+                r.username === employeeCode
             );
             
             const mapped = {};
@@ -45,7 +48,7 @@ const AttendanceCalendar = ({ employeeId, employeeName }) => {
 
     useEffect(() => {
         fetchMonthData();
-    }, [currentMonth, employeeId]);
+    }, [currentMonth, employeeId, employeeCode]);
 
     const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
     const startDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
@@ -71,11 +74,11 @@ const AttendanceCalendar = ({ employeeId, employeeName }) => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                             <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>{employeeName}</p>
                             <span style={{ color: '#E2E8F0' }}>•</span>
-                            <div style={{ display: 'flex', gap: '10px', fontSize: '11px', fontWeight: '700' }}>
-                                <span style={{ color: '#10B981' }}>{stats.present}P</span>
-                                <span style={{ color: '#EF4444' }}>{stats.absent}A</span>
-                                <span style={{ color: '#3B82F6' }}>{stats.leave}L</span>
-                                <span style={{ color: '#F59E0B' }}>{stats.halfDay}H</span>
+                            <div style={{ display: 'flex', gap: '8px', fontSize: '12px', fontWeight: '800' }}>
+                                <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '2px 8px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>{stats.present}P</span>
+                                <span style={{ backgroundColor: '#fef2f2', color: '#dc2626', padding: '2px 8px', borderRadius: '12px', border: '1px solid #fecaca' }}>{stats.absent}A</span>
+                                <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>{stats.leave}L</span>
+                                <span style={{ backgroundColor: '#fffbeb', color: '#d97706', padding: '2px 8px', borderRadius: '12px', border: '1px solid #fef3c7' }}>{stats.halfDay}H</span>
                             </div>
                         </div>
                     </div>

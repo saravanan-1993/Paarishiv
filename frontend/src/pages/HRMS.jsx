@@ -18,6 +18,7 @@ import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star } fro
 import HrmsSettingsModal from '../components/HrmsSettingsModal';
 import CustomSelect from '../components/CustomSelect';
 import AttendanceCalendar from '../components/AttendanceCalendar';
+import AttendanceRoster from '../components/AttendanceRoster';
 
 const HRMS = () => {
     const { user } = useAuth();
@@ -77,6 +78,9 @@ const HRMS = () => {
     const [hrmsSettings, setHrmsSettings] = useState({ officeStartTime: '09:00', gracePeriod: 15, birthdayWishes: true, workAnniversaryWishes: true });
     const [lateComers, setLateComers] = useState([]);
     const [celebrations, setCelebrations] = useState([]);
+    const [projects, setProjects] = useState([]);
+    const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
+    const [selectedAttendanceSite, setSelectedAttendanceSite] = useState('All');
 
     useEffect(() => {
         fetchInitialData();
@@ -85,14 +89,16 @@ const HRMS = () => {
     const fetchInitialData = async () => {
         try {
             setLoading(true);
-            const [statsRes, empRes, settingsRes] = await Promise.all([
+            const [statsRes, empRes, settingsRes, projRes] = await Promise.all([
                 hrmsAPI.getStats(),
                 employeeAPI.getAll(),
-                hrmsAPI.getSettings()
+                hrmsAPI.getSettings(),
+                projectAPI.getAll()
             ]);
             setStats(statsRes.data);
             setEmployees(empRes.data);
             setHrmsSettings(settingsRes.data);
+            setProjects(projRes.data || []);
 
             // Pre-fetch leaves as They are needed for attendance mapping
             fetchLeaves();
@@ -187,7 +193,8 @@ const HRMS = () => {
                     const am = a.employeeId === empId ||
                         a.user_id === empId ||
                         a.username === emp.username ||
-                        a.username === emp.employeeCode;
+                        a.username === emp.employeeCode ||
+                        a.employeeId === emp.employeeCode;
                     if (am) mappedAttendanceIds.add(a.id || a._id);
                     return am;
                 });
@@ -269,10 +276,23 @@ const HRMS = () => {
     }, [attendance, employees, hrmsSettings, leaves, selectedDate]);
 
     const handleAttendanceChange = (index, field, value) => {
-        const newData = [...attendanceData];
-        newData[index][field] = value;
-        setAttendanceData(newData);
+        const item = filteredAttendanceData[index];
+        const actualIndex = attendanceData.findIndex(d => d.employeeId === item.employeeId);
+        if (actualIndex > -1) {
+            const newData = [...attendanceData];
+            newData[actualIndex][field] = value;
+            setAttendanceData(newData);
+        }
     };
+
+    const filteredAttendanceData = useMemo(() => {
+        return attendanceData.filter(emp => {
+            const matchesSearch = emp.fullName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
+                emp.employeeCode?.toLowerCase().includes(attendanceSearchQuery.toLowerCase());
+            const matchesSite = selectedAttendanceSite === 'All' || emp.siteName === selectedAttendanceSite;
+            return matchesSearch && matchesSite;
+        });
+    }, [attendanceData, attendanceSearchQuery, selectedAttendanceSite]);
 
     const handleSaveAttendance = async () => {
         try {
@@ -707,7 +727,8 @@ const HRMS = () => {
                             const firstEmp = employees[0];
                             setSelectedCalendarEmployee({
                                 id: firstEmp.id || firstEmp._id,
-                                name: firstEmp.fullName
+                                name: firstEmp.fullName,
+                                code: firstEmp.employeeCode
                             });
                         }
                     }}
@@ -726,13 +747,36 @@ const HRMS = () => {
             {attendanceView === 'list' ? (
                 <>
                     <div className="card" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                            <Calendar size={20} style={{ color: 'var(--primary)' }} />
-                            <input
-                                type="date"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                                style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontWeight: '700' }}
+                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <Calendar size={20} style={{ color: 'var(--primary)' }} />
+                                <input
+                                    type="date"
+                                    value={selectedDate}
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontWeight: '700' }}
+                                />
+                            </div>
+                            <div style={{ position: 'relative', width: '220px' }}>
+                                <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Search employee..."
+                                    value={attendanceSearchQuery}
+                                    onChange={(e) => setAttendanceSearchQuery(e.target.value)}
+                                    style={{ width: '100%', padding: '8px 12px 8px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                />
+                            </div>
+                            <CustomSelect
+                                options={[
+                                    { value: 'All', label: 'All Sites' },
+                                    ...projects.map(p => ({ value: p.name, label: p.name }))
+                                ]}
+                                value={selectedAttendanceSite}
+                                onChange={setSelectedAttendanceSite}
+                                width="200px"
+                                placeholder="Filter by Site"
+                                icon={MapPin}
                             />
                         </div>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
@@ -756,7 +800,7 @@ const HRMS = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {attendanceData.map((emp, i) => (
+                                {filteredAttendanceData.map((emp, i) => (
                                     <tr key={i}>
                                         <td>
                                             <div style={{ fontWeight: '600' }}>{emp.fullName}</div>
@@ -811,7 +855,20 @@ const HRMS = () => {
                 </>
             ) : (
                 <div className="animate-fade-in">
-                    <div className="card" style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <div className="card" style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <CustomSelect
+                                options={[
+                                    { value: 'All', label: 'All Sites' },
+                                    ...projects.map(p => ({ value: p.name, label: p.name }))
+                                ]}
+                                value={selectedAttendanceSite}
+                                onChange={setSelectedAttendanceSite}
+                                width="200px"
+                                placeholder="Filter by Site"
+                                icon={MapPin}
+                            />
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <Users size={18} color="var(--primary)" />
@@ -819,22 +876,40 @@ const HRMS = () => {
                             <span style={{ fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>Select Employee:</span>
                         </div>
                         <CustomSelect 
-                            options={employees.map(e => ({ value: e.id || e._id, label: e.fullName }))}
+                            options={[
+                                { value: 'all', label: 'All Employees (Monthly Roster)' },
+                                ...employees
+                                    .filter(e => selectedAttendanceSite === 'All' || e.siteName === selectedAttendanceSite)
+                                    .map(e => ({ value: e.id || e._id, label: e.fullName }))
+                            ]}
                             value={selectedCalendarEmployee?.id}
                             onChange={(val) => {
-                                const emp = employees.find(e => (e.id || e._id) === val);
-                                if (emp) setSelectedCalendarEmployee({ id: val, name: emp.fullName });
+                                if (val === 'all') {
+                                    setSelectedCalendarEmployee({ id: 'all', name: 'All Employees' });
+                                } else {
+                                    const emp = employees.find(e => (e.id || e._id) === val);
+                                    if (emp) setSelectedCalendarEmployee({ id: val, name: emp.fullName, code: emp.employeeCode });
+                                }
                             }}
-                            placeholder="Pick an employee to view their monthly calendar"
-                            width="350px"
+                            placeholder="Pick an employee"
+                            width="300px"
+                            searchable={true}
                         />
                     </div>
                     
                     {selectedCalendarEmployee ? (
-                        <AttendanceCalendar 
-                            employeeId={selectedCalendarEmployee.id} 
-                            employeeName={selectedCalendarEmployee.name} 
-                        />
+                        selectedCalendarEmployee.id === 'all' ? (
+                            <AttendanceRoster 
+                                employees={employees} 
+                                selectedSite={selectedAttendanceSite} 
+                            />
+                        ) : (
+                            <AttendanceCalendar 
+                                employeeId={selectedCalendarEmployee.id} 
+                                employeeName={selectedCalendarEmployee.name} 
+                                employeeCode={selectedCalendarEmployee.code}
+                            />
+                        )
                     ) : (
                         <div style={{ textAlign: 'center', padding: '100px 20px', backgroundColor: 'white', borderRadius: '20px', border: '2px dashed var(--border)' }}>
                             <Users size={48} style={{ opacity: 0.1, margin: '0 auto 16px' }} />
