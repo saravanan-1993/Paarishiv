@@ -5,8 +5,7 @@ from database import get_database
 from app.utils.auth import get_current_user
 from datetime import datetime
 from bson import ObjectId
-import cloudinary
-import cloudinary.uploader
+from app.utils.cloudinary import upload_file
 
 router = APIRouter(prefix="/surprise-attendance", tags=["surprise-attendance"])
 
@@ -38,11 +37,10 @@ async def save_surprise_attendance(
     # Photo upload to Cloudinary if provided
     photo_url = None
     if photo:
-        try:
-            upload_result = cloudinary.uploader.upload(photo.file)
-            photo_url = upload_result.get("secure_url")
-        except Exception as e:
-            print(f"Photo upload failed: {e}")
+        content = await photo.read()
+        res = await upload_file(content, filename=photo.filename)
+        if res:
+            photo_url = res.get("url")
 
     record = {
         "project_id": project_id,

@@ -4,6 +4,7 @@ from typing import Any, Dict
 import shutil
 import os
 from datetime import datetime
+from app.utils.cloudinary import upload_file
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -95,15 +96,11 @@ async def update_smtp_settings(data: Dict[Any, Any], db = Depends(get_database))
 
 @router.post("/logo")
 async def upload_logo(file: UploadFile = File(...)):
-    upload_dir = os.path.join(os.getcwd(), "static", "uploads")
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
+    # Read file content
+    content = await file.read()
+    # Upload to Cloudinary
+    result = await upload_file(content, filename=file.filename)
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to upload logo to Cloudinary")
         
-    filename = f"company_logo_{int(datetime.now().timestamp())}.png"
-    file_path = os.path.join(upload_dir, filename)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    url = f"/static/uploads/{filename}"
-    return {"url": url}
+    return {"url": result["url"]}
