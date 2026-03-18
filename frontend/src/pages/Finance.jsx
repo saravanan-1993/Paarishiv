@@ -495,7 +495,8 @@ const Finance = () => {
                 particulars: `Sales Invoice - ${b.bill_no}`,
                 debit: b.total_amount || 0,
                 credit: 0,
-                party: b.project
+                party: b.project,
+                project: b.project
             });
             if (b.collection_amount > 0) {
                 entries.push({
@@ -503,7 +504,8 @@ const Finance = () => {
                     particulars: `Payment Received - ${b.bill_no}`,
                     debit: 0,
                     credit: b.collection_amount,
-                    party: b.project
+                    party: b.project,
+                    project: b.project
                 });
             }
         });
@@ -516,7 +518,8 @@ const Finance = () => {
                 particulars: `Purchase - ${p.voucher_no}`,
                 debit: 0,
                 credit: p.total_amount || 0,
-                party: p.vendor
+                party: p.vendor,
+                project: p.project
             });
         });
 
@@ -529,7 +532,8 @@ const Finance = () => {
                 particulars: `Purchase Bill - ${pb.bill_no}`,
                 debit: 0,
                 credit: pb.total_amount || parseFloat(pb.amount) || 0,
-                party: pb.vendor_name
+                party: pb.vendor_name,
+                project: pb.project_name
             });
         });
 
@@ -599,7 +603,8 @@ const Finance = () => {
                     particulars: `Payment Made - ${voucher?.voucher_no || 'Purchase'}`,
                     debit: e.amount || 0,
                     credit: 0,
-                    party: entryParty
+                    party: entryParty,
+                    project: e.project
                 });
             } else {
                 // General expense (Labor, Fuel, etc.)
@@ -608,7 +613,8 @@ const Finance = () => {
                     particulars: `Expense: ${e.category} - ${e.description || 'Direct Payment'}`,
                     debit: e.amount || 0,
                     credit: 0,
-                    party: entryParty
+                    party: entryParty,
+                    project: e.project
                 });
             }
         });
@@ -786,6 +792,19 @@ const Finance = () => {
                             </div>
                             <div style={{ width: '200px' }}>
                                 <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
+                                />
+                            </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
                                     options={billTypes.map(t => ({ value: t, label: t }))}
                                     value={billTypeFilter}
                                     onChange={setBillTypeFilter}
@@ -933,6 +952,19 @@ const Finance = () => {
                                     }}
                                 />
                             </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
+                                />
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>From</label>
                                 <input
@@ -1023,6 +1055,19 @@ const Finance = () => {
                                         width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px',
                                         border: '1.5px solid #E2E8F0', fontSize: '14px', background: 'white'
                                     }}
+                                />
+                            </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
                                 />
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1141,6 +1186,19 @@ const Finance = () => {
                                     }}
                                 />
                             </div>
+                            <div style={{ width: '200px' }}>
+                                <CustomSelect
+                                    options={[
+                                        { value: 'All Projects', label: 'All Projects' },
+                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                    ]}
+                                    value={selectedProject}
+                                    onChange={setSelectedProject}
+                                    placeholder="Filter Project"
+                                    width="full"
+                                    icon={Briefcase}
+                                />
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-muted)' }}>From</label>
                                 <input
@@ -1178,6 +1236,7 @@ const Finance = () => {
                                         <th>Project</th>
                                         <th>Category</th>
                                         <th>Description</th>
+                                        <th>Paid To</th>
                                         <th style={{ textAlign: 'right' }}>Amount</th>
                                     </tr>
                                 </thead>
@@ -1194,6 +1253,7 @@ const Finance = () => {
                                                 </span>
                                             </td>
                                             <td style={{ fontSize: '13px', maxWidth: '300px' }}>{exp.description}</td>
+                                            <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{exp.payee || '—'}</td>
                                             <td style={{ textAlign: 'right', fontWeight: '800', color: '#EF4444' }}>
                                                 {fmt(exp.amount || 0)}
                                             </td>
@@ -1282,7 +1342,20 @@ const Finance = () => {
                                         </button>
                                     ))}
                                 </div>
-                                <div style={{ width: '250px' }}>
+                                <div style={{ width: '220px' }}>
+                                    <CustomSelect
+                                        options={[
+                                            { value: 'All Projects', label: 'All Projects' },
+                                            ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        ]}
+                                        value={selectedProject}
+                                        onChange={setSelectedProject}
+                                        placeholder="Project"
+                                        width="full"
+                                        icon={Briefcase}
+                                    />
+                                </div>
+                                <div style={{ width: '220px' }}>
                                     <CustomSelect
                                         options={ledgerParties.map(t => ({ value: t, label: t }))}
                                         value={ledgerParty}
@@ -1330,6 +1403,7 @@ const Finance = () => {
                                             <thead>
                                                 <tr>
                                                     <th>Date</th>
+                                                    <th>Project</th>
                                                     <th>Particulars</th>
                                                     <th>Party</th>
                                                     <th style={{ textAlign: 'right' }}>Debit (Dr)</th>
@@ -1341,6 +1415,7 @@ const Finance = () => {
                                                 {entries.map((entry, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontSize: '13px' }}>{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                                        <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '11px' }}>{entry.project || 'General'}</td>
                                                         <td style={{ fontWeight: '600' }}>{entry.particulars}</td>
                                                         <td>{entry.party}</td>
                                                         <td style={{ textAlign: 'right', color: '#EF4444', fontWeight: '600' }}>{entry.debit > 0 ? fmt(entry.debit) : '—'}</td>
@@ -1350,7 +1425,7 @@ const Finance = () => {
                                                 ))}
                                                 {entries.length === 0 && (
                                                     <tr>
-                                                        <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No ledger entries found.</td>
+                                                        <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No ledger entries found.</td>
                                                     </tr>
                                                 )}
                                             </tbody>

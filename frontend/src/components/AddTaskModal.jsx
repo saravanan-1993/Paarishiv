@@ -111,6 +111,18 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
             alert('Task description is required.');
             return;
         }
+        if (!form.startDate) {
+            alert('Start date is required.');
+            return;
+        }
+        if (!form.dueDate) {
+            alert('Due date is required.');
+            return;
+        }
+        if (!form.dueTime) {
+            alert('Due time is required.');
+            return;
+        }
         setLoading(true);
         try {
             const targetProjectId = getStringId(project?._id || project?.id || selectedProjectId);
@@ -261,7 +273,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
                         {/* Dates */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             <div>
-                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Start Date</label>
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Start Date *</label>
                                 <div style={{ position: 'relative' }}>
                                     <Calendar size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                                     <input
@@ -279,7 +291,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
                                 </div>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Due Date & Time</label>
+                                <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Due Date & Time *</label>
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     <div style={{ position: 'relative', flex: '1.2' }}>
                                         <Calendar size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
