@@ -75,12 +75,14 @@ const MaterialLedgerModal = ({ isOpen, onClose, materialName, projectName }) => 
                                             <td style={{ fontSize: '13px' }}>{formattedDate}</td>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {row.in_qty > 0 ? (
+                                                    {row.in_qty > 0 || (row.type && (row.type.includes('In') || row.type === 'GRN' || row.type === 'Stock Return' || row.type.includes('GRN'))) ? (
                                                         <ArrowUpCircle size={14} color="#10B981" />
-                                                    ) : (
+                                                    ) : row.out_qty > 0 || (row.type && (row.type.includes('Out') || row.type === 'Stock Issue')) ? (
                                                         <ArrowDownCircle size={14} color="#EF4444" />
+                                                    ) : (
+                                                        <ArrowUpCircle size={14} color="#94a3b8" />
                                                     )}
-                                                    <span style={{ fontWeight: '600', fontSize: '13px' }}>{row.type}</span>
+                                                    <span style={{ fontWeight: '600', fontSize: '13px' }}>{row.type || 'Entry'}</span>
                                                 </div>
                                             </td>
                                             <td style={{ fontFamily: 'monospace', fontWeight: '700', color: 'var(--primary)' }}>{row.ref}</td>

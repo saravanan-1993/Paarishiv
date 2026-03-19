@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any
 from database import get_database
+from app.utils.auth import get_current_user
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/roles", tags=["roles"])
 
@@ -215,7 +217,8 @@ DEFAULT_ROLES = [
     }
 ]
 
-@router.get("/")
+# C4 Fix: Added auth dependency to GET and RBAC to POST
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def get_roles(db = Depends(get_database)):
     roles_doc = await db.roles.find_one({"_id": "global_roles"})
     if not roles_doc:
@@ -224,7 +227,8 @@ async def get_roles(db = Depends(get_database)):
         return DEFAULT_ROLES
     return roles_doc.get("roles", DEFAULT_ROLES)
 
-@router.post("/")
+# C4 Fix: Only admins can save roles
+@router.post("/", dependencies=[Depends(RBACPermission("User Management", "edit"))])
 async def save_roles(roles: List[Dict[str, Any]], db = Depends(get_database)):
     # Upsert the roles
     await db.roles.update_one(

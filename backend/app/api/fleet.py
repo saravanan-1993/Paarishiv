@@ -4,40 +4,51 @@ from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock
 from database import get_database
 from bson import ObjectId
 from datetime import datetime
+from app.utils.rbac import RBACPermission
+from app.utils.auth import get_current_user, validate_object_id
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
 # ── Vehicles ──────────────────────────────────────────────────────────────────
 
-@router.get("/vehicles")
+# C4 Fix: Auth on all fleet GET routes
+@router.get("/vehicles", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_vehicles(db = Depends(get_database)):
     vehicles = await db.vehicles.find().to_list(100)
     return [{"id": str(v["_id"]), **{k: v for k, v in v.items() if k != "_id"}} for v in vehicles]
 
-@router.post("/vehicles")
+@router.post("/vehicles", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def create_vehicle(vehicle: VehicleBase, db = Depends(get_database)):
     result = await db.vehicles.insert_one(vehicle.dict())
     return {"id": str(result.inserted_id), **vehicle.dict()}
 
-@router.put("/vehicles/{vehicle_id}")
+@router.put("/vehicles/{vehicle_id}", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def update_vehicle(vehicle_id: str, vehicle: dict, db = Depends(get_database)):
+    oid = validate_object_id(vehicle_id, "vehicle")
     if "_id" in vehicle: del vehicle["_id"]
-    await db.vehicles.update_one({"_id": ObjectId(vehicle_id)}, {"$set": vehicle})
+    # C13 Fix: Verify record exists before update
+    result = await db.vehicles.update_one({"_id": oid}, {"$set": vehicle})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
     return {"success": True}
 
-@router.delete("/vehicles/{vehicle_id}")
+@router.delete("/vehicles/{vehicle_id}", dependencies=[Depends(RBACPermission("Fleet Management", "delete"))])
 async def delete_vehicle(vehicle_id: str, db = Depends(get_database)):
-    await db.vehicles.delete_one({"_id": ObjectId(vehicle_id)})
+    oid = validate_object_id(vehicle_id, "vehicle")
+    # C13 Fix: Verify record exists before delete
+    result = await db.vehicles.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
     return {"success": True}
 
 # ── Trips ─────────────────────────────────────────────────────────────────────
 
-@router.get("/trips")
+@router.get("/trips", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_trips(db = Depends(get_database)):
     trips = await db.trips.find().sort("date", -1).to_list(500)
     return [{"id": str(t["_id"]), **{k: v for k, v in t.items() if k != "_id"}} for t in trips]
 
-@router.post("/trips")
+@router.post("/trips", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def create_trip(trip: TripBase, db = Depends(get_database)):
     trip_data = trip.dict()
     # Auto-calc if possible, though initially it might be 0
@@ -46,12 +57,13 @@ async def create_trip(trip: TripBase, db = Depends(get_database)):
     if "_id" in trip_data: del trip_data["_id"]
     return {"id": str(result.inserted_id), **trip_data}
 
-@router.put("/trips/{trip_id}")
+@router.put("/trips/{trip_id}", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def update_trip(trip_id: str, trip_update: dict, db = Depends(get_database)):
+    oid = validate_object_id(trip_id, "trip")
     if "_id" in trip_update: del trip_update["_id"]
-    
+
     # Fetch existing trip to ensure calculated fields remain correct
-    existing_trip = await db.trips.find_one({"_id": ObjectId(trip_id)})
+    existing_trip = await db.trips.find_one({"_id": oid})
     if not existing_trip:
         raise HTTPException(status_code=404, detail="Trip not found")
         
@@ -64,14 +76,18 @@ async def update_trip(trip_id: str, trip_update: dict, db = Depends(get_database
     await db.trips.update_one({"_id": ObjectId(trip_id)}, {"$set": trip_update})
     return {"success": True}
 
-@router.delete("/trips/{trip_id}")
+@router.delete("/trips/{trip_id}", dependencies=[Depends(RBACPermission("Fleet Management", "delete"))])
 async def delete_trip(trip_id: str, db = Depends(get_database)):
-    await db.trips.delete_one({"_id": ObjectId(trip_id)})
+    oid = validate_object_id(trip_id, "trip")
+    # C13 Fix: Verify record exists before delete
+    result = await db.trips.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Trip not found")
     return {"success": True}
 
 # ── Stats & Dashboard ─────────────────────────────────────────────────────────
 
-@router.get("/stats/summary")
+@router.get("/stats/summary", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fleet_summary(db = Depends(get_database)):
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -134,13 +150,18 @@ async def get_fleet_summary(db = Depends(get_database)):
 
 # ── Maintenance ───────────────────────────────────────────────────────────────
 
-@router.post("/maintenance")
+@router.post("/maintenance", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database)):
+    # C13 Fix: Validate vehicleId exists before creating maintenance record
+    v_oid = validate_object_id(record.vehicleId, "vehicle")
+    vehicle = await db.vehicles.find_one({"_id": v_oid})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
     result = await db.maintenance.insert_one(record.dict())
-    
+
     # Update vehicle's last service info
     await db.vehicles.update_one(
-        {"_id": ObjectId(record.vehicleId)},
+        {"_id": v_oid},
         {"$set": {
             "lastServiceDate": record.date,
             "currentKm": record.odometer
@@ -148,14 +169,14 @@ async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database))
     )
     return {"id": str(result.inserted_id), **record.dict()}
 
-@router.get("/maintenance/{vehicle_id}")
+@router.get("/maintenance/{vehicle_id}", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_vehicle_maintenance(vehicle_id: str, db = Depends(get_database)):
     records = await db.maintenance.find({"vehicleId": vehicle_id}).sort("date", -1).to_list(100)
     return [{"id": str(r["_id"]), **{k: v for k, v in r.items() if k != "_id"}} for r in records]
 
 # ── Fuel Management ──────────────────────────────────────────────────────────
 
-@router.get("/fuel/stock")
+@router.get("/fuel/stock", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_stock(project_name: Optional[str] = None, db = Depends(get_database)):
     query = {}
     if project_name and project_name not in ["all", "All Sites"]:
@@ -164,12 +185,12 @@ async def get_fuel_stock(project_name: Optional[str] = None, db = Depends(get_da
     stocks = await db.fuel_stock.find(query).sort("date", -1).to_list(500)
     return [{"id": str(s["_id"]), **{k: v for k, v in s.items() if k != "_id"}} for s in stocks]
 
-@router.post("/fuel/stock")
+@router.post("/fuel/stock", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def add_fuel_stock(stock: FuelStock, db = Depends(get_database)):
     result = await db.fuel_stock.insert_one(stock.dict())
     return {"id": str(result.inserted_id), **stock.dict()}
 
-@router.get("/fuel/logs")
+@router.get("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_database)):
     query = {}
     if project_name and project_name not in ["all", "All Sites"]:
@@ -178,12 +199,12 @@ async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_dat
     logs = await db.fuel_logs.find(query).sort("date", -1).to_list(1000)
     return [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs]
 
-@router.post("/fuel/logs")
+@router.post("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def add_fuel_log(log: FuelLog, db = Depends(get_database)):
     result = await db.fuel_logs.insert_one(log.dict())
     return {"id": str(result.inserted_id), **log.dict()}
 
-@router.get("/fuel/summary")
+@router.get("/fuel/summary", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_database)):
     query = {}
     if project_name and project_name not in ["all", "All Sites"]:
@@ -200,10 +221,25 @@ async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_
     # Current stock
     current_stock = total_in - total_out
     
-    # Consumption this month
+    # Bug 5.3 - Consumption this month (proper date comparison)
     now = datetime.now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d")
-    month_logs = [l for l in logs if str(l.get("date")) >= month_start]
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_logs = []
+    for l in logs:
+        log_date = l.get("date")
+        if not log_date:
+            continue
+        if isinstance(log_date, str):
+            try:
+                log_date = datetime.fromisoformat(log_date.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                continue
+        elif isinstance(log_date, datetime):
+            log_date = log_date.replace(tzinfo=None)
+        else:
+            continue
+        if log_date >= month_start:
+            month_logs.append(l)
     month_out = sum(l.get("qty", 0) for l in month_logs)
     
     return {

@@ -82,6 +82,23 @@ const Chat = () => {
         }
     }, [selectedUser]);
 
+    // Bug 10.4 - Periodic sync to ensure messages stay in sync
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const current = selectedUserRef.current;
+            if (current) {
+                if (current.isGroup) {
+                    fetchGroupHistory(current._id);
+                } else {
+                    fetchHistory(current.username);
+                }
+            }
+            fetchUsers();
+            fetchGroups();
+        }, 10000); // Sync every 10 seconds
+        return () => clearInterval(interval);
+    }, [user]);
+
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
@@ -165,6 +182,9 @@ const Chat = () => {
     const getFileUrl = (url) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
+        if (url.startsWith('data:')) return url;
+        // Bug 10.2 - Local static files should not be prefixed with API_BASE
+        if (url.startsWith('/static/')) return url;
         return `${API_BASE}${url}`;
     };
 

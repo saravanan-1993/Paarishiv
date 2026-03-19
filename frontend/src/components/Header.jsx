@@ -13,8 +13,24 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
     const { notifications, unreadCount, markAllAsRead } = useNotifications();
     const [notifOpen, setNotifOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
+    const [companyLogo, setCompanyLogo] = useState('');
     const notifRef = useRef(null);
     const profileRef = useRef(null);
+
+    // Bug 11.2 - Fetch company logo
+    useEffect(() => {
+        const fetchLogo = async () => {
+            try {
+                const { settingsAPI } = await import('../utils/api');
+                const res = await settingsAPI.getCompany();
+                if (res.data?.logo) setCompanyLogo(res.data.logo);
+            } catch (e) {}
+        };
+        fetchLogo();
+        const handler = () => fetchLogo();
+        window.addEventListener('companyInfoUpdated', handler);
+        return () => window.removeEventListener('companyInfoUpdated', handler);
+    }, []);
 
     // Close panel when clicking outside
     useEffect(() => {
@@ -64,11 +80,18 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                         padding: '8px',
                         color: 'var(--text-main)',
                         cursor: 'pointer',
-                        display: 'none' // Hidden by default, shown via CSS on mobile
+                        display: 'none'
                     }}
                 >
                     {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
+                {companyLogo && (
+                    <img
+                        src={companyLogo.startsWith('http') || companyLogo.startsWith('/static') ? companyLogo : `/api${companyLogo}`}
+                        alt="Logo"
+                        style={{ height: '36px', objectFit: 'contain', borderRadius: '6px' }}
+                    />
+                )}
             </div>
 
             <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>

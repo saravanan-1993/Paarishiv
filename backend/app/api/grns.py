@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/grns", tags=["grns"])
 
@@ -33,6 +34,9 @@ def grn_helper(grn) -> dict:
         "receipt_type": grn.get("receipt_type", "Partial"),
         "items": grn["items"],
         "status": grn.get("status", "Received"),
+        "is_billed": grn.get("is_billed", False),
+        "vendor_name": grn.get("vendor_name", ""),
+        "project_name": grn.get("project_name", ""),
         "created_at": grn.get("created_at")
     }
 
@@ -60,15 +64,14 @@ async def get_grns(current_user: dict = Depends(get_current_user)):
                 if po:
                     helper_g["vendor_name"] = po.get("vendor_name", "Unknown Vendor")
                     helper_g["project_name"] = po.get("project_name", "Unknown Project")
-        except:
+        except Exception as e:
             pass
         enriched_grns.append(helper_g)
         
     return enriched_grns
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("Procurement", "edit", "GRN"))])
 async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_user)):
-    print(f"DEBUG: Creating GRN for PO: {grn.po_id}")
     grn_dict = grn.model_dump()
     grn_dict["created_at"] = datetime.now()
     result = await db.grns.insert_one(grn_dict)
@@ -80,32 +83,29 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
             po = await db.purchase_orders.find_one({"_id": ObjectId(grn.po_id)})
             if po:
                 project_name = po.get("project_name", "Unknown")
-                print(f"DEBUG: Found Project Name: {project_name}")
             else:
-                print(f"DEBUG: PO NOT FOUND: {grn.po_id}")
+                pass
     except Exception as e:
-        print(f"DEBUG: Error fetching PO: {e}")
+        pass
 
-    # Update PO status
-    po_status = "Partially Received" if grn.receipt_type == "Partial" else "Closed"
+    # Bug 5.1 - Update PO status properly when GRN is created
+    po_status = "Partially Received" if grn.receipt_type == "Partial" else "Completed"
     try:
         if ObjectId.is_valid(grn.po_id):
             await db.purchase_orders.update_one(
                 {"_id": ObjectId(grn.po_id)},
                 {"$set": {"status": po_status}}
             )
-            
+
             project = await db.projects.find_one({"name": project_name})
             if project:
                 await trigger_workflow_event(str(project["_id"]), "grn_updated", current_user, db, f"GRN recorded for PO-{grn.po_id[-6:]}")
-                
-    except:
+
+    except Exception as e:
         pass
 
     # Update Inventory Stock
-    print(f"DEBUG: Updating inventory for {len(grn.items)} items")
     for item in grn.items:
-        print(f"DEBUG: Updating material: {item.name}, Qty: {item.received_qty}")
         
         # Check stock handling type of the material
         material = await db.materials.find_one({"name": item.name})
@@ -138,7 +138,6 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                 "out_qty": 0,
                 "created_at": datetime.now()
             })
-            print(f"DEBUG: Added {item.received_qty} to Warehouse Inventory")
         else:
             # Direct to site inventory
             await db.inventory.update_one(
@@ -163,7 +162,6 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                 "out_qty": 0,
                 "created_at": datetime.now()
             })
-            print(f"DEBUG: Added {item.received_qty} to Project: {project_name} Inventory")
 
     new_grn = await db.grns.find_one({"_id": result.inserted_id})
     return grn_helper(new_grn)

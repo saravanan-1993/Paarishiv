@@ -101,13 +101,14 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         if (dpr.material_rows?.length > 0) {
             autoTable(doc, {
                 startY: finalY + 10,
-                head: [['Material Name', 'Opening', 'Received', 'Used', 'Closing']],
+                head: [['Material Name', 'UOM', 'Opening', 'Received', 'Used', 'Closing']],
                 body: dpr.material_rows.map(r => [
                     r.name,
+                    r.uom || r.unit || '-',
                     r.opening,
                     r.received,
                     r.used,
-                    (Number(r.opening) + Number(r.received)) - Number(r.used)
+                    (Number(r.opening || 0) + Number(r.received || 0)) - Number(r.used || 0)
                 ]),
                 theme: 'grid',
                 headStyles: { fillColor: [30, 58, 95] }
@@ -119,8 +120,8 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         if (dpr.equipment_rows?.length > 0) {
             autoTable(doc, {
                 startY: finalY + 10,
-                head: [['Equipment Name', 'Machine No.', 'Hours Used', 'Fuel (Ltr)']],
-                body: dpr.equipment_rows.map(r => [r.name, r.no, r.hours, r.fuel]),
+                head: [['Equipment Name', 'Machine No.', 'Hours Used', 'Fuel (Ltr)', 'Rate/Hr', 'Amount']],
+                body: dpr.equipment_rows.map(r => [r.name, r.no, r.hours, r.fuel, r.rate || '-', r.rate ? (Number(r.hours || 0) * Number(r.rate || 0)).toFixed(2) : '-']),
                 theme: 'grid',
                 headStyles: { fillColor: [30, 58, 95] }
             });

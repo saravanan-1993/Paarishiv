@@ -60,6 +60,10 @@ const Settings = () => {
         apiSecret: ''
     });
 
+    // Security / Password State
+    const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    const [passwordMsg, setPasswordMsg] = useState('');
+
     // SMTP State
     const [smtpConfig, setSmtpConfig] = useState({
         host: '',
@@ -73,7 +77,6 @@ const Settings = () => {
     const tabs = useMemo(() => [
         { id: 'Profile', icon: User, label: 'Profile' },
         { id: 'Company Profile', icon: Building2, label: 'Company Profile' },
-        { id: 'Notifications', icon: Bell, label: 'Notifications' },
         { id: 'Security', icon: Shield, label: 'Security' },
         { id: 'Cloudinary', icon: Cloud, label: 'Cloudinary' },
         { id: 'SMTP', icon: Mail, label: 'SMTP' },
@@ -197,6 +200,35 @@ const Settings = () => {
             alert("SMTP settings saved successfully!");
         } catch (err) {
             alert("Failed to save SMTP settings");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleChangePassword = async () => {
+        setPasswordMsg('');
+        if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+            setPasswordMsg('Please fill in all fields');
+            return;
+        }
+        if (passwordForm.newPassword.length < 6) {
+            setPasswordMsg('New password must be at least 6 characters');
+            return;
+        }
+        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+            setPasswordMsg('New passwords do not match');
+            return;
+        }
+        setLoading(true);
+        try {
+            await settingsAPI.changePassword({
+                currentPassword: passwordForm.currentPassword,
+                newPassword: passwordForm.newPassword
+            });
+            setPasswordMsg('Password updated successfully!');
+            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        } catch (err) {
+            setPasswordMsg(err.response?.data?.detail || 'Failed to update password');
         } finally {
             setLoading(false);
         }
@@ -342,33 +374,6 @@ const Settings = () => {
                     </div>
                 )}
 
-                {activeTab === 'Notifications' && (
-                    <div className="card" style={{ padding: '32px' }}>
-                        <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '24px' }}>Notification Preferences</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            {[
-                                { title: 'Email Notifications', desc: 'Receive daily reports and approval alerts via email.' },
-                                { title: 'SMS Alerts', desc: 'Critical site alerts and payment reminders.' },
-                                { title: 'Push Notifications', desc: 'Real-time updates on mobile and desktop.' },
-                                { title: 'Attendance Reports', desc: 'Weekly summary of employee attendance.' }
-                            ].map((item, i) => (
-                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderRadius: '8px', backgroundColor: '#f8fafc' }}>
-                                    <div>
-                                        <h4 style={{ fontSize: '15px', fontWeight: '700' }}>{item.title}</h4>
-                                        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{item.desc}</p>
-                                    </div>
-                                    <div style={{ width: '44px', height: '22px', backgroundColor: i % 2 === 0 ? 'var(--primary)' : '#cbd5e1', borderRadius: '11px', padding: '2px', cursor: 'pointer', display: 'flex', justifyContent: i % 2 === 0 ? 'flex-end' : 'flex-start' }}>
-                                        <div style={{ width: '18px', height: '18px', backgroundColor: 'white', borderRadius: '50%' }}></div>
-                                    </div>
-                                </div>
-                            ))}
-                            <div style={{ marginTop: '12px' }}>
-                                <button className="btn btn-primary" style={{ fontWeight: '800' }}><Save size={18} /> SAVE PREFERENCES</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {activeTab === 'Security' && (
                     <div className="card" style={{ padding: '32px' }}>
                         <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>Security Settings</h3>
@@ -378,28 +383,28 @@ const Settings = () => {
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Current Password</label>
                                 <div style={{ position: 'relative' }}>
-                                    <input type="password" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <input type="password" value={passwordForm.currentPassword} onChange={e => setPasswordForm(p => ({...p, currentPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                                     <Lock size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 </div>
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>New Password</label>
-                                <input type="password" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <input type="password" value={passwordForm.newPassword} onChange={e => setPasswordForm(p => ({...p, newPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} placeholder="Minimum 6 characters" />
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Confirm New Password</label>
-                                <input type="password" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <input type="password" value={passwordForm.confirmPassword} onChange={e => setPasswordForm(p => ({...p, confirmPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                             </div>
+                            {passwordMsg && (
+                                <p style={{ fontSize: '14px', fontWeight: '600', color: passwordMsg.includes('success') ? '#10B981' : '#EF4444' }}>{passwordMsg}</p>
+                            )}
                             <div>
-                                <button className="btn btn-primary" style={{ fontWeight: '800' }}><Shield size={18} /> UPDATE PASSWORD</button>
+                                <button className="btn btn-primary" onClick={handleChangePassword} disabled={loading} style={{ fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {loading ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Shield size={18} />} UPDATE PASSWORD
+                                </button>
                             </div>
                         </div>
 
-                        <div style={{ marginTop: '40px', padding: '24px', borderRadius: '12px', border: '1px solid #fee2e2', backgroundColor: '#fef2f2' }}>
-                            <h4 style={{ fontSize: '16px', fontWeight: '700', color: '#991b1b', marginBottom: '8px' }}>Two-Factor Authentication</h4>
-                            <p style={{ fontSize: '13px', color: '#991b1b', marginBottom: '16px' }}>Add an extra layer of security to your account by enabling two-factor authentication.</p>
-                            <button className="btn btn-outline" style={{ borderColor: '#ef4444', color: '#ef4444' }}>Enable 2FA</button>
-                        </div>
                     </div>
                 )}
 

@@ -1,13 +1,15 @@
 import asyncio
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Query
 from typing import List, Optional, Dict
 import json
 from datetime import datetime
 from database import get_database
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, SECRET_KEY, ALGORITHM
 from app.models.chat import MessageCreate, MessageResponse, ChatUser, MessageBase, ChatGroup
 from bson import ObjectId
 from app.utils.cloudinary import upload_file
+from app.utils.sanitize import sanitize_string
+from jose import JWTError, jwt
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -60,7 +62,8 @@ async def send_system_message(sender: str, receiver: str, content: str, msg_type
         await manager.send_personal_message(json.dumps(new_message, default=str), receiver)
     return new_message
 
-@router.get("/notifications/{user_id}")
+# C4 Fix: Auth on all chat routes
+@router.get("/notifications/{user_id}", dependencies=[Depends(get_current_user)])
 async def get_notifications(user_id: str, db = Depends(get_database)):
     # Simple count of unread messages
     # 1. Count unread direct messages
@@ -86,7 +89,7 @@ async def get_notifications(user_id: str, db = Depends(get_database)):
         
     return {"unread_count": direct_count + group_count}
 
-@router.post("/mark-read/{user_id}/{sender_id}")
+@router.post("/mark-read/{user_id}/{sender_id}", dependencies=[Depends(get_current_user)])
 async def mark_as_read(user_id: str, sender_id: str, group_id: Optional[str] = None, db = Depends(get_database)):
     if group_id:
         # For groups, we track the last time this user read this group
@@ -102,7 +105,7 @@ async def mark_as_read(user_id: str, sender_id: str, group_id: Optional[str] = N
         )
     return {"success": True}
 
-@router.get("/groups/{username}", response_model=List[ChatGroup])
+@router.get("/groups/{username}", response_model=List[ChatGroup], dependencies=[Depends(get_current_user)])
 async def get_user_groups(username: str, db = Depends(get_database)):
     cursor = db.chat_groups.find({"members": username})
     groups = await cursor.to_list(length=100)
@@ -123,7 +126,7 @@ async def get_user_groups(username: str, db = Depends(get_database)):
         
     return groups
 
-@router.post("/groups", response_model=ChatGroup)
+@router.post("/groups", response_model=ChatGroup, dependencies=[Depends(get_current_user)])
 async def create_group(group: ChatGroup, db = Depends(get_database)):
     group_dict = group.dict(exclude={"id"})
     
@@ -145,7 +148,7 @@ async def create_group(group: ChatGroup, db = Depends(get_database)):
     return group_dict
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[Depends(get_current_user)])
 async def upload_chat_file(file: UploadFile = File(...)):
     # Read file content
     content = await file.read()
@@ -160,8 +163,21 @@ async def upload_chat_file(file: UploadFile = File(...)):
         "type": "image" if result["type"] == "image" else "file"
     }
 
+# C5 Fix: WebSocket authentication via JWT token in query param
 @router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
+async def websocket_endpoint(websocket: WebSocket, user_id: str, token: Optional[str] = Query(None)):
+    # Validate JWT token before accepting connection
+    if token:
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            token_user = payload.get("sub")
+            if token_user != user_id:
+                await websocket.close(code=4003, reason="User ID mismatch")
+                return
+        except JWTError:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+
     await manager.connect(user_id, websocket)
     try:
         while True:
@@ -182,10 +198,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                     demo = DEMO_USERS.get(user_id)
                     if demo: sender_name = demo["full_name"]
 
+                # C12 Fix: Sanitize chat message content
                 new_message = {
                     "sender": user_id,
                     "sender_name": sender_name,
-                    "content": message_data["content"],
+                    "content": sanitize_string(message_data.get("content", "")),
                     "timestamp": datetime.now(),
                     "is_read": False,
                     "group_id": message_data.get("group_id"),
@@ -236,7 +253,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     finally:
         manager.disconnect(user_id)
 
-@router.get("/history/{user1}/{user2}", response_model=List[MessageResponse])
+@router.get("/history/{user1}/{user2}", response_model=List[MessageResponse], dependencies=[Depends(get_current_user)])
 async def get_chat_history(user1: str, user2: str, db = Depends(get_database)):
     query = {
         "$or": [
@@ -245,36 +262,31 @@ async def get_chat_history(user1: str, user2: str, db = Depends(get_database)):
         ]
     }
     cursor = db.chat_messages.find(query).sort("timestamp", 1)
-    messages = await cursor.to_list(length=100)
+    messages = await cursor.to_list(length=500)
     for msg in messages:
         msg["_id"] = str(msg["_id"])
     return messages
 
-@router.get("/history/group/{group_id}", response_model=List[MessageResponse])
+@router.get("/history/group/{group_id}", response_model=List[MessageResponse], dependencies=[Depends(get_current_user)])
 async def get_group_history(group_id: str, db = Depends(get_database)):
     cursor = db.chat_messages.find({"group_id": group_id}).sort("timestamp", 1)
-    messages = await cursor.to_list(length=200)
+    messages = await cursor.to_list(length=500)
     for msg in messages:
         msg["_id"] = str(msg["_id"])
     return messages
 
 
-@router.get("/users", response_model=List[ChatUser])
+@router.get("/users", response_model=List[ChatUser], dependencies=[Depends(get_current_user)])
 async def get_chat_users(db = Depends(get_database)):
-    # Fetch all employees/users to chat with
-    cursor = db.employees.find({})
-    employees = await cursor.to_list(length=100)
-    
+    # Bug 10.1 - Fetch ALL active employees (increased limit)
+    employees = await db.employees.find({"status": "Active"}).to_list(length=5000)
+
     chat_users = []
-    # Add hardcoded demo users too
-    demo_users = [
-        {"username": "admin", "full_name": "Super Admin User", "role": "Super Admin"},
-        {"username": "engineer", "full_name": "Suki Engineer", "role": "Site Engineer"}
-    ]
-    
-    for user in demo_users:
-        # Count unread
-        # We don't have current user here easily, so skip for now or fetch later
+    seen_usernames = set()
+
+    # Add all demo users
+    from app.utils.auth import DEMO_USERS
+    for uname, user in DEMO_USERS.items():
         chat_users.append(ChatUser(
             username=user["username"],
             full_name=user["full_name"],
@@ -282,10 +294,11 @@ async def get_chat_users(db = Depends(get_database)):
             is_online=user["username"] in manager.active_connections,
             unread_count=0
         ))
-        
+        seen_usernames.add(user["username"])
+
     for emp in employees:
         username = emp.get("employeeCode") or emp.get("username")
-        if username and not any(u.username == username for u in chat_users):
+        if username and username not in seen_usernames:
             chat_users.append(ChatUser(
                 username=username,
                 full_name=emp.get("fullName") or emp.get("name") or username,
@@ -293,10 +306,11 @@ async def get_chat_users(db = Depends(get_database)):
                 is_online=username in manager.active_connections,
                 unread_count=0
             ))
-            
+            seen_usernames.add(username)
+
     return chat_users
 
-@router.get("/users/{current_user}", response_model=List[ChatUser])
+@router.get("/users/{current_user}", response_model=List[ChatUser], dependencies=[Depends(get_current_user)])
 async def get_chat_users_with_unread(current_user: str, db = Depends(get_database)):
     # 1. Get base users (employees + demo)
     users = await get_chat_users(db)

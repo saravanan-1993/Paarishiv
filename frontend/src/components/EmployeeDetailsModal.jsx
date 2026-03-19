@@ -4,12 +4,13 @@ import {
     Landmark, Shield, FileText, Download, ExternalLink,
     Loader2, User, Building, Award, Clock, Cake
 } from 'lucide-react';
-import { settingsAPI } from '../utils/api';
+import { settingsAPI, employeeAPI } from '../utils/api';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
     const [attSummary, setAttSummary] = useState({ present_days: 0, absent_days: 0, total_hours: 0 });
+    const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(false);
     const [companyInfo, setCompanyInfo] = useState({
         companyName: 'CIVIL ERP',
@@ -48,6 +49,19 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                 }
             };
             fetchAtt();
+
+            // Fetch employee documents
+            const fetchDocs = async () => {
+                try {
+                    const empId = employee._id || employee.id;
+                    const res = await employeeAPI.getDocuments(empId);
+                    setDocuments(res.data || []);
+                } catch (err) {
+                    console.error("Error fetching employee documents:", err);
+                    setDocuments([]);
+                }
+            };
+            fetchDocs();
         }
     }, [isOpen, employee]);
 
@@ -241,6 +255,45 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                                     <DetailItem icon={Wallet} label="Monthly CTC" value={`₹${(employee.basicSalary || 0).toLocaleString()}`} />
                                 </div>
                             </section>
+
+                            {/* Documents Section */}
+                            {documents.length > 0 && (
+                                <section>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                                        <div style={{ width: '4px', height: '20px', background: '#f59e0b', borderRadius: '2px' }}></div>
+                                        <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#1e293b' }}>Documents</h3>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {documents.map((doc, idx) => (
+                                            <a
+                                                key={idx}
+                                                href={doc.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    display: 'flex', alignItems: 'center', gap: '12px',
+                                                    padding: '12px 16px', background: '#f8fafc', borderRadius: '12px',
+                                                    border: '1px solid #e2e8f0', textDecoration: 'none', color: 'var(--text-main)',
+                                                    transition: 'all 0.2s', cursor: 'pointer'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
+                                                onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+                                            >
+                                                <div style={{ padding: '8px', background: 'white', borderRadius: '8px', color: 'var(--primary)' }}>
+                                                    <FileText size={16} />
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <p style={{ fontSize: '13px', fontWeight: '700' }}>{doc.filename}</p>
+                                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                        {doc.type?.toUpperCase()} {doc.uploaded_at ? `• ${new Date(doc.uploaded_at).toLocaleDateString()}` : ''}
+                                                    </p>
+                                                </div>
+                                                <ExternalLink size={14} style={{ color: 'var(--text-muted)' }} />
+                                            </a>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
                         </div>
 
                         {/* Right Column */}

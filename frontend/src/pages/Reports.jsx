@@ -9,6 +9,8 @@ import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const fmt = (n) => {
     if (!n && n !== 0) return '₹0';
@@ -668,9 +670,15 @@ const ReportPreview = ({
 };
 
 const Reports = () => {
+    const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeCategory, setActiveCategory] = useState('All');
+
+    // Bug 7.4 - Filter reports based on user role permissions
+    const userRole = user?.role || '';
+    const isCoordinator = userRole.toLowerCase().includes('coordinator');
+    const canViewFinancial = hasPermission(user, 'Accounts', 'view') || hasPermission(user, 'Finance', 'view');
 
     useEffect(() => {
         if (urlTab) {
@@ -890,6 +898,8 @@ const Reports = () => {
         const matchCat = activeCategory === 'All' || r.category === activeCategory;
         const matchSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             r.description.toLowerCase().includes(searchTerm.toLowerCase());
+        // Bug 7.4 - Coordinators cannot see Financial reports directly
+        if (isCoordinator && !canViewFinancial && r.category === 'Financial') return false;
         return matchCat && matchSearch;
     });
 

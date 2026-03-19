@@ -2,10 +2,11 @@
 from fastapi import APIRouter, Depends
 from database import get_database
 from datetime import datetime
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(RBACPermission("System Logs", "view"))])
 async def get_logs(limit: int = 200, db = Depends(get_database)):
     logs = await db.activity_log.find({}).sort("timestamp", -1).limit(limit).to_list(limit)
     result = []
@@ -45,7 +46,7 @@ async def get_logs(limit: int = 200, db = Depends(get_database)):
 
     return result
 
-@router.delete("/clear")
+@router.delete("/clear", dependencies=[Depends(RBACPermission("System Logs", "delete"))])
 async def clear_logs(db = Depends(get_database)):
     await db.activity_log.delete_many({})
     return {"message": "Logs cleared"}

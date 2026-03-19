@@ -17,6 +17,7 @@ import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI } fro
 import { hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
+import Pagination from '../components/Pagination';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -72,6 +73,12 @@ const Finance = () => {
     const [purchaseSearch, setPurchaseSearch] = useState('');
     const [purchaseDateFrom, setPurchaseDateFrom] = useState('');
     const [purchaseDateTo, setPurchaseDateTo] = useState('');
+    const FIN_PAGE_SIZE = 20;
+    const [billPage, setBillPage] = useState(1);
+    const [purchaseBillPage, setPurchaseBillPage] = useState(1);
+    const [payablePage, setPayablePage] = useState(1);
+    const [expensePage, setExpensePage] = useState(1);
+    const [ledgerPage, setLedgerPage] = useState(1);
 
     const availableTabs = useMemo(() => [
         { id: 'Overview', label: 'Overview', icon: FileText },
@@ -619,7 +626,8 @@ const Finance = () => {
             }
         });
 
-        entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Bug 6.4 - Latest entries should appear on top
+        entries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         let runningBalance = 0;
         return entries.map(e => {
@@ -824,7 +832,7 @@ const Finance = () => {
                                     <Plus size={16} /> Raise First Bill
                                 </button>
                             </div>
-                        ) : (
+                        ) : (<>
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -843,7 +851,7 @@ const Finance = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredBills.map((bill, i) => {
+                                    {filteredBills.slice((billPage - 1) * FIN_PAGE_SIZE, billPage * FIN_PAGE_SIZE).map((bill, i) => {
                                         const totalAmt = bill.total_amount || 0;
                                         const collected = bill.collection_amount || 0;
                                         const balance = totalAmt - collected;
@@ -919,7 +927,8 @@ const Finance = () => {
                                     })}
                                 </tbody>
                             </table>
-                        )}
+                            <Pagination currentPage={billPage} totalItems={filteredBills.length} pageSize={FIN_PAGE_SIZE} onPageChange={setBillPage} />
+                        </>)}
                     </div>
                 )}
 
@@ -994,7 +1003,7 @@ const Finance = () => {
                                     <Plus size={16} /> Record Purchase Bill
                                 </button>
                             </div>
-                        ) : (
+                        ) : (<>
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -1008,7 +1017,7 @@ const Finance = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredPurchaseBills.map((pb, i) => (
+                                    {filteredPurchaseBills.slice((purchaseBillPage - 1) * FIN_PAGE_SIZE, purchaseBillPage * FIN_PAGE_SIZE).map((pb, i) => (
                                         <tr key={pb.id || i}>
                                             <td style={{ fontWeight: '800', color: 'var(--primary)' }}>{pb.bill_no}</td>
                                             <td style={{ fontSize: '13px' }}>
@@ -1027,7 +1036,8 @@ const Finance = () => {
                                     ))}
                                 </tbody>
                             </table>
-                        )}
+                            <Pagination currentPage={purchaseBillPage} totalItems={filteredPurchaseBills.length} pageSize={FIN_PAGE_SIZE} onPageChange={setPurchaseBillPage} />
+                        </>)}
                     </div>
                 )}
 
@@ -1096,7 +1106,7 @@ const Finance = () => {
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>No Pending Payables</h4>
                                 <p>Vendor payables will appear here once GRNs are processed in Procurement, or adjust filters to find existing records.</p>
                             </div>
-                        ) : (
+                        ) : (<>
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -1111,7 +1121,7 @@ const Finance = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredPayables.map((item) => {
+                                    {filteredPayables.slice((payablePage - 1) * FIN_PAGE_SIZE, payablePage * FIN_PAGE_SIZE).map((item) => {
                                         const totAmt = item.total_amount || 0;
                                         const pdAmt = item.paid_amount || 0;
 
@@ -1155,7 +1165,8 @@ const Finance = () => {
                                     })}
                                 </tbody>
                             </table>
-                        )}
+                            <Pagination currentPage={payablePage} totalItems={filteredPayables.length} pageSize={FIN_PAGE_SIZE} onPageChange={setPayablePage} />
+                        </>)}
                     </div>
                 )}
 
@@ -1228,7 +1239,7 @@ const Finance = () => {
                                     <Plus size={16} /> Record Payment
                                 </button>
                             </div>
-                        ) : (
+                        ) : (<>
                             <table className="data-table">
                                 <thead>
                                     <tr>
@@ -1241,7 +1252,7 @@ const Finance = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredExpenses.map((exp, i) => (
+                                    {filteredExpenses.slice((expensePage - 1) * FIN_PAGE_SIZE, expensePage * FIN_PAGE_SIZE).map((exp, i) => (
                                         <tr key={exp.id || i}>
                                             <td style={{ fontSize: '13px' }}>
                                                 {exp.date ? new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
@@ -1261,7 +1272,8 @@ const Finance = () => {
                                     ))}
                                 </tbody>
                             </table>
-                        )}
+                            <Pagination currentPage={expensePage} totalItems={filteredExpenses.length} pageSize={FIN_PAGE_SIZE} onPageChange={setExpensePage} />
+                        </>)}
                     </div>
                 )}
 
@@ -1412,7 +1424,7 @@ const Finance = () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {entries.map((entry, i) => (
+                                                {entries.slice((ledgerPage - 1) * FIN_PAGE_SIZE, ledgerPage * FIN_PAGE_SIZE).map((entry, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontSize: '13px' }}>{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
                                                         <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '11px' }}>{entry.project || 'General'}</td>
@@ -1430,6 +1442,7 @@ const Finance = () => {
                                                 )}
                                             </tbody>
                                         </table>
+                                        <Pagination currentPage={ledgerPage} totalItems={entries.length} pageSize={FIN_PAGE_SIZE} onPageChange={setLedgerPage} />
                                     </div>
                                 </>
                             );

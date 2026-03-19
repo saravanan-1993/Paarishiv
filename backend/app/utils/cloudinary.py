@@ -3,12 +3,37 @@ import cloudinary.uploader
 import os
 import uuid
 from dotenv import load_dotenv
+from fastapi import HTTPException
 
 load_dotenv()
 
 CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
 API_KEY = os.getenv("CLOUDINARY_API_KEY")
 API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+# C11 Fix: File upload validation constants
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+ALLOWED_EXTENSIONS = {
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',  # Images
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',  # Documents
+    '.txt', '.zip', '.rar',                              # Other
+}
+
+def validate_upload(file_content: bytes, filename: str):
+    """C11 Fix: Validate file type and size before upload."""
+    # Check file size
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB."
+        )
+    # Check file extension
+    ext = os.path.splitext(filename)[1].lower()
+    if ext and ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not allowed. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
 
 # Configure only if credentials exist
 if CLOUD_NAME and API_KEY and API_SECRET:
@@ -22,7 +47,9 @@ if CLOUD_NAME and API_KEY and API_SECRET:
 async def upload_file(file_content, filename="file"):
     """
     Uploads a file to Cloudinary if configured, otherwise saves locally.
+    C11 Fix: Validates file type and size before upload.
     """
+    validate_upload(file_content, filename)
     c_name = CLOUD_NAME
     c_key = API_KEY
     c_secret = API_SECRET

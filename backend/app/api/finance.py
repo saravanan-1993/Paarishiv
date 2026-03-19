@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from app.models.finance import ExpenseBase
@@ -5,7 +7,7 @@ from database import get_database
 from bson import ObjectId
 from pydantic import BaseModel
 from datetime import datetime
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
 from app.utils.rbac import RBACPermission
 
@@ -179,8 +181,8 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
                 {"_id": ObjectId(expense.grn_id)},
                 {"$set": {"items": [item for item in expense.items if isinstance(item, dict)], "total_amount": expense.total_amount}}
             )
-        except Exception as e:
-            print("Failed to update GRN items:", e)
+        except Exception:
+            pass
             
     # If this marks the payable as fully paid, update GRN status
     if expense.grn_id and expense.mark_as_paid:
@@ -200,9 +202,9 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
     expense_dict.pop("_id", None)
     return {"id": str(result.inserted_id), **expense_dict}
 
-@router.get("/payables/{grn_id}/payments")
+@router.get("/payables/{grn_id}/payments", dependencies=[Depends(RBACPermission("Accounts", "view"))])
 async def get_voucher_payments(grn_id: str, db = Depends(get_database)):
-    payments = await db.expenses.find({"grn_id": grn_id}).to_list(100)
+    payments = await db.expenses.find({"grn_id": grn_id}).sort("date", -1).to_list(100)
     for p in payments:
         p["_id"] = str(p["_id"])
     return payments
@@ -230,16 +232,13 @@ async def get_bills(db = Depends(get_database)):
 
 @router.post("/bills", dependencies=[Depends(RBACPermission("Accounts", "edit", "Sales"))])
 async def create_bill(bill: BillCreate, db = Depends(get_database)):
-    print(f"DEBUG: Creating bill for project: {bill.project}, bill_no: {bill.bill_no}")
-    print(f"DEBUG: Payload: {bill.model_dump() if hasattr(bill, 'model_dump') else bill.dict()}")
-    
     proj_clean = bill.project.strip()
     no_clean = bill.bill_no.strip()
     
     # ── Prevent duplicate bill numbers (Case-insensitive check) ─────────────
     existing = await db.bills.find_one({
-        "project": {"$regex": f"^{proj_clean}$", "$options": "i"},
-        "bill_no": {"$regex": f"^{no_clean}$", "$options": "i"}
+        "project": {"$regex": f"^{re.escape(proj_clean)}$", "$options": "i"},
+        "bill_no": {"$regex": f"^{re.escape(no_clean)}$", "$options": "i"}
     })
     
     if existing:
@@ -269,24 +268,24 @@ async def create_bill(bill: BillCreate, db = Depends(get_database)):
         result = await db.bills.insert_one(doc)
         doc["id"] = str(result.inserted_id)
         doc.pop("_id", None) # Remove ObjectId for JSON serialization
-        print(f"DEBUG: Bill inserted with ID: {doc['id']}")
-        
+
         return doc
     except Exception as e:
-        print(f"DEBUG: Error inserting bill: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/bills/{bill_id}")
+@router.delete("/bills/{bill_id}", dependencies=[Depends(RBACPermission("Accounts", "delete"))])
 async def delete_bill(bill_id: str, db = Depends(get_database)):
-    result = await db.bills.delete_one({"_id": ObjectId(bill_id)})
+    oid = validate_object_id(bill_id, "bill")
+    result = await db.bills.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Bill not found")
     return {"success": True, "message": "Bill deleted successfully"}
 
-@router.put("/bills/{bill_id}/mark-paid")
+@router.put("/bills/{bill_id}/mark-paid", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def mark_bill_paid(bill_id: str, data: MarkPaidRequest, db = Depends(get_database)):
+    oid = validate_object_id(bill_id, "bill")
     collection_amount = data.collection_amount
-    bill = await db.bills.find_one({"_id": ObjectId(bill_id)})
+    bill = await db.bills.find_one({"_id": oid})
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
     
@@ -313,10 +312,11 @@ async def get_receipts(db = Depends(get_database)):
 async def create_receipt(receipt: ReceiptBase, db = Depends(get_database)):
     receipt_dict = receipt.dict()
     result = await db.receipts.insert_one(receipt_dict)
-    
+
     # If linked to a bill, update the bill's collection amount
     if receipt.bill_id:
-        bill = await db.bills.find_one({"_id": ObjectId(receipt.bill_id)})
+        oid = validate_object_id(receipt.bill_id, "bill")
+        bill = await db.bills.find_one({"_id": oid})
         if bill:
             new_collection = float(bill.get("collection_amount", 0)) + receipt.amount
             total = float(bill.get("total_amount", 0))
@@ -332,7 +332,7 @@ async def create_receipt(receipt: ReceiptBase, db = Depends(get_database)):
 
 # ── Purchase Bills ───────────────────────────────────────────────────────────
 
-@router.get("/purchase-bills")
+@router.get("/purchase-bills", dependencies=[Depends(RBACPermission("Accounts", "view", "PurchaseBills"))])
 async def get_purchase_bills(db = Depends(get_database)):
     bills = await db.purchase_bills.find().sort("bill_date", -1).to_list(500)
     for b in bills:
@@ -362,16 +362,17 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
         try:
             await db.grns.update_one(
                 {"_id": ObjectId(bill.grn_id)},
-                {"$set": {"is_billed": True, "bill_id": str(result.inserted_id)}}
+                {"$set": {"is_billed": True, "status": "Billed", "bill_id": str(result.inserted_id)}}
             )
-        except: pass
+        except Exception:
+            pass
         
     bill_dict["id"] = str(result.inserted_id)
     return bill_dict
 
 # ── Project Finance Summary ──────────────────────────────────────────────────
 
-@router.get("/project-summary/{project_name}")
+@router.get("/project-summary/{project_name}", dependencies=[Depends(RBACPermission("Accounts", "view"))])
 async def get_project_finance_summary(project_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Return all finance data for a specific project: sales bills, purchase bills, expenses, receipts."""
     
@@ -379,7 +380,7 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
     project_name = unquote(project_name)
     
     # Sales Bills (Client Billing)
-    sales_bills = await db.bills.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("created_at", -1).to_list(500)
+    sales_bills = await db.bills.find({"project": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("created_at", -1).to_list(500)
     for b in sales_bills:
         b["id"] = str(b.pop("_id"))
         for k, v in b.items():
@@ -387,12 +388,12 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
                 b[k] = v.isoformat()
 
     # Receipts (Payments received from client)
-    receipts = await db.receipts.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("date", -1).to_list(500)
+    receipts = await db.receipts.find({"project": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("date", -1).to_list(500)
     for r in receipts:
         r["id"] = str(r.pop("_id"))
 
     # Purchase Bills
-    purchase_bills = await db.purchase_bills.find({"project_name": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("bill_date", -1).to_list(500)
+    purchase_bills = await db.purchase_bills.find({"project_name": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("bill_date", -1).to_list(500)
     for pb in purchase_bills:
         pb["id"] = str(pb.pop("_id"))
         for k, v in pb.items():
@@ -400,7 +401,7 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
                 pb[k] = v.isoformat()
 
     # Expenses
-    expenses = await db.expenses.find({"project": {"$regex": f"^{project_name}$", "$options": "i"}}).sort("date", -1).to_list(500)
+    expenses = await db.expenses.find({"project": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("date", -1).to_list(500)
     for e in expenses:
         e["id"] = str(e.pop("_id"))
         for k, v in e.items():

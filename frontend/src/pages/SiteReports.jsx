@@ -364,23 +364,45 @@ const SiteReports = () => {
                                             filteredDPRs.map((dpr, i) => (
                                                 <tr key={i}>
                                                     <td>{dpr.date}</td><td style={{ fontWeight: '700', color: 'var(--primary)' }}>{dpr.project_name}</td><td>{dpr.submitted_by}</td>
-                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : 'badge-warning'}`}>{dpr.status}</span></td>
+                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Reviewed' ? 'badge-info' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{dpr.status}</span></td>
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
-                                                            {dpr.status === 'Pending' && (
+                                                            {/* Bug 4.7 - Coordinator: Pending -> Reviewed, Admin: Reviewed -> Approved */}
+                                                            {dpr.status === 'Pending' && (user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role?.toLowerCase().includes('coordinator')) && (
                                                                 <>
-                                                                    <button 
-                                                                        className="btn btn-success btn-sm" 
+                                                                    <button
+                                                                        className="btn btn-success btn-sm"
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, user?.role?.toLowerCase().includes('coordinator') && user?.role !== 'Super Admin' ? 'Reviewed' : 'Approved')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title={user?.role?.toLowerCase().includes('coordinator') && user?.role !== 'Super Admin' ? 'Review DPR' : 'Approve DPR'}
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                                                    </button>
+                                                                    <button
+                                                                        className="btn btn-outline btn-sm"
+                                                                        style={{ color: '#ef4444' }}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title="Reject DPR"
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                            {dpr.status === 'Reviewed' && (user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'Managing Director') && (
+                                                                <>
+                                                                    <button
+                                                                        className="btn btn-success btn-sm"
                                                                         onClick={() => handleUpdateDPRStatus(dpr, 'Approved')}
                                                                         disabled={processingId === dpr.id}
                                                                         title="Approve DPR"
                                                                     >
                                                                         {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                                                     </button>
-                                                                    <button 
-                                                                        className="btn btn-outline btn-sm" 
-                                                                        style={{ color: '#ef4444' }} 
+                                                                    <button
+                                                                        className="btn btn-outline btn-sm"
+                                                                        style={{ color: '#ef4444' }}
                                                                         onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
                                                                         disabled={processingId === dpr.id}
                                                                         title="Reject DPR"

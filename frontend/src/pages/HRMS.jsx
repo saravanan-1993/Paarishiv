@@ -20,6 +20,7 @@ import HrmsSettingsModal from '../components/HrmsSettingsModal';
 import CustomSelect from '../components/CustomSelect';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import AttendanceRoster from '../components/AttendanceRoster';
+import Pagination from '../components/Pagination';
 
 const HRMS = () => {
     const { user } = useAuth();
@@ -29,7 +30,7 @@ const HRMS = () => {
     const [activeTab, setActiveTab] = useState('Dashboard');
 
     const availableTabs = useMemo(() => [
-        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce'
+        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Roles & Permissions'
     ].filter(tab => hasSubTabAccess(user, 'HRMS', tab)), [user]);
 
     useEffect(() => {
@@ -39,6 +40,11 @@ const HRMS = () => {
     }, [urlTab, availableTabs]);
 
     const handleTabChange = (tabId) => {
+        // Bug 3.4 - Redirect to Users page for Roles & Permissions
+        if (tabId === 'Roles & Permissions') {
+            navigate('/users?tab=Roles+%26+Permissions');
+            return;
+        }
         setActiveTab(tabId);
         setSearchParams({ tab: tabId });
     };
@@ -59,6 +65,8 @@ const HRMS = () => {
     const [payroll, setPayroll] = useState([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [empPage, setEmpPage] = useState(1);
+    const EMP_PAGE_SIZE = 20;
 
     // Modals
     const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
@@ -413,6 +421,9 @@ const HRMS = () => {
         const matchesRole = selectedRole === 'All' || emp.designation === selectedRole;
         return matchesSearch && matchesRole;
     });
+    // Bug 1.7 - Pagination
+    const paginatedEmployees = filteredEmployees.slice((empPage - 1) * EMP_PAGE_SIZE, empPage * EMP_PAGE_SIZE);
+    useEffect(() => { setEmpPage(1); }, [searchQuery, selectedRole]);
 
     const renderDashboard = () => (
         <div className="animate-fade-in">
@@ -658,7 +669,7 @@ const HRMS = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredEmployees.map((emp, i) => (
+                        {paginatedEmployees.map((emp, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{emp.employeeCode || 'E-NEW'}</td>
                                 <td style={{ fontWeight: '600' }}>{emp.fullName}</td>
@@ -684,7 +695,7 @@ const HRMS = () => {
                                         <button
                                             className="icon-btn"
                                             title="View Details"
-                                            onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: 'Operations' }); setIsEmployeeDetailsOpen(true); }}
+                                            onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: emp.department || emp.designation || '' }); setIsEmployeeDetailsOpen(true); }}
                                             style={{ background: '#f0f9ff', color: '#0369a1', borderRadius: '8px', border: '1px solid #bae6fd', padding: '8px', transition: 'all 0.2s' }}
                                         >
                                             <Eye size={16} />
@@ -718,6 +729,7 @@ const HRMS = () => {
                         ))}
                     </tbody>
                 </table>
+                <Pagination currentPage={empPage} totalItems={filteredEmployees.length} pageSize={EMP_PAGE_SIZE} onPageChange={setEmpPage} />
             </div>
         </div>
     );
@@ -1028,7 +1040,6 @@ const HRMS = () => {
                     />
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="btn btn-outline"><FileText size={18} /> Export Payslips</button>
                     <button className="btn btn-primary" onClick={generatePayrollRecord}>GENERATE PAYROLL</button>
                 </div>
             </div>

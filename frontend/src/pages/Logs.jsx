@@ -88,13 +88,6 @@ const Logs = () => {
                     >
                         <RefreshCw size={16} /> Refresh
                     </button>
-                    <button
-                        className="btn btn-outline"
-                        onClick={exportCSV}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                        <Download size={16} /> Export CSV
-                    </button>
                 </div>
             </div>
 

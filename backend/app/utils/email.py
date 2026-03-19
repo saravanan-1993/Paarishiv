@@ -8,12 +8,34 @@ from dotenv import load_dotenv
 def get_smtp_config():
     # Force reload .env to catch any recent changes
     load_dotenv(override=True)
-    return {
+
+    config = {
         "HOST": os.getenv("SMTP_HOST", "smtp.gmail.com"),
         "PORT": int(os.getenv("SMTP_PORT", 587)),
         "USER": os.getenv("SMTP_USER"),
         "PASS": os.getenv("SMTP_PASS")
     }
+
+    # Bug 6.2 - If .env credentials are missing, try loading from DB settings
+    if not config["USER"] or not config["PASS"]:
+        try:
+            import pymongo
+            mongo_url = os.getenv("MONGODB_URL")
+            db_name = os.getenv("DATABASE_NAME", "civil_erp")
+            if mongo_url:
+                client = pymongo.MongoClient(mongo_url, serverSelectionTimeoutMS=3000)
+                db = client[db_name]
+                smtp_settings = db.settings.find_one({"type": "smtp_config"})
+                if smtp_settings:
+                    config["HOST"] = smtp_settings.get("host", config["HOST"])
+                    config["PORT"] = int(smtp_settings.get("port", config["PORT"]))
+                    config["USER"] = smtp_settings.get("username") or config["USER"]
+                    config["PASS"] = smtp_settings.get("password") or config["PASS"]
+                client.close()
+        except Exception as e:
+            pass
+
+    return config
 
 def send_email(to_email: str, subject: str, body: str, is_html: bool = False):
     config = get_smtp_config()
@@ -21,8 +43,6 @@ def send_email(to_email: str, subject: str, body: str, is_html: bool = False):
     if not config["USER"] or not config["PASS"]:
         print("CRITICAL: SMTP credentials (USER/PASS) not configured in .env")
         return False
-    
-    print(f"DEBUG: Attempting to send email to {to_email} via {config['HOST']}:{config['PORT']}")
     
     try:
         msg = MIMEMultipart()
@@ -47,7 +67,6 @@ def send_email(to_email: str, subject: str, body: str, is_html: bool = False):
         print(f"SUCCESS: Email sent to {to_email}")
         return True
     except Exception as e:
-        print(f"ERROR: Failed to send email to {to_email}: {str(e)}")
         return False
 
 def generate_po_html(po_data: dict, vendor_data: dict):

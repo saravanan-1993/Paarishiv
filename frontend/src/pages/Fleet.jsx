@@ -14,6 +14,7 @@ import VehicleModal from '../components/VehicleModal';
 import TripModal from '../components/TripModal';
 import TripExpenseModal from '../components/TripExpenseModal';
 import DriverModal from '../components/DriverModal';
+import Pagination from '../components/Pagination';
 
 const Fleet = () => {
     const { user } = useAuth();
@@ -48,6 +49,9 @@ const Fleet = () => {
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [selectedTrip, setSelectedTrip] = useState(null);
     const [selectedDriver, setSelectedDriver] = useState(null);
+    const PAGE_SIZE = 15;
+    const [tripPage, setTripPage] = useState(1);
+    const [driverPage, setDriverPage] = useState(1);
 
     useEffect(() => {
         fetchData();
@@ -247,7 +251,7 @@ const Fleet = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {trips.map((trip, i) => (
+                        {trips.slice((tripPage - 1) * PAGE_SIZE, tripPage * PAGE_SIZE).map((trip, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>T-{trip.tripId}</td>
                                 <td>
@@ -295,6 +299,7 @@ const Fleet = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination currentPage={tripPage} totalItems={trips.length} pageSize={PAGE_SIZE} onPageChange={setTripPage} />
             </div>
         </div>
     );
@@ -386,7 +391,7 @@ const Fleet = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {drivers.map((driver, i) => (
+                        {drivers.slice((driverPage - 1) * PAGE_SIZE, driverPage * PAGE_SIZE).map((driver, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -428,6 +433,7 @@ const Fleet = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination currentPage={driverPage} totalItems={drivers.length} pageSize={PAGE_SIZE} onPageChange={setDriverPage} />
             </div>
         </div>
     );

@@ -19,7 +19,8 @@ const Approvals = () => {
         'Purchase Orders': 'purchase_orders',
         'Materials': 'materials',
         'Expenses': 'expenses',
-        'Manpower': 'manpower'
+        'Manpower': 'manpower',
+        'DPR': 'dprs'
     }), []);
 
     useEffect(() => {
@@ -52,7 +53,8 @@ const Approvals = () => {
         purchase_orders: [],
         materials: [],
         expenses: [],
-        manpower: []
+        manpower: [],
+        dprs: []
     });
 
     const fetchData = async () => {
@@ -64,7 +66,8 @@ const Approvals = () => {
                 purchase_orders: res.data.purchase_orders || [],
                 materials: res.data.materials || [],
                 expenses: res.data.expenses || [],
-                manpower: res.data.manpower || []
+                manpower: res.data.manpower || [],
+                dprs: res.data.dprs || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -119,10 +122,33 @@ const Approvals = () => {
         { id: 'materials', label: 'Materials', count: data.materials?.length || 0, icon: Package, color: '#f59e0b' },
         { id: 'expenses', label: 'Expenses', count: data.expenses?.length || 0, icon: CreditCard, color: '#ec4899' },
         { id: 'manpower', label: 'Manpower', count: data.manpower?.length || 0, icon: User, color: '#10b981' },
+        { id: 'dprs', label: 'DPR', count: data.dprs?.length || 0, icon: FileText, color: '#6366f1' },
     ];
 
+    const handleDprAction = async (dpr, action) => {
+        // Bug 4.7 - DPR uses project_id:dpr_id format
+        const compositeId = `${dpr.project_id}:${dpr.id}`;
+        let payload = {};
+        if (action === 'reject') {
+            const reason = window.prompt("Optional: Enter a reason for rejection:");
+            if (reason === null) return;
+            if (reason.trim()) payload.reason = reason.trim();
+        }
+        setActionLoading(`${dpr.id}-${action}`);
+        try {
+            await approvalsAPI.action('dprs', compositeId, action, payload);
+            await fetchData();
+        } catch (error) {
+            console.error('Error performing DPR action:', error);
+            alert(error?.response?.data?.detail || 'Failed to process DPR approval.');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const filteredData = (data[activeTab] || []).filter(item => {
-        if (activeStatusTab === 'All' && filterStatus !== 'All') {
+        // Bug 7.1 - Apply status filter regardless of active tab
+        if (filterStatus !== 'All') {
             const currentStatus = item.status || 'Pending';
             if (currentStatus !== filterStatus) return false;
         }
@@ -133,7 +159,8 @@ const Approvals = () => {
                 item.employee_name, item.employeeName, item.leave_type, item.reason,
                 item.po_number, item.vendorName, item.vendor_name,
                 item.projectName, item.project_name, item.category,
-                item.description, item.payee, item.remarks
+                item.description, item.payee, item.remarks,
+                item.submitted_by, item.date, item.progress
             ].filter(Boolean).join(' ').toLowerCase();
 
             if (!textToSearch.includes(q)) return false;
@@ -319,7 +346,7 @@ const Approvals = () => {
             </div>
 
             <div style={{ marginTop: '0px', display: 'flex', gap: '16px', marginBottom: '16px' }}>
-                <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: {(item.engineer_id || 'Site Engineer').toString().slice(-6).toUpperCase()}</p>
+                <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: {item.engineer_id || item.requested_by || item.submitted_by || 'Site Engineer'}</p>
                 {item.status !== 'Pending' && item.approvedBy && (
                     <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
                 )}
@@ -523,6 +550,99 @@ const Approvals = () => {
         </div>
     );
 
+    const getStatusBadge = (status) => {
+        const map = {
+            'Pending': { bg: '#fef3c7', color: '#b45309' },
+            'Reviewed': { bg: '#dbeafe', color: '#1d4ed8' },
+            'Approved': { bg: '#dcfce7', color: '#166534' },
+            'Rejected': { bg: '#fee2e2', color: '#991b1b' },
+        };
+        const s = map[status] || map['Pending'];
+        return { padding: '6px 12px', borderRadius: '8px', background: s.bg, color: s.color, fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' };
+    };
+
+    const renderDPRCard = (item) => (
+        <div key={item.id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6366f1' }}>
+                        <FileText size={24} />
+                    </div>
+                    <div>
+                        <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', margin: 0 }}>{item.project_name}</h4>
+                        <p style={{ color: '#64748b', fontSize: '13px', margin: '4px 0 0 0', fontWeight: '600' }}>DPR Date: {item.date}</p>
+                    </div>
+                </div>
+                <div style={getStatusBadge(item.status)}>
+                    <Clock size={14} /> {item.status}
+                </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <div>
+                        <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Submitted By</p>
+                        <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.submitted_by || 'Site Engineer'}</p>
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Weather</p>
+                        <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.weather || '-'}</p>
+                    </div>
+                    {item.status_updated_by && (
+                        <div>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>
+                                {item.status === 'Reviewed' ? 'Reviewed By' : 'Updated By'}
+                            </p>
+                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.status_updated_by}</p>
+                        </div>
+                    )}
+                </div>
+                {item.progress && (
+                    <div>
+                        <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Progress Summary</p>
+                        <p style={{ fontSize: '14px', color: '#334155', lineHeight: '1.5' }}>{item.progress}</p>
+                    </div>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                {(item.status === 'Pending' || item.status === 'Reviewed') && (
+                    <>
+                        <button
+                            onClick={() => handleDprAction(item, 'reject')}
+                            disabled={actionLoading}
+                            style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#ef4444', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                            {actionLoading === `${item.id}-reject` ? <Loader2 size={18} className="animate-spin" /> : <XCircle size={18} />} Reject
+                        </button>
+                        {item.status === 'Pending' && (
+                            <button
+                                onClick={() => handleDprAction(item, 'approve')}
+                                disabled={actionLoading}
+                                style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #818cf8 0%, #6366f1 100%)', color: 'white', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' }}
+                            >
+                                {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Review DPR
+                            </button>
+                        )}
+                        {item.status === 'Reviewed' && (
+                            <button
+                                onClick={() => handleDprAction(item, 'approve')}
+                                disabled={actionLoading}
+                                style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}
+                            >
+                                {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Approve DPR
+                            </button>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <div className="approvals-container" style={{ position: 'relative' }}>
             <div className="animate-fade-in" style={{ backgroundColor: '#f8fafc', minHeight: '100vh', padding: '0 10px 40px' }}>
@@ -688,6 +808,7 @@ const Approvals = () => {
                                 if (activeTab === 'materials') return renderMaterialCard(item);
                                 if (activeTab === 'expenses') return renderExpenseCard(item);
                                 if (activeTab === 'manpower') return renderManpowerCard(item);
+                                if (activeTab === 'dprs') return renderDPRCard(item);
                                 return null;
                             })}
                         </div>

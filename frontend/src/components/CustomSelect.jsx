@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Search, Check } from 'lucide-react';
+import { ChevronDown, Search, Check, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const CustomSelect = ({
@@ -12,6 +12,7 @@ const CustomSelect = ({
     className = '',
     style = {},
     searchable = true,
+    creatable = false,
     error = false,
     disabled = false,
     width = '200px'
@@ -247,6 +248,35 @@ const CustomSelect = ({
                             <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                                 No options found
                             </div>
+                        )}
+                        {creatable && searchQuery.trim() && !normalizedOptions.some(o => o.label.toLowerCase() === searchQuery.trim().toLowerCase()) && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onChange(searchQuery.trim());
+                                    setIsOpen(false);
+                                    setSearchQuery('');
+                                }}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '10px 14px',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    backgroundColor: '#eff6ff',
+                                    color: 'var(--primary)',
+                                    fontWeight: '600',
+                                    marginTop: '4px',
+                                    borderTop: '1px solid var(--border)',
+                                }}
+                            >
+                                <Plus size={14} /> Add "{searchQuery.trim()}"
+                            </button>
                         )}
                     </div>
                 </div>

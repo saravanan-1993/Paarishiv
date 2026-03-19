@@ -99,7 +99,20 @@ const MaterialRequestModal = ({ isOpen, onClose }) => {
                                     <option>Bags</option>
                                     <option>Tons</option>
                                     <option>Kg</option>
+                                    <option>Grams</option>
+                                    <option>Liters</option>
+                                    <option>Meters</option>
+                                    <option>Feet</option>
+                                    <option>Sq.ft</option>
+                                    <option>Cu.ft</option>
+                                    <option>Cu.m</option>
+                                    <option>Pieces</option>
                                     <option>Units</option>
+                                    <option>Nos</option>
+                                    <option>Boxes</option>
+                                    <option>Bundles</option>
+                                    <option>Trips</option>
+                                    <option>Brass</option>
                                 </select>
                                 {items.length > 1 && (
                                     <button onClick={() => removeItem(idx)} style={{ color: '#EF4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={20} /></button>

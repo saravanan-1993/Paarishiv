@@ -140,6 +140,8 @@ export const employeeAPI = {
     create: (data) => api.post('/employees/', data),
     update: (id, data) => api.put(`/employees/${id}`, data),
     delete: (id) => api.delete(`/employees/${id}`),
+    uploadDocument: (id, formData, docType) => api.post(`/employees/${id}/documents?doc_type=${docType || 'general'}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    getDocuments: (id) => api.get(`/employees/${id}/documents`),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -262,6 +264,7 @@ export const settingsAPI = {
     uploadLogo: (formData) => api.post('/settings/logo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    changePassword: (data) => api.post('/settings/password', data),
 };
 
 export const profileAPI = {

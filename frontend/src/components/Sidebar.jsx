@@ -71,6 +71,7 @@ const menuItems = [
             { label: 'Payroll', tabId: 'Payroll' },
             { label: 'Surprise Visits', tabId: 'Surprise Visits' },
             { label: 'Workforce', tabId: 'Workforce' },
+            { label: 'Roles & Permissions', tabId: 'Roles & Permissions' },
         ]
     },
     {
@@ -151,7 +152,6 @@ const menuItems = [
             { label: 'Profile', tabId: 'Profile' },
             { label: 'Company Profile', tabId: 'Company Profile' },
             { label: 'Security', tabId: 'Security' },
-            { label: 'Notifications', tabId: 'Notifications' },
             { label: 'Cloudinary', tabId: 'Cloudinary' },
             { label: 'SMTP', tabId: 'SMTP' },
         ]

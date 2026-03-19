@@ -68,6 +68,15 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     if (!isOpen) return null;
 
     const addRow = (type) => {
+        // Bug 4.3 - Check for empty rows before adding new ones to prevent duplicates
+        if (type === 'material') {
+            const hasEmpty = materialRows.some(r => !r.name || r.name.trim() === '');
+            if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
+        }
+        if (type === 'nd_material') {
+            const hasEmpty = nextDayMaterials.some(r => !r.material || r.material.trim() === '');
+            if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
+        }
         if (type === 'work') setWorkRows([...workRows, { task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
         if (type === 'labour') setLabourRows([...labourRows, { party: '', category: '', count: '', shift: '1', ot: '0' }]);
         if (type === 'material') setMaterialRows([...materialRows, { name: '', opening: '', received: '', used: '' }]);
@@ -90,6 +99,16 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     };
 
     const updateRow = (type, index, field, value) => {
+        // Bug 4.3/4.4 - Prevent duplicate material names
+        if (type === 'material' && field === 'name' && value) {
+            const isDuplicate = materialRows.some((r, i) => i !== index && r.name && r.name.toLowerCase() === value.toLowerCase());
+            if (isDuplicate) { alert(`Material "${value}" is already added. Please select a different material.`); return; }
+        }
+        if (type === 'nd_material' && field === 'material' && value) {
+            const isDuplicate = nextDayMaterials.some((r, i) => i !== index && r.material && r.material.toLowerCase() === value.toLowerCase());
+            if (isDuplicate) { alert(`Material "${value}" is already added. Please select a different material.`); return; }
+        }
+
         const setRows = {
             work: setWorkRows,
             labour: setLabourRows,

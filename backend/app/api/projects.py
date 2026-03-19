@@ -5,15 +5,18 @@ from database import get_database
 from bson import ObjectId
 from pydantic import BaseModel
 from datetime import datetime
+import re
 from app.utils.auth import get_current_user
 from app.utils.cloudinary import upload_file
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
+from app.utils.rbac import RBACPermission
+from app.utils.sanitize import sanitize_string, sanitize_list
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-@router.post("/upload-photo")
+@router.post("/upload-photo", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def upload_project_photo(file: UploadFile = File(...)):
     """Upload a photo and return its URL."""
     content = await file.read()
@@ -46,7 +49,7 @@ def _calc_progress(project: dict) -> int:
     completed = sum(1 for t in tasks if t.get("status") == "Completed")
     return round((completed / len(tasks)) * 100)
 
-@router.post("/", response_model=ProjectModel)
+@router.post("/", response_model=ProjectModel, dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def create_project(project: ProjectModel, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     project_dict = project.model_dump(by_alias=True)
     if "_id" in project_dict and project_dict["_id"] is None:
@@ -78,17 +81,46 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
     query = {}
     user_role = (current_user.get("role") or "").lower()
     if user_role == "site engineer" and not all:
-        query["$or"] = [
-            {"engineer_id": current_user.get("username")},
-            {"engineer_id": current_user.get("id")}
+        # Bug 1.5 - Also check employee's assigned siteId to find projects
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id")
+        or_conditions = [
+            {"engineer_id": emp_username},
+            {"engineer_id": emp_id}
         ]
 
+        # Also find projects where this employee is assigned via siteId
+        employee = await db.employees.find_one({
+            "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
+        })
+        if employee and employee.get("siteId"):
+            or_conditions.append({"_id": ObjectId(employee["siteId"])})
+
+        query["$or"] = or_conditions
+
     projects = await db.projects.find(query).to_list(100)
+
+    # Bug 1.1 - Resolve engineer_id / coordinator_id to names instead of IDs
+    employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "employeeCode": 1, "username": 1, "roles": 1}).to_list(1000)
+    emp_map = {}
+    for e in employees:
+        name = e.get("fullName", "Unknown")
+        emp_map[str(e["_id"])] = name
+        if e.get("employeeCode"): emp_map[e["employeeCode"]] = name
+        if e.get("username"): emp_map[e["username"]] = name
+
     for p in projects:
         new_progress = _calc_progress(p)
         if p.get("progress") != new_progress:
             await db.projects.update_one({"_id": p["_id"]}, {"$set": {"progress": new_progress}})
             p["progress"] = new_progress
+
+        # Resolve IDs to names for display
+        if p.get("engineer_id") and p["engineer_id"] in emp_map:
+            p["engineer_name"] = emp_map[p["engineer_id"]]
+        if p.get("coordinator_id") and p["coordinator_id"] in emp_map:
+            p["coordinator_name"] = emp_map[p["coordinator_id"]]
+
     return projects
 
 @router.get("/all-dprs")
@@ -144,7 +176,7 @@ async def get_project(project_id: str, db = Depends(get_database), current_user:
         project["progress"] = new_progress
     return project
 
-@router.put("/{project_id}", response_model=ProjectModel)
+@router.put("/{project_id}", response_model=ProjectModel, dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def update_project(project_id: str, project_data: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Remove _id if present in data to avoid immutable field error
     if "_id" in project_data:
@@ -186,7 +218,7 @@ async def update_project(project_id: str, project_data: dict, db = Depends(get_d
     updated = await db.projects.find_one({"_id": ObjectId(project_id)})
     return updated
 
-@router.put("/{project_id}/status")
+@router.put("/{project_id}/status", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def update_project_status(project_id: str, data: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     new_status = data.get("status")
     if not new_status:
@@ -207,7 +239,7 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
         
     return {"success": True, "new_status": new_status}
 
-@router.post("/{project_id}/tasks")
+@router.post("/{project_id}/tasks", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -239,7 +271,7 @@ async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)
     await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"progress": new_progress}})
     return {"success": True, "task": task_dict, "progress": new_progress}
 
-@router.put("/{project_id}/tasks/{task_id}")
+@router.put("/{project_id}/tasks/{task_id}", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def update_task(project_id: str, task_id: str, task_update: TaskUpdate, db = Depends(get_database)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -303,7 +335,7 @@ async def notify_task_update(project_id: str, task_id: str, db = Depends(get_dat
     
     return {"success": True}
     
-@router.post("/{project_id}/tasks/{task_id}/share-email")
+@router.post("/{project_id}/tasks/{task_id}/share-email", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def share_task_email(project_id: str, task_id: str, background_tasks: BackgroundTasks, db = Depends(get_database)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -324,9 +356,9 @@ async def share_task_email(project_id: str, task_id: str, background_tasks: Back
     # Resolve employee email - Case-insensitive and multi-field
     employee = await db.employees.find_one({
         "$or": [
-            {"username": {"$regex": f"^{assigned_id}$", "$options": "i"}},
-            {"employeeCode": {"$regex": f"^{assigned_id}$", "$options": "i"}},
-            {"fullName": {"$regex": f"^{assigned_id}$", "$options": "i"}}
+            {"username": {"$regex": f"^{re.escape(assigned_id)}$", "$options": "i"}},
+            {"employeeCode": {"$regex": f"^{re.escape(assigned_id)}$", "$options": "i"}},
+            {"fullName": {"$regex": f"^{re.escape(assigned_id)}$", "$options": "i"}}
         ]
     })
     
@@ -392,7 +424,7 @@ async def share_task_email(project_id: str, task_id: str, background_tasks: Back
     
     return {"success": True, "message": f"Task details shared to {recipient_email}"}
 
-@router.delete("/{project_id}/tasks/{task_id}")
+@router.delete("/{project_id}/tasks/{task_id}", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def delete_task(project_id: str, task_id: str, db = Depends(get_database)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -442,6 +474,13 @@ async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), c
         raise HTTPException(status_code=404, detail="Project not found")
 
     dpr_dict = dpr.dict()
+    # C12 Fix: Sanitize user-generated text fields in DPR
+    for field in ["progress", "issues", "notes"]:
+        if dpr_dict.get(field):
+            dpr_dict[field] = sanitize_string(dpr_dict[field])
+    for list_field in ["work_rows", "labour_rows", "material_rows", "equipment_rows"]:
+        if dpr_dict.get(list_field):
+            dpr_dict[list_field] = sanitize_list(dpr_dict[list_field])
     dpr_dict["id"] = f"DPR-{datetime.now().strftime('%y%m%d%H%M%S')}"
     dpr_dict["created_at"] = datetime.now().isoformat()
     if not dpr_dict["date"]:
@@ -523,21 +562,59 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     new_status = data.get("status")
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
-        
+
+    user_role = (current_user.get("role") or "").strip()
+    user_name = current_user.get("full_name") or current_user.get("username", "Unknown")
+
+    # Bug 4.7 - Enforce workflow: SE submits -> Coordinator reviews -> Admin approves
+    # Valid statuses: Pending, Reviewed, Approved, Rejected
+    # Coordinator can: Pending -> Reviewed, Pending -> Rejected
+    # Admin/Super Admin can: any transition (including Reviewed -> Approved)
+    is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
+    is_coordinator = "coordinator" in user_role.lower()
+
+    if not is_admin and not is_coordinator:
+        raise HTTPException(status_code=403, detail="Only Coordinators or Admins can update DPR status")
+
+    # Get current DPR status
+    project = await db.projects.find_one(
+        {"_id": ObjectId(project_id), "dprs.id": dpr_id},
+        {"dprs.$": 1}
+    )
+    if not project or not project.get("dprs"):
+        raise HTTPException(status_code=404, detail="DPR or Project not found")
+
+    current_status = project["dprs"][0].get("status", "Pending")
+
+    # Coordinators can only move Pending -> Reviewed or Pending -> Rejected
+    if is_coordinator and not is_admin:
+        if current_status != "Pending":
+            raise HTTPException(status_code=400, detail=f"Coordinator can only review Pending DPRs. Current status: {current_status}")
+        if new_status not in ("Reviewed", "Rejected"):
+            raise HTTPException(status_code=400, detail="Coordinator can only mark DPR as 'Reviewed' or 'Rejected'")
+
+    update_fields = {
+        "dprs.$.status": new_status,
+        "dprs.$.status_updated_by": user_name,
+        "dprs.$.status_updated_at": datetime.now().isoformat()
+    }
+
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id), "dprs.id": dpr_id},
-        {"$set": {"dprs.$.status": new_status}}
+        {"$set": update_fields}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="DPR or Project not found")
-        
-    if new_status in ["Approved", "Verified"]:
-        await trigger_workflow_event(project_id, "dpr_verified", current_user, db, f"DPR {dpr_id} verified")
+
+    if new_status == "Reviewed":
+        await trigger_workflow_event(project_id, "dpr_verified", current_user, db, f"DPR {dpr_id} reviewed by coordinator")
+    elif new_status == "Approved":
+        await trigger_workflow_event(project_id, "dpr_approved", current_user, db, f"DPR {dpr_id} approved")
 
     return {"success": True, "new_status": new_status}
 
-@router.post("/{project_id}/documents")
+@router.post("/{project_id}/documents", dependencies=[Depends(RBACPermission("Projects", "edit"))])
 async def add_document(project_id: str, document: dict, db = Depends(get_database)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:

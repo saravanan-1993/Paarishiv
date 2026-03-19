@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Tag, IndianRupee, Upload, Briefcase, Filter } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Tag, IndianRupee, Upload, Briefcase, Filter, Loader2 } from 'lucide-react';
 import { projectAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
+import axios from 'axios';
 
 const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
     const [formData, setFormData] = useState({
@@ -17,6 +18,9 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
 
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
+    const [attachmentUrl, setAttachmentUrl] = useState('');
+    const [uploadingFile, setUploadingFile] = useState(false);
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         projectAPI.getAll().then(res => setProjects(res.data || [])).catch(() => { });
@@ -24,13 +28,33 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
 
     if (!isOpen) return null;
 
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setUploadingFile(true);
+        try {
+            const fd = new FormData();
+            fd.append('file', file);
+            const res = await axios.post('/api/settings/logo', fd);
+            if (res.data?.url) {
+                setAttachmentUrl(res.data.url);
+            }
+        } catch (err) {
+            console.error('File upload failed:', err);
+            alert('Failed to upload attachment. Check Cloudinary settings.');
+        } finally {
+            setUploadingFile(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
         try {
             await onExpenseRecorded?.({
                 ...formData,
-                amount: parseFloat(formData.amount)
+                amount: parseFloat(formData.amount),
+                attachment: attachmentUrl
             });
             onClose();
         } catch (err) {
@@ -138,9 +162,24 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
 
                     <div className="form-group">
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Attach Bill / Receipt</label>
-                        <div style={{ border: '2px dashed var(--border)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer' }}>
-                            <Upload size={24} color="var(--text-muted)" style={{ marginBottom: '8px' }} />
-                            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click to upload file or drag and drop</p>
+                        <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx" />
+                        <div
+                            style={{ border: '2px dashed var(--border)', borderRadius: '8px', padding: '20px', textAlign: 'center', cursor: 'pointer', backgroundColor: attachmentUrl ? '#f0fdf4' : 'transparent' }}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {uploadingFile ? (
+                                <Loader2 size={24} color="var(--primary)" style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
+                            ) : attachmentUrl ? (
+                                <>
+                                    <Upload size={24} color="#16a34a" style={{ marginBottom: '8px' }} />
+                                    <p style={{ fontSize: '12px', color: '#16a34a', fontWeight: '600' }}>File uploaded successfully. Click to replace.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <Upload size={24} color="var(--text-muted)" style={{ marginBottom: '8px' }} />
+                                    <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click to upload file or drag and drop</p>
+                                </>
+                            )}
                         </div>
                     </div>
 

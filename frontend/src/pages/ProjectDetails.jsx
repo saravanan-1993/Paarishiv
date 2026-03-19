@@ -159,10 +159,11 @@ const TaskStatusDropdown = ({ task, onStatusChange }) => {
 
 const DPRStatusDropdown = ({ dpr, onStatusChange }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const options = ['Pending', 'Approved', 'Rejected'];
+    const options = ['Pending', 'Reviewed', 'Approved', 'Rejected'];
 
     const getColors = (status) => {
         if (status === 'Approved') return { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0', dot: '#10B981' };
+        if (status === 'Reviewed') return { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', dot: '#3B82F6' };
         if (status === 'Rejected') return { bg: '#FEF2F2', text: '#EF4444', border: '#FECACA', dot: '#EF4444' };
         return { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', dot: '#F59E0B' };
     };
@@ -686,7 +687,7 @@ const ProjectDetails = () => {
                                 <div>
                                     <span style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '10px' }}>Description</span>
                                     <p style={{ fontSize: '14px', lineHeight: '1.7', color: '#374151' }}>
-                                        {project.description || `${project.name} — ${project.location}. Managed by ${typeof project.engineer_id === 'object' ? JSON.stringify(project.engineer_id) : (project.engineer_id || 'N/A')}.`}
+                                        {project.description || `${project.name} — ${project.location}. Managed by ${project.engineer_name || (typeof project.engineer_id === 'object' ? (project.engineer_id?.fullName || project.engineer_id?.username || 'N/A') : (project.engineer_id || 'N/A'))}.`}
                                     </p>
                                 </div>
                             </div>

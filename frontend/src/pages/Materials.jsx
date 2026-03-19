@@ -16,6 +16,7 @@ import StockReturnModal from '../components/StockReturnModal';
 import MaterialTransferModal from '../components/MaterialTransferModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
+import Pagination from '../components/Pagination';
 
 const Materials = () => {
     const { user } = useAuth();
@@ -76,6 +77,11 @@ const Materials = () => {
     const [isStockRequestOpen, setIsStockRequestOpen] = useState(false);
     const [isStockIssueOpen, setIsStockIssueOpen] = useState(false);
     const [isStockReturnOpen, setIsStockReturnOpen] = useState(false);
+    const MAT_PAGE_SIZE = 20;
+    const [invPage, setInvPage] = useState(1);
+    const [whPage, setWhPage] = useState(1);
+    const [reqPage, setReqPage] = useState(1);
+    const [ledgerMPage, setLedgerMPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [isWarehouseLoading, setIsWarehouseLoading] = useState(false);
 
@@ -364,7 +370,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredInventory.map((item) => (
+                                        {filteredInventory.slice((invPage - 1) * MAT_PAGE_SIZE, invPage * MAT_PAGE_SIZE).map((item) => (
                                             <tr key={item.id}>
                                                 <td style={{ fontWeight: '600' }}>{item.material_name}</td>
                                                 {selectedProject === 'all' && <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{item.project_name}</td>}
@@ -394,6 +400,7 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={invPage} totalItems={filteredInventory.length} pageSize={MAT_PAGE_SIZE} onPageChange={setInvPage} />
                             </div>
                         )}
                     </div>
@@ -446,7 +453,7 @@ const Materials = () => {
                                 <div style={{ padding: '60px', textAlign: 'center' }}>
                                     <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto' }} />
                                 </div>
-                            ) : warehouseSubTab === 'Stock' ? (
+                            ) : warehouseSubTab === 'Stock' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -457,7 +464,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {warehouseStock.map((item, i) => (
+                                        {warehouseStock.slice((whPage - 1) * MAT_PAGE_SIZE, whPage * MAT_PAGE_SIZE).map((item, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontWeight: '700' }}>{item.material_name}</td>
                                                 <td style={{ fontSize: '16px', fontWeight: '800' }}>{item.stock}</td>
@@ -468,7 +475,8 @@ const Materials = () => {
                                         {warehouseStock.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>No stock found in warehouse.</td></tr>}
                                     </tbody>
                                 </table>
-                            ) : warehouseSubTab === 'Requests' ? (
+                                <Pagination currentPage={whPage} totalItems={warehouseStock.length} pageSize={MAT_PAGE_SIZE} onPageChange={setWhPage} />
+                            </>) : warehouseSubTab === 'Requests' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -480,7 +488,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stockRequests.map((req, i) => (
+                                        {stockRequests.slice((reqPage - 1) * MAT_PAGE_SIZE, reqPage * MAT_PAGE_SIZE).map((req, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '13px' }}>{new Date(req.created_at).toLocaleDateString()}</td>
                                                 <td style={{ fontWeight: '700' }}>{req.project_name}</td>
@@ -511,7 +519,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : (
+                                <Pagination currentPage={reqPage} totalItems={stockRequests.length} pageSize={MAT_PAGE_SIZE} onPageChange={setReqPage} />
+                            </>) : (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -525,7 +534,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stockLedger.map((log, i) => (
+                                        {stockLedger.slice((ledgerMPage - 1) * MAT_PAGE_SIZE, ledgerMPage * MAT_PAGE_SIZE).map((log, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '11px' }}>{new Date(log.date).toLocaleString()}</td>
                                                 <td>
@@ -542,7 +551,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            )}
+                                <Pagination currentPage={ledgerMPage} totalItems={stockLedger.length} pageSize={MAT_PAGE_SIZE} onPageChange={setLedgerMPage} />
+                            </>)}
                         </div>
                     </div>
                 ) : mainTab === 'Coordination' ? (

@@ -82,6 +82,7 @@ const MainLayout = () => {
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/approvals" element={<Approvals />} />
                         <Route path="/site-reports" element={<SiteReports />} />
+                        <Route path="/profile" element={<Navigate to="/settings?tab=Profile" replace />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </main>
