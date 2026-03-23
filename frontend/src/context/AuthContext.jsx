@@ -54,6 +54,7 @@ export const AuthProvider = ({ children }) => {
                 setUser(userData);
                 localStorage.setItem('erp_user', JSON.stringify(userData));
                 localStorage.setItem('erp_token', data.access_token);
+                localStorage.setItem('erp_login_time', String(Date.now()));
                 return true;
             }
 
@@ -91,6 +92,7 @@ export const AuthProvider = ({ children }) => {
                 setUser(userData);
                 localStorage.setItem('erp_user', JSON.stringify(userData));
                 localStorage.setItem('erp_token', data.access_token);
+                localStorage.setItem('erp_login_time', String(Date.now()));
                 return true;
             }
 

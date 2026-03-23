@@ -9,12 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# C1 Fix: No hardcoded fallback - SECRET_KEY must be set in .env
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    import secrets
-    SECRET_KEY = secrets.token_urlsafe(64)
-    print("WARNING: SECRET_KEY not set in .env - using auto-generated key (sessions won't persist across restarts)")
+# SECRET_KEY must be consistent across all serverless instances
+SECRET_KEY = os.getenv("SECRET_KEY", "construction-erp-super-secret-key-2024")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
