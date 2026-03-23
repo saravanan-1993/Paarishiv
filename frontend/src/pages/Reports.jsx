@@ -288,7 +288,43 @@ const ReportPreview = ({
 
                 {/* Report content */}
                 <div style={{ padding: '28px' }}>
-                    {(report.category === 'Financial') && (
+                    {budgetData.length === 0 && progressData.length === 0 && inventoryData.length === 0 && expenseData.length === 0 && attendanceData.length === 0 && bills.length === 0 && payables.length === 0 && (
+                        <div style={{ padding: '40px', textAlign: 'center', background: '#FEF3C7', borderRadius: '12px', marginBottom: '24px' }}>
+                            <AlertTriangle size={32} color="#B45309" style={{ marginBottom: '12px' }} />
+                            <p style={{ fontWeight: '700', color: '#B45309' }}>No data available for the selected period. Try changing the date range filter.</p>
+                        </div>
+                    )}
+
+                    {report.id === 'R002' && (
+                        <>
+                            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>Accounts Payable Summary</h3>
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Vendor / Party</th>
+                                        <th style={{ textAlign: 'right' }}>Invoice Amount</th>
+                                        <th style={{ textAlign: 'right' }}>Paid</th>
+                                        <th style={{ textAlign: 'right' }}>Outstanding</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payables.map((p, i) => (
+                                        <tr key={i}>
+                                            <td style={{ fontWeight: '700' }}>{p.vendor || p.party || p.vendorName || '—'}</td>
+                                            <td style={{ textAlign: 'right' }}>{fmt(p.total_amount || p.amount || 0)}</td>
+                                            <td style={{ textAlign: 'right', color: '#10B981' }}>{fmt(p.paid_amount || 0)}</td>
+                                            <td style={{ textAlign: 'right', color: '#EF4444', fontWeight: '700' }}>{fmt((p.total_amount || p.amount || 0) - (p.paid_amount || 0))}</td>
+                                            <td><span className={`badge ${p.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'Pending'}</span></td>
+                                        </tr>
+                                    ))}
+                                    {payables.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No payable records found.</td></tr>}
+                                </tbody>
+                            </table>
+                        </>
+                    )}
+
+                    {(report.category === 'Financial' && !['R002', 'R010', 'R011', 'R012', 'R013'].includes(report.id)) && (
                         <>
                             <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>Budget vs. Actual (₹ Lakhs)</h3>
                             <ResponsiveContainer width="100%" height={260}>
@@ -712,7 +748,7 @@ const Reports = () => {
 
     const isDateInRange = (dateInput) => {
         if (!dateInput) return false;
-        if (dateRange === 'All') return true;
+        if (dateRange === 'All' || dateRange === 'All Time') return true;
 
         let date;
         try {
@@ -776,21 +812,32 @@ const Reports = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
+            // Bug 48: Compute date range for attendance API
+            const getAttendanceRange = () => {
+                const today = new Date().toISOString().split('T')[0];
+                if (dateRange === 'All Time') return ['2020-01-01', today];
+                if (dateRange === 'Custom Range') return [startDate, endDate];
+                if (dateRange === 'Today') return [today, today];
+                if (dateRange === 'This Week') {
+                    const d = new Date(); d.setDate(d.getDate() - d.getDay());
+                    return [d.toISOString().split('T')[0], today];
+                }
+                if (dateRange === 'Last Month') {
+                    const s = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+                    const e = new Date(new Date().getFullYear(), new Date().getMonth(), 0);
+                    return [s.toISOString().split('T')[0], e.toISOString().split('T')[0]];
+                }
+                // This Month (default)
+                const s = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+                return [s.toISOString().split('T')[0], today];
+            };
+            const [attFrom, attTo] = getAttendanceRange();
+
             const [projRes, invRes, expRes, attRes, billRes, payRes] = await Promise.allSettled([
                 projectAPI.getAll(),
                 materialAPI.getInventoryByProject('all'),
                 financeAPI.getExpenses(),
-                hrmsAPI.getAttendanceRange(
-                    dateRange === 'Custom Range' ? startDate :
-                        dateRange === 'Today' ? new Date().toISOString().split('T')[0] :
-                            dateRange === 'This Week' ? new Date(new Date().setDate(new Date().getDate() - new Date().getDay())).toISOString().split('T')[0] :
-                                dateRange === 'This Month' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] :
-                                    dateRange === 'Last Month' ? new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0] :
-                                        new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-                    dateRange === 'Custom Range' ? endDate :
-                        dateRange === 'Last Month' ? new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0] :
-                            new Date().toISOString().split('T')[0]
-                ),
+                hrmsAPI.getAttendanceRange(attFrom, attTo),
                 billingAPI.getAll(),
                 financeAPI.getPayables()
             ]);
@@ -856,12 +903,14 @@ const Reports = () => {
 
             if (billRes.status === 'fulfilled') {
                 const bils = billRes.value.data || [];
-                setBills(bils.filter(b => isDateInRange(b.date)));
+                // Bug 48: Include bills even if date field is missing (filter only when date exists)
+                setBills(bils.filter(b => dateRange === 'All Time' || !b.date || isDateInRange(b.date || b.created_at || b.createdAt)));
             }
 
             if (payRes.status === 'fulfilled') {
                 const pays = payRes.value.data || [];
-                setPayables(pays.filter(p => isDateInRange(p.date)));
+                // Bug 48: Include payables even if date field is missing
+                setPayables(pays.filter(p => dateRange === 'All Time' || !p.date || isDateInRange(p.date || p.created_at || p.createdAt)));
             }
 
             // Calculate range-aware KPIs
@@ -927,7 +976,7 @@ const Reports = () => {
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                         <CustomSelect
-                            options={['Today', 'This Week', 'This Month', 'Last Month', 'Custom Range'].map(r => ({ value: r, label: r }))}
+                            options={['All Time', 'Today', 'This Week', 'This Month', 'Last Month', 'Custom Range'].map(r => ({ value: r, label: r }))}
                             value={dateRange}
                             onChange={setDateRange}
                             icon={Calendar}

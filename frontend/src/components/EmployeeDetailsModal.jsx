@@ -328,7 +328,13 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                                 >
                                     <Download size={20} /> GENERATE PAYSLIP
                                 </button>
-                                <button className="btn btn-outline" style={{
+                                <button
+                                    onClick={() => {
+                                        onClose();
+                                        // Navigate to HRMS Attendance tab to view performance log
+                                        window.location.href = '/hrms?tab=Attendance';
+                                    }}
+                                    className="btn btn-outline" style={{
                                     width: '100%', padding: '16px', borderRadius: '16px',
                                     fontSize: '15px', fontWeight: '800', border: '2px solid #e2e8f0',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'

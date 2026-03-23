@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { projectAPI, employeeAPI } from '../utils/api';
+import { projectAPI, employeeAPI, hrmsAPI } from '../utils/api';
 import { X, UserPlus, Upload, Camera, FileText, Building2, Edit3, Briefcase } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 
@@ -33,19 +33,34 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
     const [designationOptions, setDesignationOptions] = React.useState([]);
     const [departmentOptions, setDepartmentOptions] = React.useState([]);
 
+    const refreshDesignations = async () => {
+        try {
+            const res = await hrmsAPI.getDesignations();
+            setDesignationOptions((res.data || []).map(d => ({ value: d, label: d })));
+        } catch { /* fallback handled below */ }
+    };
+    const refreshDepartments = async () => {
+        try {
+            const res = await hrmsAPI.getDepartments();
+            setDepartmentOptions((res.data || []).map(d => ({ value: d, label: d })));
+        } catch { /* fallback handled below */ }
+    };
+
     React.useEffect(() => {
         const fetchData = async () => {
             try {
-                const [projRes, empRes] = await Promise.all([
+                const [projRes, desigRes, deptRes] = await Promise.allSettled([
                     projectAPI.getAll(),
-                    employeeAPI.getAll()
+                    hrmsAPI.getDesignations(),
+                    hrmsAPI.getDepartments()
                 ]);
-                setProjects(projRes.data);
-                // Extract unique designations and departments
-                const desigs = [...new Set(empRes.data.map(e => e.designation).filter(Boolean))];
-                const depts = [...new Set(empRes.data.map(e => e.department).filter(Boolean))];
-                setDesignationOptions(desigs.map(d => ({ value: d, label: d })));
-                setDepartmentOptions(depts.map(d => ({ value: d, label: d })));
+                if (projRes.status === 'fulfilled') setProjects(projRes.value.data);
+                if (desigRes.status === 'fulfilled') {
+                    setDesignationOptions((desigRes.value.data || []).map(d => ({ value: d, label: d })));
+                }
+                if (deptRes.status === 'fulfilled') {
+                    setDepartmentOptions((deptRes.value.data || []).map(d => ({ value: d, label: d })));
+                }
             } catch (err) {
                 console.error('Failed to fetch data', err);
             }
@@ -270,6 +285,9 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                                 options={designationOptions}
                                 value={formData.designation}
                                 onChange={(val) => setFormData(prev => ({ ...prev, designation: val }))}
+                                onAdd={async (val) => {
+                                    try { await hrmsAPI.addDesignation(val); await refreshDesignations(); } catch (e) { console.error(e); }
+                                }}
                                 placeholder="Select or type designation"
                                 width="full"
                                 creatable={true}
@@ -281,6 +299,9 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                                 options={departmentOptions}
                                 value={formData.department}
                                 onChange={(val) => setFormData(prev => ({ ...prev, department: val }))}
+                                onAdd={async (val) => {
+                                    try { await hrmsAPI.addDepartment(val); await refreshDepartments(); } catch (e) { console.error(e); }
+                                }}
                                 placeholder="Select or type department"
                                 width="full"
                                 creatable={true}
@@ -325,8 +346,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                             <CustomSelect
                                 label="Salary Type"
                                 options={[
-                                    { value: 'monthly', label: 'Monthly Salary' },
-                                    { value: 'daily', label: 'Daily Wage' }
+                                    { value: 'monthly', label: 'Monthly Salary' }
                                 ]}
                                 value={formData.salaryType}
                                 onChange={(val) => setFormData(prev => ({ ...prev, salaryType: val }))}
@@ -334,12 +354,6 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                                 searchable={false}
                             />
                         </div>
-                        {formData.salaryType === 'daily' && (
-                            <div className="form-group">
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Daily Wage Rate</label>
-                                <input name="dailyWage" value={formData.dailyWage} onChange={handleChange} type="number" placeholder="₹ per day" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                            </div>
-                        )}
                     </div>
 
                     <div style={{ marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>

@@ -941,7 +941,8 @@ const ProjectDetails = () => {
                                 {/* Summary Cards */}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '16px', marginBottom: '28px' }}>
                                     {[
-                                        { label: 'Total Sales', value: finData.summary.total_sales, color: '#3B82F6', bg: '#EFF6FF', icon: '📈' },
+                                        { label: 'Project Value', value: project?.budget || 0, color: '#6366F1', bg: '#EEF2FF', icon: '🏗️' },
+                                        { label: 'Total Billed', value: finData.summary.total_sales, color: '#3B82F6', bg: '#EFF6FF', icon: '📈' },
                                         { label: 'Received', value: finData.summary.total_received, color: '#10B981', bg: '#ECFDF5', icon: '✅' },
                                         { label: 'Outstanding', value: finData.summary.outstanding, color: '#F59E0B', bg: '#FFFBEB', icon: '⏳' },
                                         { label: 'Purchase Bills', value: finData.summary.total_purchase, color: '#EF4444', bg: '#FEF2F2', icon: '🧾' },
@@ -1101,25 +1102,40 @@ const ProjectDetails = () => {
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                                {docList.map((doc, i) => (
-                                    <div key={i} style={{ padding: '20px', border: '1px solid var(--border)', borderRadius: '12px', display: 'flex', alignItems: 'flex-start', gap: '16px', backgroundColor: 'white', transition: 'all 0.2s' }} className="hover-card">
-                                        <div style={{ padding: '12px', backgroundColor: '#F1F5F9', color: 'var(--primary)', borderRadius: '10px' }}>
-                                            <FileText size={24} />
-                                        </div>
-                                        <div style={{ flex: 1, overflow: 'hidden' }}>
-                                            <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.title}</h4>
-                                            <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{doc.category || 'Drawing'}</p>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                                                <span>{doc.date}</span>
-                                                <span style={{ width: '4px', height: '4px', backgroundColor: '#CBD5E1', borderRadius: '50%' }}></span>
-                                                <span>{doc.fileSize}</span>
+                                {docList.map((doc, i) => {
+                                    const isImage = (doc.fileType || doc.fileName || '').match(/\.(jpg|jpeg|png|gif|webp|svg)$/i) || (doc.fileType || '').startsWith('image/');
+                                    return (
+                                        <div key={i} style={{ border: '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'white', transition: 'all 0.2s', overflow: 'hidden' }} className="hover-card">
+                                            {isImage && doc.url && (
+                                                <div style={{ width: '100%', height: '180px', overflow: 'hidden', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                                                    onClick={() => window.open(doc.url, '_blank')}>
+                                                    <img src={doc.url} alt={doc.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </div>
+                                            )}
+                                            <div style={{ padding: '16px', display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+                                                {!isImage && (
+                                                    <div style={{ padding: '12px', backgroundColor: '#F1F5F9', color: 'var(--primary)', borderRadius: '10px' }}>
+                                                        <FileText size={24} />
+                                                    </div>
+                                                )}
+                                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                    <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.title}</h4>
+                                                    <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{doc.category || 'Drawing'}</p>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                                                        <span>{doc.date}</span>
+                                                        <span style={{ width: '4px', height: '4px', backgroundColor: '#CBD5E1', borderRadius: '50%' }}></span>
+                                                        <span>{doc.fileSize}</span>
+                                                    </div>
+                                                </div>
+                                                {doc.url && (
+                                                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm" style={{ padding: '8px', textDecoration: 'none' }} title="View / Download">
+                                                        <Upload size={14} style={{ transform: 'rotate(180deg)' }} />
+                                                    </a>
+                                                )}
                                             </div>
                                         </div>
-                                        <button className="btn btn-outline btn-sm" style={{ padding: '8px' }} title="Download">
-                                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} />
-                                        </button>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

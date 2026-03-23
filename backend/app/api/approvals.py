@@ -84,19 +84,39 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                 mp[k] = str(v)
     results["manpower"] = manpower
 
-    # Bug 4.7 - DPR approvals: fetch DPRs from projects
-    dpr_status_filter = status if status.lower() != "all" else None
-    projects_with_dprs = await db.projects.find({"dprs": {"$exists": True, "$ne": []}}, {"dprs": 1, "name": 1}).to_list(500)
+    # DPR approvals: Role-based multi-stage workflow
+    # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
+    # Coordinator sees Pending, PO/HR sees Coordinator Approved, Admin sees Dept Approved
+    user_role = (current_user.get("role") or "").strip()
+    is_admin_user = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
+    is_coordinator_user = "coordinator" in user_role.lower()
+    is_po_user = "purchase" in user_role.lower()
+    is_hr_user = "hr" in user_role.lower() or user_role == "HR Manager"
+
+    # Determine which DPR statuses this user should see for "Pending" tab
+    if status.lower() == "all":
+        dpr_visible_statuses = None  # Show all
+    elif is_admin_user:
+        dpr_visible_statuses = ["Dept Approved"]
+    elif is_coordinator_user:
+        dpr_visible_statuses = ["Pending"]
+    elif is_po_user or is_hr_user:
+        dpr_visible_statuses = ["Coordinator Approved"]
+    else:
+        dpr_visible_statuses = ["Pending", "Coordinator Approved", "Dept Approved"]
+
+    projects_with_dprs = await db.projects.find(
+        {"dprs": {"$exists": True, "$ne": []}},
+        {"dprs": 1, "name": 1}
+    ).to_list(500)
     dpr_list = []
     for proj in projects_with_dprs:
         proj_id = str(proj["_id"])
         proj_name = proj.get("name", "Unknown Project")
         for dpr in (proj.get("dprs") or []):
             dpr_s = dpr.get("status", "Pending")
-            if dpr_status_filter and dpr_s.lower() != dpr_status_filter.lower():
-                # For "Pending" filter, also include "Reviewed" DPRs (awaiting admin approval)
-                if not (dpr_status_filter.lower() == "pending" and dpr_s == "Reviewed"):
-                    continue
+            if dpr_visible_statuses is not None and dpr_s not in dpr_visible_statuses:
+                continue
             dpr_entry = {
                 "id": dpr.get("id", ""),
                 "project_id": proj_id,
@@ -107,11 +127,12 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                 "status_updated_by": dpr.get("status_updated_by", ""),
                 "created_at": dpr.get("created_at", ""),
                 "progress": dpr.get("progress", ""),
-                "weather": dpr.get("weather", "")
+                "weather": dpr.get("weather", ""),
+                "coordinator_approved_by": dpr.get("coordinator_approved_by", ""),
+                "dept_approved_by": dpr.get("dept_approved_by", ""),
             }
             resolve_names(dpr_entry)
             dpr_list.append(dpr_entry)
-    # Sort by created_at descending
     dpr_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     results["dprs"] = dpr_list
 
@@ -150,7 +171,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
         elif type == "manpower":
             await db.manpower_requests.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "dprs":
-            # Bug 4.7 - DPR approval via approvals center
+            # Bug 26 - Multi-stage DPR approval workflow
+            # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
             # obj_id format: "project_id:dpr_id"
             parts = obj_id.split(":")
             if len(parts) != 2:
@@ -158,31 +180,45 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             project_id, dpr_id = parts
             from datetime import datetime
 
-            # Role-based workflow: Coordinator -> Reviewed, Admin -> Approved
             user_role = (current_user.get("role") or "").strip()
+            approver_name = update_fields["approvedBy"]
             is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
             is_coordinator = "coordinator" in user_role.lower()
+            is_po = "purchase" in user_role.lower()
+            is_hr = "hr" in user_role.lower() or user_role == "HR Manager"
 
-            if action.lower() == "approve":
-                # Get current DPR status
-                proj = await db.projects.find_one(
-                    {"_id": ObjectId(project_id), "dprs.id": dpr_id},
-                    {"dprs.$": 1}
-                )
-                current_dpr_status = "Pending"
-                if proj and proj.get("dprs"):
-                    current_dpr_status = proj["dprs"][0].get("status", "Pending")
-
-                if is_coordinator and not is_admin and current_dpr_status == "Pending":
-                    status = "Reviewed"
-                else:
-                    status = "Approved"
+            # Get current DPR status
+            proj = await db.projects.find_one(
+                {"_id": ObjectId(project_id), "dprs.id": dpr_id},
+                {"dprs.$": 1}
+            )
+            current_dpr_status = "Pending"
+            if proj and proj.get("dprs"):
+                current_dpr_status = proj["dprs"][0].get("status", "Pending")
 
             dpr_update = {
-                "dprs.$.status": status,
-                "dprs.$.status_updated_by": update_fields["approvedBy"],
+                "dprs.$.status_updated_by": approver_name,
                 "dprs.$.status_updated_at": datetime.now().isoformat()
             }
+
+            if action.lower() == "approve":
+                # Multi-stage transitions based on role
+                if is_coordinator and not is_admin and current_dpr_status == "Pending":
+                    status = "Coordinator Approved"
+                    dpr_update["dprs.$.coordinator_approved_by"] = approver_name
+                elif (is_po or is_hr) and not is_admin and current_dpr_status == "Coordinator Approved":
+                    status = "Dept Approved"
+                    dpr_update["dprs.$.dept_approved_by"] = approver_name
+                elif is_admin:
+                    status = "Approved"
+                else:
+                    status = "Approved"
+            # For reject action, status is already set to "Rejected"
+
+            dpr_update["dprs.$.status"] = status
+            if reason:
+                dpr_update["dprs.$.remarks"] = reason
+
             await db.projects.update_one(
                 {"_id": ObjectId(project_id), "dprs.id": dpr_id},
                 {"$set": dpr_update}

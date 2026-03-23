@@ -202,21 +202,31 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                         <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.name}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{user?.role}</div>
                     </div>
-                    <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '10px',
-                        backgroundColor: 'var(--primary)',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '800',
-                        fontSize: '15px',
-                        boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
-                    }}>
-                        {user?.name?.charAt(0) || 'U'}
-                    </div>
+                    {user?.avatar ? (
+                        <img src={user.avatar} alt={user.name} style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '10px',
+                            objectFit: 'cover',
+                            boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
+                        }} />
+                    ) : (
+                        <div style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '10px',
+                            backgroundColor: 'var(--primary)',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: '800',
+                            fontSize: '15px',
+                            boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
+                        }}>
+                            {user?.name?.charAt(0) || 'U'}
+                        </div>
+                    )}
                     <ChevronDown size={14} style={{ color: 'var(--text-muted)', marginLeft: '4px', transform: profileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
 
                     {/* Profile Dropdown */}

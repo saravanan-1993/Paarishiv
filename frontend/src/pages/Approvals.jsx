@@ -553,15 +553,35 @@ const Approvals = () => {
     const getStatusBadge = (status) => {
         const map = {
             'Pending': { bg: '#fef3c7', color: '#b45309' },
-            'Reviewed': { bg: '#dbeafe', color: '#1d4ed8' },
+            'Coordinator Approved': { bg: '#dbeafe', color: '#1d4ed8' },
+            'Dept Approved': { bg: '#e0e7ff', color: '#4338ca' },
             'Approved': { bg: '#dcfce7', color: '#166534' },
             'Rejected': { bg: '#fee2e2', color: '#991b1b' },
+            'Reviewed': { bg: '#dbeafe', color: '#1d4ed8' },
         };
         const s = map[status] || map['Pending'];
         return { padding: '6px 12px', borderRadius: '8px', background: s.bg, color: s.color, fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' };
     };
 
-    const renderDPRCard = (item) => (
+    // Bug 26 - DPR workflow step labels
+    const dprWorkflowSteps = ['Pending', 'Coordinator Approved', 'Dept Approved', 'Approved'];
+    const getStepIndex = (status) => {
+        if (status === 'Rejected') return -1;
+        const idx = dprWorkflowSteps.indexOf(status);
+        return idx >= 0 ? idx : 0;
+    };
+
+    // Button label based on which stage the DPR is at
+    const getDprActionLabel = (status) => {
+        if (status === 'Pending') return 'Coordinator Approve';
+        if (status === 'Coordinator Approved') return 'Dept Approve';
+        if (status === 'Dept Approved') return 'Final Approve';
+        return 'Approve';
+    };
+
+    const renderDPRCard = (item) => {
+        const stepIdx = getStepIndex(item.status);
+        return (
         <div key={item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
             border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
@@ -582,6 +602,39 @@ const Approvals = () => {
                 </div>
             </div>
 
+            {/* Workflow progress indicator */}
+            {item.status !== 'Rejected' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 0' }}>
+                    {dprWorkflowSteps.map((step, i) => {
+                        const isCompleted = i <= stepIdx;
+                        const isCurrent = i === stepIdx;
+                        const stepLabels = ['SE Submitted', 'Coordinator', 'PO / HR', 'Admin'];
+                        return (
+                            <React.Fragment key={step}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                                    <div style={{
+                                        width: '28px', height: '28px', borderRadius: '50%',
+                                        background: isCompleted ? (isCurrent ? '#6366f1' : '#10b981') : '#e2e8f0',
+                                        color: isCompleted ? 'white' : '#94a3b8',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '12px', fontWeight: '800',
+                                        border: isCurrent ? '2px solid #4f46e5' : 'none'
+                                    }}>
+                                        {isCompleted && !isCurrent ? <CheckCircle size={14} /> : (i + 1)}
+                                    </div>
+                                    <span style={{ fontSize: '10px', fontWeight: '700', color: isCompleted ? '#334155' : '#94a3b8', marginTop: '4px', textAlign: 'center' }}>
+                                        {stepLabels[i]}
+                                    </span>
+                                </div>
+                                {i < dprWorkflowSteps.length - 1 && (
+                                    <div style={{ flex: 0.5, height: '2px', background: i < stepIdx ? '#10b981' : '#e2e8f0', marginBottom: '18px' }} />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
+            )}
+
             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '12px' }}>
                     <div>
@@ -592,11 +645,21 @@ const Approvals = () => {
                         <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Weather</p>
                         <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.weather || '-'}</p>
                     </div>
-                    {item.status_updated_by && (
+                    {item.coordinator_approved_by && (
                         <div>
-                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>
-                                {item.status === 'Reviewed' ? 'Reviewed By' : 'Updated By'}
-                            </p>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Coordinator</p>
+                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.coordinator_approved_by}</p>
+                        </div>
+                    )}
+                    {item.dept_approved_by && (
+                        <div>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Dept Approved By</p>
+                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.dept_approved_by}</p>
+                        </div>
+                    )}
+                    {item.status_updated_by && !item.coordinator_approved_by && !item.dept_approved_by && (
+                        <div>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Updated By</p>
                             <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.status_updated_by}</p>
                         </div>
                     )}
@@ -610,7 +673,7 @@ const Approvals = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
-                {(item.status === 'Pending' || item.status === 'Reviewed') && (
+                {(item.status === 'Pending' || item.status === 'Coordinator Approved' || item.status === 'Dept Approved') && (
                     <>
                         <button
                             onClick={() => handleDprAction(item, 'reject')}
@@ -619,29 +682,29 @@ const Approvals = () => {
                         >
                             {actionLoading === `${item.id}-reject` ? <Loader2 size={18} className="animate-spin" /> : <XCircle size={18} />} Reject
                         </button>
-                        {item.status === 'Pending' && (
-                            <button
-                                onClick={() => handleDprAction(item, 'approve')}
-                                disabled={actionLoading}
-                                style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #818cf8 0%, #6366f1 100%)', color: 'white', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' }}
-                            >
-                                {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Review DPR
-                            </button>
-                        )}
-                        {item.status === 'Reviewed' && (
-                            <button
-                                onClick={() => handleDprAction(item, 'approve')}
-                                disabled={actionLoading}
-                                style={{ padding: '10px 24px', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}
-                            >
-                                {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Approve DPR
-                            </button>
-                        )}
+                        <button
+                            onClick={() => handleDprAction(item, 'approve')}
+                            disabled={actionLoading}
+                            style={{
+                                padding: '10px 24px', borderRadius: '12px', border: 'none',
+                                background: item.status === 'Dept Approved'
+                                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                    : 'linear-gradient(135deg, #818cf8 0%, #6366f1 100%)',
+                                color: 'white', fontWeight: '800', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                boxShadow: item.status === 'Dept Approved'
+                                    ? '0 4px 12px rgba(16, 185, 129, 0.2)'
+                                    : '0 4px 12px rgba(99, 102, 241, 0.2)'
+                            }}
+                        >
+                            {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} {getDprActionLabel(item.status)}
+                        </button>
                     </>
                 )}
             </div>
         </div>
     );
+    };
 
     return (
         <div className="approvals-container" style={{ position: 'relative' }}>

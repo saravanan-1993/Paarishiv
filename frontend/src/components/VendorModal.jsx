@@ -37,7 +37,8 @@ const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
             onClose();
         } catch (err) {
             console.error('Failed to save vendor:', err);
-            alert('Failed to save vendor. Please check connection.');
+            const errorMsg = err.response?.data?.detail || 'Failed to save vendor. Please check the connection.';
+            alert(errorMsg);
         } finally {
             setIsSaving(false);
         }

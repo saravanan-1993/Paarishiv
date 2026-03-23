@@ -81,21 +81,55 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
     query = {}
     user_role = (current_user.get("role") or "").lower()
     if user_role == "site engineer" and not all:
-        # Bug 1.5 - Also check employee's assigned siteId to find projects
         emp_username = current_user.get("username")
         emp_id = current_user.get("id")
+        emp_code = current_user.get("employeeCode") or ""
         or_conditions = [
             {"engineer_id": emp_username},
             {"engineer_id": emp_id}
         ]
+        if emp_code:
+            or_conditions.append({"engineer_id": emp_code})
 
         # Also find projects where this employee is assigned via siteId
-        employee = await db.employees.find_one({
-            "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
-        })
-        if employee and employee.get("siteId"):
-            or_conditions.append({"_id": ObjectId(employee["siteId"])})
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
+            })
+            if employee:
+                or_conditions.append({"engineer_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"engineer_id": employee["employeeCode"]})
+                if employee.get("siteId"):
+                    try:
+                        or_conditions.append({"_id": ObjectId(employee["siteId"])})
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
+        query["$or"] = or_conditions
+
+    elif "coordinator" in user_role and not all:
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id")
+        emp_code = current_user.get("employeeCode") or ""
+        or_conditions = [
+            {"coordinator_id": emp_username},
+            {"coordinator_id": emp_id}
+        ]
+        if emp_code:
+            or_conditions.append({"coordinator_id": emp_code})
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
+            })
+            if employee:
+                or_conditions.append({"coordinator_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"coordinator_id": employee["employeeCode"]})
+        except Exception:
+            pass
         query["$or"] = or_conditions
 
     projects = await db.projects.find(query).to_list(100)
@@ -328,11 +362,17 @@ async def notify_task_update(project_id: str, task_id: str, db = Depends(get_dat
 
     await send_system_message(
         sender="System",
-        receiver="admin", 
+        receiver="admin",
         content=msg_content,
         msg_type="task_update"
     )
-    
+
+    # Mark task as adminNotified so the button changes to "Updated"
+    await db.projects.update_one(
+        {"_id": ObjectId(project_id), "tasks.id": task_id},
+        {"$set": {"tasks.$.adminNotified": True}}
+    )
+
     return {"success": True}
     
 @router.post("/{project_id}/tasks/{task_id}/share-email", dependencies=[Depends(RBACPermission("Projects", "edit"))])
@@ -566,15 +606,18 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     user_role = (current_user.get("role") or "").strip()
     user_name = current_user.get("full_name") or current_user.get("username", "Unknown")
 
-    # Bug 4.7 - Enforce workflow: SE submits -> Coordinator reviews -> Admin approves
-    # Valid statuses: Pending, Reviewed, Approved, Rejected
-    # Coordinator can: Pending -> Reviewed, Pending -> Rejected
-    # Admin/Super Admin can: any transition (including Reviewed -> Approved)
+    # Bug 26 - Multi-stage DPR approval workflow
+    # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
+    # Coordinator: Pending -> Coordinator Approved / Rejected
+    # PO/HR: Coordinator Approved -> Dept Approved / Rejected
+    # Admin: any transition
     is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
     is_coordinator = "coordinator" in user_role.lower()
+    is_po = "purchase" in user_role.lower()
+    is_hr = "hr" in user_role.lower() or user_role == "HR Manager"
 
-    if not is_admin and not is_coordinator:
-        raise HTTPException(status_code=403, detail="Only Coordinators or Admins can update DPR status")
+    if not is_admin and not is_coordinator and not is_po and not is_hr:
+        raise HTTPException(status_code=403, detail="Only Coordinators, PO, HR or Admins can update DPR status")
 
     # Get current DPR status
     project = await db.projects.find_one(
@@ -586,18 +629,34 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
 
     current_status = project["dprs"][0].get("status", "Pending")
 
-    # Coordinators can only move Pending -> Reviewed or Pending -> Rejected
-    if is_coordinator and not is_admin:
-        if current_status != "Pending":
-            raise HTTPException(status_code=400, detail=f"Coordinator can only review Pending DPRs. Current status: {current_status}")
-        if new_status not in ("Reviewed", "Rejected"):
-            raise HTTPException(status_code=400, detail="Coordinator can only mark DPR as 'Reviewed' or 'Rejected'")
+    # Role-based transition validation
+    if not is_admin:
+        if is_coordinator:
+            allowed_transitions = {
+                "Pending": ["Coordinator Approved", "Reviewed", "Rejected"],
+                "Reviewed": ["Coordinator Approved", "Approved", "Rejected"],
+                "Coordinator Approved": ["Approved", "Rejected"],
+            }
+        elif is_po or is_hr:
+            allowed_transitions = {
+                "Coordinator Approved": ["Dept Approved", "Rejected"],
+                "Reviewed": ["Dept Approved", "Approved", "Rejected"],
+            }
+        else:
+            allowed_transitions = {}
+        valid_next = allowed_transitions.get(current_status, [])
+        if new_status not in valid_next:
+            raise HTTPException(status_code=400, detail=f"Cannot change from '{current_status}' to '{new_status}'. Allowed: {', '.join(valid_next) if valid_next else 'none'}")
 
     update_fields = {
         "dprs.$.status": new_status,
         "dprs.$.status_updated_by": user_name,
         "dprs.$.status_updated_at": datetime.now().isoformat()
     }
+    if new_status == "Coordinator Approved":
+        update_fields["dprs.$.coordinator_approved_by"] = user_name
+    elif new_status == "Dept Approved":
+        update_fields["dprs.$.dept_approved_by"] = user_name
 
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id), "dprs.id": dpr_id},
@@ -607,10 +666,12 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="DPR or Project not found")
 
-    if new_status == "Reviewed":
-        await trigger_workflow_event(project_id, "dpr_verified", current_user, db, f"DPR {dpr_id} reviewed by coordinator")
+    if new_status == "Coordinator Approved":
+        await trigger_workflow_event(project_id, "dpr_verified", current_user, db, f"DPR {dpr_id} approved by coordinator")
+    elif new_status == "Dept Approved":
+        await trigger_workflow_event(project_id, "dpr_dept_approved", current_user, db, f"DPR {dpr_id} department approved")
     elif new_status == "Approved":
-        await trigger_workflow_event(project_id, "dpr_approved", current_user, db, f"DPR {dpr_id} approved")
+        await trigger_workflow_event(project_id, "dpr_approved", current_user, db, f"DPR {dpr_id} final approved")
 
     return {"success": True, "new_status": new_status}
 

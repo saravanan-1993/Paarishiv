@@ -37,6 +37,13 @@ const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
                 remarks: remarks
             });
 
+            // 3. Notify admin automatically
+            try {
+                await projectAPI.notifyTask(project._id || project.id, task.id);
+            } catch (notifyErr) {
+                console.warn('Failed to send admin notification:', notifyErr);
+            }
+
             alert('Task marked as completed! Admin notified.');
             onCompleted?.();
             onClose();

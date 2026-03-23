@@ -37,7 +37,7 @@ SYSTEM_FEATURES = [
 
 SUB_TABS = {
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
-    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits'],
+    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
     'Budget & Finance': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Budget Control': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
@@ -63,7 +63,6 @@ DEFAULT_ROLES = [
             { "name": 'Reports', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Fleet Management', "actions": { "view": True, "edit": True, "delete": True } },
-            { "name": 'User Management', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'System Logs', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Settings', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Settings'] },
             { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": True } },
@@ -227,8 +226,8 @@ async def get_roles(db = Depends(get_database)):
         return DEFAULT_ROLES
     return roles_doc.get("roles", DEFAULT_ROLES)
 
-# C4 Fix: Only admins can save roles
-@router.post("/", dependencies=[Depends(RBACPermission("User Management", "edit"))])
+# C4 Fix: Only admins can save roles (User Management merged into HRMS)
+@router.post("/", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def save_roles(roles: List[Dict[str, Any]], db = Depends(get_database)):
     # Upsert the roles
     await db.roles.update_one(

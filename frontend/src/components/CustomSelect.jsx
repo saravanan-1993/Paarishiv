@@ -6,6 +6,7 @@ const CustomSelect = ({
     options = [],
     value,
     onChange,
+    onAdd,
     placeholder = 'Select option',
     label,
     icon: Icon,
@@ -169,7 +170,7 @@ const CustomSelect = ({
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search..."
+                                    placeholder={creatable ? "Type to search or add new..." : "Search..."}
                                     style={{
                                         width: '100%',
                                         padding: '8px 12px 8px 36px',
@@ -249,11 +250,14 @@ const CustomSelect = ({
                                 No options found
                             </div>
                         )}
+                        {/* Show "Add <typed value>" when user types something new */}
                         {creatable && searchQuery.trim() && !normalizedOptions.some(o => o.label.toLowerCase() === searchQuery.trim().toLowerCase()) && (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    onChange(searchQuery.trim());
+                                onClick={async () => {
+                                    const val = searchQuery.trim();
+                                    if (onAdd) await onAdd(val);
+                                    onChange(val);
                                     setIsOpen(false);
                                     setSearchQuery('');
                                 }}
@@ -276,6 +280,42 @@ const CustomSelect = ({
                                 }}
                             >
                                 <Plus size={14} /> Add "{searchQuery.trim()}"
+                            </button>
+                        )}
+                        {/* Always show "Add New" button when creatable and user hasn't typed anything */}
+                        {creatable && !searchQuery.trim() && (
+                            <button
+                                type="button"
+                                onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const newValue = window.prompt(`Enter new ${label ? label.replace(' *', '').toLowerCase() : 'value'}:`);
+                                    if (newValue && newValue.trim()) {
+                                        if (onAdd) await onAdd(newValue.trim());
+                                        onChange(newValue.trim());
+                                        setIsOpen(false);
+                                        setSearchQuery('');
+                                    }
+                                }}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '12px 14px',
+                                    borderRadius: '8px',
+                                    fontSize: '14px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    backgroundColor: '#f0fdf4',
+                                    color: '#059669',
+                                    fontWeight: '700',
+                                    marginTop: '4px',
+                                    borderTop: '1px solid var(--border)',
+                                }}
+                            >
+                                <Plus size={16} /> Add New {label ? label.replace(' *', '') : 'Value'}
                             </button>
                         )}
                     </div>

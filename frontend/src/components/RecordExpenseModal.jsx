@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Tag, IndianRupee, Upload, Briefcase, Filter, Loader2 } from 'lucide-react';
-import { projectAPI } from '../utils/api';
+import { projectAPI, chatAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
-import axios from 'axios';
 
 const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
     const [formData, setFormData] = useState({
@@ -35,7 +34,7 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
         try {
             const fd = new FormData();
             fd.append('file', file);
-            const res = await axios.post('/api/settings/logo', fd);
+            const res = await chatAPI.uploadFile(fd);
             if (res.data?.url) {
                 setAttachmentUrl(res.data.url);
             }

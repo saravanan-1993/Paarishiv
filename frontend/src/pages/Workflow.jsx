@@ -23,6 +23,7 @@ import {
     Trash2,
     ChevronRight
 } from 'lucide-react';
+import Pagination from '../components/Pagination';
 import VendorModal from '../components/VendorModal';
 import POModal from '../components/POModal';
 import GRNModal from '../components/GRNModal';
@@ -94,6 +95,12 @@ const Workflow = () => {
     const [requests, setRequests] = useState([]);
     const [consolidatedRequests, setConsolidatedRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    // Pagination state
+    const [vendorPage, setVendorPage] = useState(1);
+    const [poPage, setPOPage] = useState(1);
+    const [requestPage, setRequestPage] = useState(1);
+    const [grnPage, setGRNPage] = useState(1);
+    const PAGE_SIZE = 12;
     const [companyInfo, setCompanyInfo] = useState({
         name: "—",
         address: "—",
@@ -200,6 +207,11 @@ const Workflow = () => {
         { label: 'GRNS', id: 'GRN', value: grns.length, icon: Package, color: '#4B5563', bgColor: '#F3F4F6' },
     ].filter(kpi => !kpi.id || hasSubTabAccess(user, 'Procurement', kpi.id));
 
+    // Reset pagination when search changes
+    useEffect(() => {
+        setVendorPage(1); setPOPage(1); setRequestPage(1); setGRNPage(1);
+    }, [searchTerm]);
+
     // ── Filtered lists ──────────────────────────────────────────────────────
     const filteredVendors = vendors.filter(v =>
         v.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -209,14 +221,31 @@ const Workflow = () => {
         po.vendor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         po.project_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
-    const filteredGRNs = grns.filter(g =>
-        g.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        g.po_id?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredGRNs = grns.filter(g => {
+        if (!searchTerm.trim()) return true;
+        const term = searchTerm.toLowerCase();
+        const vendorName = pos.find(p => p.id === g.po_id)?.vendor_name || '';
+        const grnDisplay = `grn-${(g.id || '').slice(-6)}`.toLowerCase();
+        const poDisplay = `po-${(g.po_id || '').slice(-6)}`.toLowerCase();
+        const itemNames = (g.items || []).map(it => (it.name || '').toLowerCase()).join(' ');
+        return g.id?.toLowerCase().includes(term) ||
+            grnDisplay.includes(term) ||
+            poDisplay.includes(term) ||
+            g.po_id?.toLowerCase().includes(term) ||
+            vendorName.toLowerCase().includes(term) ||
+            (g.status || '').toLowerCase().includes(term) ||
+            itemNames.includes(term);
+    });
     const filteredRequests = requests.filter(r =>
         r.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.engineer_id?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // ── Paginated slices ───────────────────────────────────────────────────
+    const paginatedVendors = filteredVendors.slice((vendorPage - 1) * PAGE_SIZE, vendorPage * PAGE_SIZE);
+    const paginatedPOs = filteredPOs.slice((poPage - 1) * PAGE_SIZE, poPage * PAGE_SIZE);
+    const paginatedRequests = filteredRequests.slice((requestPage - 1) * PAGE_SIZE, requestPage * PAGE_SIZE);
+    const paginatedGRNs = filteredGRNs.slice((grnPage - 1) * PAGE_SIZE, grnPage * PAGE_SIZE);
 
     // ── Handlers ────────────────────────────────────────────────────────────
     const handleWhatsAppShare = (poId, vendor) => {
@@ -473,8 +502,8 @@ const Workflow = () => {
                     {activeSection === 'Vendors' && (
                         filteredVendors.length === 0
                             ? <EmptyState icon={Building2} label="Vendors" buttonLabel="ADD VENDOR" onAdd={() => setIsVendorModalOpen(true)} />
-                            : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                                {filteredVendors.map((vendor) => (
+                            : <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
+                                {paginatedVendors.map((vendor) => (
                                     <div key={vendor.id} className="card vendor-card" onClick={() => handleVendorClick(vendor)}
                                         style={{
                                             padding: '0',
@@ -551,13 +580,15 @@ const Workflow = () => {
                                     </div>
                                 ))}
                             </div>
+                            <Pagination currentPage={vendorPage} totalItems={filteredVendors.length} pageSize={PAGE_SIZE} onPageChange={setVendorPage} />
+                            </>
                     )}
 
                     {/* Purchase Orders */}
                     {activeSection === 'POs' && (
                         filteredPOs.length === 0
                             ? <EmptyState icon={ShoppingCart} label="Purchase Orders" buttonLabel="CREATE PO" onAdd={() => setIsPOModalOpen(true)} />
-                            : <div className="card" style={{ padding: '0' }}>
+                            : <><div className="card" style={{ padding: '0' }}>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -570,7 +601,7 @@ const Workflow = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredPOs.map((po) => (
+                                        {paginatedPOs.map((po) => (
                                             <tr key={po.id}>
                                                 <td style={{ fontWeight: '700', color: 'var(--primary)', cursor: 'pointer' }} onClick={() => handlePOClick(po)}>
                                                     PO-{po.id.slice(-6).toUpperCase()}
@@ -607,13 +638,15 @@ const Workflow = () => {
                                     </tbody>
                                 </table>
                             </div>
+                            <Pagination currentPage={poPage} totalItems={filteredPOs.length} pageSize={PAGE_SIZE} onPageChange={setPOPage} />
+                            </>
                     )}
 
                     {/* Material Requests */}
                     {activeSection === 'Requests' && (
                         requests.length === 0
                             ? <EmptyState icon={FileText} label="Approved Material Requests" buttonLabel="CHECK INVENTORY" onAdd={() => window.location.href = '/materials'} />
-                            : <div className="card" style={{ padding: '0' }}>
+                            : <><div className="card" style={{ padding: '0' }}>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -626,7 +659,7 @@ const Workflow = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredRequests.map((req) => (
+                                        {paginatedRequests.map((req) => (
                                             <tr key={req.id}>
                                                 <td style={{ fontSize: '12px' }}>{new Date(req.created_at).toLocaleDateString()}</td>
                                                 <td style={{ fontWeight: '700' }}>{req.project_name}</td>
@@ -710,13 +743,15 @@ const Workflow = () => {
                                     </tbody>
                                 </table>
                             </div>
+                            <Pagination currentPage={requestPage} totalItems={filteredRequests.length} pageSize={PAGE_SIZE} onPageChange={setRequestPage} />
+                            </>
                     )}
 
                     {/* GRNs */}
                     {activeSection === 'GRN' && (
                         filteredGRNs.length === 0
                             ? <EmptyState icon={Package} label="GRN Records" buttonLabel="NEW GRN" onAdd={() => setIsGRNModalOpen(true)} />
-                            : <div className="card" style={{ padding: '0' }}>
+                            : <><div className="card" style={{ padding: '0' }}>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -730,7 +765,7 @@ const Workflow = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredGRNs.map((grn) => (
+                                        {paginatedGRNs.map((grn) => (
                                             <tr key={grn.id}>
                                                 <td style={{ fontWeight: '700' }}>GRN-{grn.id.slice(-6).toUpperCase()}</td>
                                                 <td style={{ color: 'var(--primary)', fontWeight: '600' }}>PO-{grn.po_id.slice(-6).toUpperCase()}</td>
@@ -754,6 +789,8 @@ const Workflow = () => {
                                     </tbody>
                                 </table>
                             </div>
+                            <Pagination currentPage={grnPage} totalItems={filteredGRNs.length} pageSize={PAGE_SIZE} onPageChange={setGRNPage} />
+                            </>
                     )}
                 </div>
 

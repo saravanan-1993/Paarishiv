@@ -160,6 +160,77 @@ const Finance = () => {
         return () => window.removeEventListener('companyInfoUpdated', fetchCompanyInfo);
     }, []);
 
+    const handleDownloadVoucher = (type, data) => {
+        try {
+            const doc = new jsPDF();
+            const compName = companyInfo.companyName || 'CIVIL ERP';
+
+            // Header
+            doc.setFontSize(20);
+            doc.setTextColor(59, 130, 246);
+            doc.setFont("helvetica", "bold");
+            doc.text(compName, 14, 22);
+
+            doc.setFontSize(16);
+            doc.setTextColor(30, 41, 59);
+            doc.text(type.toUpperCase(), 196, 22, { align: "right" });
+
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, 28, 196, 28);
+
+            // Details
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(100, 116, 139);
+            let y = 38;
+            const addRow = (label, value) => {
+                doc.text(label, 14, y);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 41, 59);
+                doc.text(String(value || '—'), 70, y);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(100, 116, 139);
+                y += 7;
+            };
+
+            if (data.no) addRow('Voucher No:', data.no);
+            if (data.date) addRow('Date:', data.date ? new Date(data.date).toLocaleDateString('en-IN') : '—');
+            if (data.party) addRow('Party:', data.party);
+            if (data.project) addRow('Project:', data.project);
+            if (data.category) addRow('Category:', data.category);
+            if (data.description) addRow('Description:', data.description);
+            if (data.mode) addRow('Payment Mode:', data.mode);
+
+            y += 5;
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, y, 196, y);
+            y += 10;
+
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(30, 41, 59);
+            doc.text('Amount:', 14, y);
+            doc.setTextColor(16, 185, 129);
+            doc.text(`Rs. ${(data.amount || 0).toLocaleString('en-IN')}`, 70, y);
+
+            if (data.status) {
+                y += 10;
+                doc.setFontSize(10);
+                doc.setTextColor(100, 116, 139);
+                doc.text('Status:', 14, y);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(30, 41, 59);
+                doc.text(data.status, 70, y);
+            }
+
+            const fileName = `${type.replace(/\s+/g, '_')}_${(data.no || data.party || 'voucher').replace(/\s+/g, '_')}.pdf`;
+            doc.save(fileName);
+        } catch (err) {
+            console.error('PDF generation error:', err);
+            alert('Failed to generate PDF.');
+        }
+    };
+
     const handleProcessPayment = (invoice) => {
         setSelectedInvoice(invoice);
         setIsPaymentModalOpen(true);
@@ -439,6 +510,8 @@ const Finance = () => {
         return s;
     }, 0);
 
+    const totalProjectValue = (selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject))
+        .reduce((s, p) => s + parseFloat(p.budget || 0), 0);
     const totalBilled = filteredBills.reduce((s, b) => s + (b.total_amount || 0), 0);
     const totalCollected = filteredBills.reduce((s, b) => s + (b.collection_amount || 0), 0);
     const totalPayableAmt = filteredPayables.reduce((s, p) => s + (p.amount || 0), 0);
@@ -448,7 +521,8 @@ const Finance = () => {
     const totalRetention = filteredBills.reduce((s, b) => s + (b.retention_amount || (b.total_amount * 0.05)), 0);
 
     const kpiCards = [
-        { label: 'TOTAL SALES', value: fmt(totalBilled), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
+        { label: 'PROJECT VALUE', value: fmt(totalProjectValue), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
+        { label: 'TOTAL BILLED', value: fmt(totalBilled), icon: Receipt, color: '#6366F1', bgColor: '#EEF2FF' },
         { label: 'OUTSTANDING', value: fmt(totalBilled - totalCollected), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
         { label: 'COLLECTION (MTD)', value: fmt(collectionThisMonth), icon: Calendar, color: '#0EA5E9', bgColor: '#F0F9FF' },
         { label: 'COLLECTION (TODAY)', value: fmt(collectionToday), icon: TrendingUp, color: '#10B981', bgColor: '#F0FDF4' },
@@ -889,7 +963,7 @@ const Finance = () => {
                                                             paymentStatus === 'Pending' ? 'badge-warning' : 'badge-danger'
                                                         }`}>{paymentStatus}</span>
                                                 </td>
-                                                <td style={{ width: '150px' }}>
+                                                <td style={{ width: '180px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                         <button
                                                             className="btn btn-outline btn-sm"
@@ -898,8 +972,16 @@ const Finance = () => {
                                                                 setIsBillDetailsOpen(true);
                                                             }}
                                                             style={{ border: 'none', padding: '6px', background: 'transparent' }}
+                                                            title="View"
                                                         >
                                                             <Eye size={18} color="#3B82F6" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, status: paymentStatus })}
+                                                            style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }}
+                                                            title="Download"
+                                                        >
+                                                            <Download size={18} color="#10B981" />
                                                         </button>
                                                         {bill.status !== 'Paid' && (
                                                             <button
@@ -1011,9 +1093,9 @@ const Finance = () => {
                                         <th>Date</th>
                                         <th>Vendor</th>
                                         <th>Project</th>
-                                        <th style={{ textAlign: 'right' }}>Tax Amt</th>
-                                        <th style={{ textAlign: 'right' }}>Total (Inc. Tax)</th>
+                                        <th style={{ textAlign: 'right' }}>Total Amount</th>
                                         <th>Status</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1025,12 +1107,18 @@ const Finance = () => {
                                             </td>
                                             <td style={{ fontWeight: '600' }}>{pb.vendor_name}</td>
                                             <td>{pb.project_name}</td>
-                                            <td style={{ textAlign: 'right', color: '#059669', fontWeight: '600' }}>{fmt(pb.tax_amount || 0)}</td>
                                             <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(pb.total_amount || 0)}</td>
                                             <td>
                                                 <span className={`badge ${pb.status === 'Paid' ? 'badge-success' : pb.status === 'Partially Paid' ? 'badge-info' : 'badge-warning'}`}>
                                                     {pb.status || 'Pending'}
                                                 </span>
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => handleDownloadVoucher('Purchase Bill', { no: pb.bill_no, date: pb.bill_date, party: pb.vendor_name, project: pb.project_name, amount: pb.total_amount, status: pb.status })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                        <Download size={18} color="var(--primary)" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -1150,8 +1238,11 @@ const Finance = () => {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                                        <button className="btn btn-outline btn-sm" onClick={() => handleViewHistory(item)} style={{ border: 'none' }}>
+                                                        <button className="btn btn-outline btn-sm" onClick={() => handleViewHistory(item)} style={{ border: 'none' }} title="View">
                                                             <Eye size={18} color="var(--primary)" />
+                                                        </button>
+                                                        <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                            <Download size={18} color="#10B981" />
                                                         </button>
                                                         {pStatus !== 'Paid' && (
                                                             <button className="btn btn-primary btn-sm" onClick={() => handleProcessPayment(item)} style={{ fontSize: '11px' }}>
@@ -1249,6 +1340,7 @@ const Finance = () => {
                                         <th>Description</th>
                                         <th>Paid To</th>
                                         <th style={{ textAlign: 'right' }}>Amount</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1267,6 +1359,11 @@ const Finance = () => {
                                             <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{exp.payee || '—'}</td>
                                             <td style={{ textAlign: 'right', fontWeight: '800', color: '#EF4444' }}>
                                                 {fmt(exp.amount || 0)}
+                                            </td>
+                                            <td>
+                                                <button onClick={() => handleDownloadVoucher('Payment Voucher', { date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                    <Download size={18} color="var(--primary)" />
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}

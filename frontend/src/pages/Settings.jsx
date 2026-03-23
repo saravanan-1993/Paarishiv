@@ -73,6 +73,9 @@ const Settings = () => {
         fromName: '',
         useTLS: true
     });
+    // Bug 45: Test email state
+    const [testEmail, setTestEmail] = useState('');
+    const [testEmailMsg, setTestEmailMsg] = useState('');
 
     const tabs = useMemo(() => [
         { id: 'Profile', icon: User, label: 'Profile' },
@@ -200,6 +203,24 @@ const Settings = () => {
             alert("SMTP settings saved successfully!");
         } catch (err) {
             alert("Failed to save SMTP settings");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Bug 45: Send test email handler
+    const handleTestEmail = async () => {
+        if (!testEmail) {
+            setTestEmailMsg('Please enter an email address');
+            return;
+        }
+        setLoading(true);
+        setTestEmailMsg('');
+        try {
+            const res = await settingsAPI.testSMTP({ email: testEmail });
+            setTestEmailMsg(res.data?.message || 'Test email sent successfully!');
+        } catch (err) {
+            setTestEmailMsg(err.response?.data?.detail || 'Failed to send test email. Check SMTP settings.');
         } finally {
             setLoading(false);
         }
@@ -347,10 +368,12 @@ const Settings = () => {
                                     <input
                                         type="text"
                                         value={profile.designation}
-                                        onChange={e => setProfile(prev => ({ ...prev, designation: e.target.value }))}
-                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
-                                        placeholder="e.g. Administrator"
+                                        readOnly
+                                        disabled
+                                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', backgroundColor: '#f1f5f9', color: 'var(--text-muted)', cursor: 'not-allowed' }}
+                                        title="Designation is managed by your administrator"
                                     />
+                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Managed by your administrator</p>
                                 </div>
                                 <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: '16px' }}>
                                     <button
@@ -680,29 +703,32 @@ const Settings = () => {
                             <span style={{ fontSize: '14px', fontWeight: '600' }}>Use STARTTLS (recommended for port 587)</span>
                         </div>
 
-                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Last updated: 18 Feb 2026, 03:48 pm</p>
-
-                            <div style={{ display: 'flex', gap: '12px' }}>
+                        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 <input
                                     type="email"
                                     placeholder="recipient@example.com"
+                                    value={testEmail}
+                                    onChange={e => { setTestEmail(e.target.value); setTestEmailMsg(''); }}
                                     style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
                                 />
-                                <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: '700' }}>
-                                    <Send size={16} />
+                                <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: '700', whiteSpace: 'nowrap' }} onClick={handleTestEmail} disabled={loading}>
+                                    {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
                                     Send Test Email
                                 </button>
                                 <button
                                     className="btn btn-primary"
                                     disabled={loading}
                                     onClick={handleSaveSMTP}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '800' }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '800', whiteSpace: 'nowrap' }}
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                                     Save Changes
                                 </button>
                             </div>
+                            {testEmailMsg && (
+                                <p style={{ fontSize: '13px', fontWeight: '600', color: testEmailMsg.includes('success') ? '#10B981' : '#EF4444' }}>{testEmailMsg}</p>
+                            )}
                         </div>
                     </div>
                 )}

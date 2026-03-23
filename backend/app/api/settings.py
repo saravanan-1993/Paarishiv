@@ -205,9 +205,15 @@ async def change_password(data: Dict[Any, Any], current_user: dict = Depends(get
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters")
 
     username = current_user.get("username")
-    employee = await db.employees.find_one({
-        "$or": [{"employeeCode": username}, {"username": username}]
-    })
+    user_id = current_user.get("_id") or current_user.get("id")
+    lookup_filters = [{"employeeCode": username}, {"username": username}, {"email": username}]
+    if user_id:
+        try:
+            from bson import ObjectId
+            lookup_filters.append({"_id": ObjectId(user_id)})
+        except Exception:
+            pass
+    employee = await db.employees.find_one({"$or": lookup_filters})
     if not employee:
         raise HTTPException(status_code=404, detail="Employee record not found")
 

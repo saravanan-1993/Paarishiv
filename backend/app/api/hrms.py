@@ -143,7 +143,7 @@ async def get_leaves(db = Depends(get_database)):
         del l["_id"]
     return leaves
 
-@router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
+@router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     result = await db.leaves.insert_one(leave.dict())
     
@@ -260,3 +260,48 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         payroll_records.append(record)
         
     return {"message": f"Payroll generated for {len(employees)} employees", "count": len(employees)}
+
+# ── Master Data (Designations & Departments) ──────────────────────────────────
+
+@router.get("/designations", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def get_designations(db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Get from master_data collection
+    master = await db.master_data.find({"type": "designation"}).to_list(500)
+    master_values = [m["value"] for m in master]
+    # Also get unique designations from employees
+    employees = await db.employees.find({"designation": {"$exists": True, "$ne": ""}}).to_list(5000)
+    emp_values = list(set(e.get("designation", "") for e in employees if e.get("designation")))
+    # Merge and deduplicate
+    all_values = sorted(set(master_values + emp_values))
+    return all_values
+
+@router.post("/designations", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def add_designation(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    value = data.get("value", "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Designation value is required")
+    existing = await db.master_data.find_one({"type": "designation", "value": {"$regex": f"^{re.escape(value)}$", "$options": "i"}})
+    if existing:
+        return {"message": "Already exists", "value": existing["value"]}
+    await db.master_data.insert_one({"type": "designation", "value": value, "created_at": datetime.now(), "created_by": current_user.get("username")})
+    return {"message": "Designation added", "value": value}
+
+@router.get("/departments", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def get_departments(db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    master = await db.master_data.find({"type": "department"}).to_list(500)
+    master_values = [m["value"] for m in master]
+    employees = await db.employees.find({"department": {"$exists": True, "$ne": ""}}).to_list(5000)
+    emp_values = list(set(e.get("department", "") for e in employees if e.get("department")))
+    all_values = sorted(set(master_values + emp_values))
+    return all_values
+
+@router.post("/departments", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def add_department(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    value = data.get("value", "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Department value is required")
+    existing = await db.master_data.find_one({"type": "department", "value": {"$regex": f"^{re.escape(value)}$", "$options": "i"}})
+    if existing:
+        return {"message": "Already exists", "value": existing["value"]}
+    await db.master_data.insert_one({"type": "department", "value": value, "created_at": datetime.now(), "created_by": current_user.get("username")})
+    return {"message": "Department added", "value": value}

@@ -77,10 +77,15 @@ const Projects = () => {
         const matchStatus = filterStatus === 'All' || p.status === filterStatus;
 
         if (user?.role === 'Site Engineer') {
-            // Bug 1.5 Fix: Check both username (employeeCode) AND user id (_id) since either format may be stored
             const isAssigned = p.engineer_id === user.username ||
                                p.engineer_id === user.employeeCode ||
                                p.engineer_id === user.id;
+            return matchSearch && matchStatus && isAssigned;
+        }
+        if (user?.role === 'Project Coordinator') {
+            const isAssigned = p.coordinator_id === user.username ||
+                               p.coordinator_id === user.employeeCode ||
+                               p.coordinator_id === user.id;
             return matchSearch && matchStatus && isAssigned;
         }
         return matchSearch && matchStatus;

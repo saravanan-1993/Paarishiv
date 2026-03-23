@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -10,7 +10,7 @@ import Workflow from './pages/Workflow';
 import HRMS from './pages/HRMS';
 import Materials from './pages/Materials';
 import Reports from './pages/Reports';
-import Users from './pages/Users';
+// Users page removed - functionality moved to HRMS module
 import Logs from './pages/Logs';
 import Tasks from './pages/Tasks/Tasks';
 import Settings from './pages/Settings';
@@ -23,18 +23,62 @@ import { NotificationProvider } from './context/NotificationContext';
 import Login from './pages/Login';
 import Approvals from './pages/Approvals';
 import SiteReports from './pages/SiteReports';
-import { fetchAndSyncRoles } from './utils/rbac';
+import { fetchAndSyncRoles, hasPermission } from './utils/rbac';
+import { profileAPI } from './utils/api';
+import { ShieldOff } from 'lucide-react';
+
+// Route-level RBAC guard
+const ProtectedRoute = ({ module, children }) => {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+
+    if (!module) return children;
+    if (hasPermission(user, module, 'view')) return children;
+
+    return (
+        <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            height: '60vh', textAlign: 'center', padding: '40px'
+        }}>
+            <div style={{
+                width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#FEF2F2',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px'
+            }}>
+                <ShieldOff size={36} color="#EF4444" />
+            </div>
+            <h2 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '8px' }}>
+                Access Denied
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '15px', maxWidth: '400px', marginBottom: '24px' }}>
+                You do not have permission to access <strong>{module}</strong>. Contact your administrator to request access.
+            </p>
+            <button
+                className="btn btn-primary"
+                onClick={() => navigate('/')}
+                style={{ padding: '10px 28px' }}
+            >
+                Go to Dashboard
+            </button>
+        </div>
+    );
+};
 
 const MainLayout = () => {
-    const { user, loading } = useAuth();
+    const { user, loading, updateUser } = useAuth();
     const [activeTab, setActiveTab] = useState('/');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     useEffect(() => {
         if (user) {
             fetchAndSyncRoles();
+            // Sync profile avatar on app load
+            if (!user.avatar) {
+                profileAPI.getProfile().then(res => {
+                    if (res.data?.avatar) updateUser({ avatar: res.data.avatar });
+                }).catch(() => {});
+            }
         }
-    }, [user]);
+    }, [user?.username]);
 
     // Close sidebar when route changes on mobile
     useEffect(() => {
@@ -65,23 +109,23 @@ const MainLayout = () => {
                 <main className="content-area">
                     <Routes>
                         <Route path="/" element={<Dashboard />} />
-                        <Route path="/projects/:id" element={<ProjectDetails />} />
-                        <Route path="/projects" element={<Projects />} />
-                        <Route path="/budget" element={<Budget />} />
-                        <Route path="/finance" element={<Finance />} />
-                        <Route path="/tasks" element={<Tasks />} />
-                        <Route path="/workflow" element={<Workflow />} />
-                        <Route path="/hr" element={<HRMS />} />
-                        <Route path="/materials" element={<Materials />} />
-                        <Route path="/fleet" element={<Fleet />} />
-                        <Route path="/assets" element={<Assets />} />
-                        <Route path="/chat" element={<Chat />} />
-                        <Route path="/reports" element={<Reports />} />
-                        <Route path="/users" element={<Users />} />
-                        <Route path="/logs" element={<Logs />} />
+                        <Route path="/projects/:id" element={<ProtectedRoute module="Projects"><ProjectDetails /></ProtectedRoute>} />
+                        <Route path="/projects" element={<ProtectedRoute module="Projects"><Projects /></ProtectedRoute>} />
+                        <Route path="/budget" element={<ProtectedRoute module="Accounts"><Budget /></ProtectedRoute>} />
+                        <Route path="/finance" element={<ProtectedRoute module="Accounts"><Finance /></ProtectedRoute>} />
+                        <Route path="/tasks" element={<ProtectedRoute module="Tasks"><Tasks /></ProtectedRoute>} />
+                        <Route path="/workflow" element={<ProtectedRoute module="Procurement"><Workflow /></ProtectedRoute>} />
+                        <Route path="/hr" element={<ProtectedRoute module="HRMS"><HRMS /></ProtectedRoute>} />
+                        <Route path="/materials" element={<ProtectedRoute module="Inventory Management"><Materials /></ProtectedRoute>} />
+                        <Route path="/fleet" element={<ProtectedRoute module="Fleet Management"><Fleet /></ProtectedRoute>} />
+                        <Route path="/assets" element={<ProtectedRoute module="Inventory Management"><Assets /></ProtectedRoute>} />
+                        <Route path="/chat" element={<ProtectedRoute module="Team Chat"><Chat /></ProtectedRoute>} />
+                        <Route path="/reports" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
+                        <Route path="/users" element={<Navigate to="/hr?tab=Authorized+Users" replace />} />
+                        <Route path="/logs" element={<ProtectedRoute module="System Logs"><Logs /></ProtectedRoute>} />
                         <Route path="/settings" element={<Settings />} />
-                        <Route path="/approvals" element={<Approvals />} />
-                        <Route path="/site-reports" element={<SiteReports />} />
+                        <Route path="/approvals" element={<ProtectedRoute module="Approvals"><Approvals /></ProtectedRoute>} />
+                        <Route path="/site-reports" element={<ProtectedRoute module="Site Reports"><SiteReports /></ProtectedRoute>} />
                         <Route path="/profile" element={<Navigate to="/settings?tab=Profile" replace />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>

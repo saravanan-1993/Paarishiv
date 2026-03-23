@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, MapPin, User, LayoutDashboard, Calendar, Package, Download, ArrowRight } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, MapPin, User, LayoutDashboard, Calendar, Package, Download, ArrowRight, PlayCircle } from 'lucide-react';
 import { projectAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import DPRViewModal from '../components/DPRViewModal';
@@ -8,12 +8,20 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
+import Pagination from '../components/Pagination';
+
+const PAGE_SIZE = 15;
 
 const SiteReports = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('DPR'); // 'DPR', 'Requests' or 'Transfers'
+    const [dprPage, setDprPage] = useState(1);
+    const [reqPage, setReqPage] = useState(1);
+    const [xfPage, setXfPage] = useState(1);
+    const [viewingRequest, setViewingRequest] = useState(null);
 
     const tabMapping = useMemo(() => ({
         'Site Reports (DPR)': 'DPR',
@@ -237,6 +245,9 @@ const SiteReports = () => {
         return true;
     };
 
+    // Reset pages when filters change
+    useEffect(() => { setDprPage(1); setReqPage(1); setXfPage(1); }, [searchTerm, selectedProject, dateFilter]);
+
     const filteredDPRs = dprs.filter(d => {
         const matchesSearch = searchTerm === '' ||
             d.project_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -266,6 +277,10 @@ const SiteReports = () => {
         const matchesDate = isDateInRange(xf.created_at, dateFilter);
         return matchesSearch && matchesProject && matchesDate;
     });
+
+    const paginatedDPRs = filteredDPRs.slice((dprPage - 1) * PAGE_SIZE, dprPage * PAGE_SIZE);
+    const paginatedRequests = filteredRequests.slice((reqPage - 1) * PAGE_SIZE, reqPage * PAGE_SIZE);
+    const paginatedTransfers = filteredTransfers.slice((xfPage - 1) * PAGE_SIZE, xfPage * PAGE_SIZE);
 
     return (
         <div className="site-reports-container" style={{ position: 'relative' }}>
@@ -355,13 +370,14 @@ const SiteReports = () => {
                     ) : (
                         <div style={{ overflowX: 'auto' }}>
                             {activeTab === 'DPR' && (
+                                <>
                                 <table className="data-table">
                                     <thead>
                                         <tr><th>Date</th><th>Project</th><th>Engineer</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
                                         {filteredDPRs.length === 0 ? <tr><td colSpan="5" style={{ textAlign: 'center', padding: '60px' }}>No site reports found.</td></tr> :
-                                            filteredDPRs.map((dpr, i) => (
+                                            paginatedDPRs.map((dpr, i) => (
                                                 <tr key={i}>
                                                     <td>{dpr.date}</td><td style={{ fontWeight: '700', color: 'var(--primary)' }}>{dpr.project_name}</td><td>{dpr.submitted_by}</td>
                                                     <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Reviewed' ? 'badge-info' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{dpr.status}</span></td>
@@ -418,55 +434,114 @@ const SiteReports = () => {
                                         }
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={dprPage} totalItems={filteredDPRs.length} pageSize={PAGE_SIZE} onPageChange={setDprPage} />
+                                </>
                             )}
                             {activeTab === 'Requests' && (
+                                <>
                                 <table className="data-table">
                                     <thead>
                                         <tr><th>Date</th><th>Project</th><th>Site Engineer</th><th>Items Requested</th><th>Priority</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
                                         {filteredRequests.length === 0 ? <tr><td colSpan="7" style={{ textAlign: 'center', padding: '60px' }}>No pending material requests.</td></tr> :
-                                            filteredRequests.map((req, i) => (
+                                            paginatedRequests.map((req, i) => (
                                                 <tr key={i}>
                                                     <td>{new Date(req.created_at).toLocaleDateString()}</td><td style={{ fontWeight: '700' }}>{req.project_name}</td><td>{req.engineer_id}</td>
                                                     <td><div style={{ fontSize: '12px' }}>{req.requested_items?.map((it, idx) => (<div key={idx}>• {it.name} ({it.quantity} {it.unit})</div>))}</div></td>
                                                     <td><span className={`badge ${req.priority === 'High' ? 'badge-danger' : 'badge-info'}`}>{req.priority || 'Normal'}</span></td>
                                                     <td><span className={`badge ${req.status === 'Approved' ? 'badge-success' : req.status === 'Issued' ? 'badge-info' : req.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{req.status}</span></td>
                                                     <td style={{ textAlign: 'right' }}>
-                                                        {req.status === 'Pending' ? (
-                                                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                                                <button 
-                                                                    className="btn btn-success btn-sm" 
-                                                                    onClick={() => handleUpdateReqStatus(req, 'Approved')}
-                                                                    disabled={processingId === (req.id || req._id)}
+                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                            <button
+                                                                className="btn btn-outline btn-sm"
+                                                                title="View Details"
+                                                                onClick={() => setViewingRequest(viewingRequest === (req.id || req._id) ? null : (req.id || req._id))}
+                                                                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                            >
+                                                                <Eye size={14} /> View
+                                                            </button>
+                                                            {req.status === 'Pending' && (
+                                                                <>
+                                                                    <button
+                                                                        className="btn btn-success btn-sm"
+                                                                        onClick={() => handleUpdateReqStatus(req, 'Approved')}
+                                                                        disabled={processingId === (req.id || req._id)}
+                                                                        style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                    >
+                                                                        {processingId === (req.id || req._id) ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle size={14} /> Approve</>}
+                                                                    </button>
+                                                                    <button
+                                                                        className="btn btn-outline btn-sm"
+                                                                        style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                        onClick={() => handleUpdateReqStatus(req, 'Rejected')}
+                                                                        disabled={processingId === (req.id || req._id)}
+                                                                    >
+                                                                        {processingId === (req.id || req._id) ? <Loader2 size={14} className="animate-spin" /> : <><XCircle size={14} /> Reject</>}
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                            {req.status === 'Approved' && (
+                                                                <button
+                                                                    className="btn btn-primary btn-sm"
+                                                                    onClick={() => navigate(`/procurement?tab=POs`)}
+                                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                    title="Proceed to create PO"
                                                                 >
-                                                                    {processingId === (req.id || req._id) ? <Loader2 size={16} className="animate-spin" /> : 'APPROVE'}
+                                                                    <PlayCircle size={14} /> Proceed
                                                                 </button>
-                                                                <button 
-                                                                    className="btn btn-outline btn-sm" 
-                                                                    style={{ color: '#ef4444' }} 
-                                                                    onClick={() => handleUpdateReqStatus(req, 'Rejected')}
-                                                                    disabled={processingId === (req.id || req._id)}
-                                                                >
-                                                                    {processingId === (req.id || req._id) ? <Loader2 size={16} className="animate-spin" /> : 'REJECT'}
-                                                                </button>
-                                                            </div>
-                                                        ) : <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Processed</span>}
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))
                                         }
                                     </tbody>
                                 </table>
+                                {/* Request detail view panel */}
+                                {viewingRequest && (() => {
+                                    const req = filteredRequests.find(r => (r.id || r._id) === viewingRequest);
+                                    if (!req) return null;
+                                    return (
+                                        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', backgroundColor: '#f8fafc' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                                <h4 style={{ fontSize: '15px', fontWeight: '700' }}>Request Details</h4>
+                                                <button onClick={() => setViewingRequest(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-muted)' }}>&times;</button>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Project</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{req.project_name}</p></div>
+                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Requested By</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{req.engineer_id}</p></div>
+                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Date</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{new Date(req.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p></div>
+                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Priority</span><p><span className={`badge ${req.priority === 'High' ? 'badge-danger' : 'badge-info'}`}>{req.priority || 'Normal'}</span></p></div>
+                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Status</span><p><span className={`badge ${req.status === 'Approved' ? 'badge-success' : req.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{req.status}</span></p></div>
+                                            </div>
+                                            <div>
+                                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Items Requested</span>
+                                                <table className="data-table" style={{ marginTop: '8px' }}>
+                                                    <thead><tr><th>Material</th><th>Quantity</th><th>Unit</th></tr></thead>
+                                                    <tbody>
+                                                        {(req.requested_items || []).map((it, idx) => (
+                                                            <tr key={idx}><td style={{ fontWeight: '600' }}>{it.name}</td><td>{it.quantity}</td><td>{it.unit}</td></tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {req.remarks && <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#eff6ff', borderRadius: '8px', fontSize: '13px', color: '#1e40af' }}><strong>Remarks:</strong> {req.remarks}</div>}
+                                        </div>
+                                    );
+                                })()}
+                                <Pagination currentPage={reqPage} totalItems={filteredRequests.length} pageSize={PAGE_SIZE} onPageChange={setReqPage} />
+                                </>
                             )}
                             {activeTab === 'Transfers' && (
+                                <>
                                 <table className="data-table">
                                     <thead>
                                         <tr><th>Date</th><th>From Project</th><th>To Project</th><th>Items</th><th>Requested By</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
                                         {filteredTransfers.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '60px' }}>No pending transfer requests.</td></tr> :
-                                            filteredTransfers.map((xf, i) => (
+                                            paginatedTransfers.map((xf, i) => (
                                                 <tr key={i}>
                                                     <td>{new Date(xf.created_at).toLocaleDateString()}</td><td style={{ fontWeight: '600', color: '#ef4444' }}>{xf.from_project}</td><td style={{ fontWeight: '600', color: '#22c55e' }}>{xf.to_project}</td>
                                                     <td><div style={{ fontSize: '12px' }}>{xf.items?.map((it, idx) => (<div key={idx}>• {it.name} ({it.quantity})</div>))}</div></td>
@@ -484,6 +559,8 @@ const SiteReports = () => {
                                         }
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={xfPage} totalItems={filteredTransfers.length} pageSize={PAGE_SIZE} onPageChange={setXfPage} />
+                                </>
                             )}
                         </div>
                     )}

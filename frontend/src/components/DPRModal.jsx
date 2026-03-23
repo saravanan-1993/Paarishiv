@@ -27,6 +27,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const [contractors, setContractors] = useState([]);
     const [masterMaterials, setMasterMaterials] = useState([]);
     const [masterVehicles, setMasterVehicles] = useState([]);
+    const [allVendors, setAllVendors] = useState([]);
     const [photos, setPhotos] = useState([]);
 
     // Derived unique labour roles from contractors' rate cards
@@ -44,23 +45,32 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
 
     useEffect(() => {
         const fetchData = async () => {
-            try {
-                const [contractorRes, materialRes, vehicleRes] = await Promise.all([
-                    vendorAPI.getAll(),
-                    materialAPI.getAll(),
-                    fleetAPI.getVehicles()
-                ]);
+            // Fetch each data source independently so one failure doesn't block others
+            const results = await Promise.allSettled([
+                vendorAPI.getAll(),
+                materialAPI.getAll(),
+                fleetAPI.getVehicles()
+            ]);
 
-                // Filter for labour contractors
-                const labourContractors = contractorRes.data.filter(v =>
-                    v.category === 'labor' || v.type === 'Labor Contractor'
-                );
-                setContractors(labourContractors);
-                setMasterMaterials(materialRes.data || []);
-                setMasterVehicles(vehicleRes.data || []);
-            } catch (err) {
-                console.error('Failed to fetch DPR initial data:', err);
-            }
+            const contractorRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
+            const materialRes = results[1].status === 'fulfilled' ? results[1].value : { data: [] };
+            const vehicleRes = results[2].status === 'fulfilled' ? results[2].value : { data: [] };
+
+            if (results[0].status === 'rejected') console.warn('Failed to fetch vendors for DPR:', results[0].reason);
+            if (results[1].status === 'rejected') console.warn('Failed to fetch materials for DPR:', results[1].reason);
+            if (results[2].status === 'rejected') console.warn('Failed to fetch vehicles for DPR:', results[2].reason);
+
+            // Filter for labour contractors (case-insensitive)
+            const labourContractors = (contractorRes.data || []).filter(v => {
+                const cat = (v.category || '').toLowerCase();
+                const type = (v.type || '').toLowerCase();
+                return cat.includes('labor') || cat.includes('labour') || cat.includes('contractor') ||
+                       type.includes('labor') || type.includes('labour') || type.includes('contractor');
+            });
+            setContractors(labourContractors.length > 0 ? labourContractors : contractorRes.data || []);
+            setAllVendors(contractorRes.data || []);
+            setMasterMaterials(materialRes.data || []);
+            setMasterVehicles(vehicleRes.data || []);
         };
         if (isOpen) fetchData();
     }, [isOpen]);
@@ -68,14 +78,22 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     if (!isOpen) return null;
 
     const addRow = (type) => {
-        // Bug 4.3 - Check for empty rows before adding new ones to prevent duplicates
+        // Check for empty rows before adding new ones to prevent duplicates
         if (type === 'material') {
             const hasEmpty = materialRows.some(r => !r.name || r.name.trim() === '');
             if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
         }
+        if (type === 'equipment') {
+            const hasEmpty = equipmentRows.some(r => !r.name || r.name.trim() === '');
+            if (hasEmpty) { alert('Please fill in the existing empty machinery row before adding a new one.'); return; }
+        }
         if (type === 'nd_material') {
             const hasEmpty = nextDayMaterials.some(r => !r.material || r.material.trim() === '');
             if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
+        }
+        if (type === 'nd_equipment') {
+            const hasEmpty = nextDayEquipment.some(r => !r.equipment || r.equipment.trim() === '');
+            if (hasEmpty) { alert('Please fill in the existing empty equipment row before adding a new one.'); return; }
         }
         if (type === 'work') setWorkRows([...workRows, { task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
         if (type === 'labour') setLabourRows([...labourRows, { party: '', category: '', count: '', shift: '1', ot: '0' }]);
@@ -107,6 +125,18 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         if (type === 'nd_material' && field === 'material' && value) {
             const isDuplicate = nextDayMaterials.some((r, i) => i !== index && r.material && r.material.toLowerCase() === value.toLowerCase());
             if (isDuplicate) { alert(`Material "${value}" is already added. Please select a different material.`); return; }
+        }
+        if (type === 'equipment' && field === 'name' && value) {
+            const isDuplicate = equipmentRows.some((r, i) => i !== index && r.name && r.name.toLowerCase() === value.toLowerCase());
+            if (isDuplicate) { alert(`Machinery "${value}" is already added. Please select a different one.`); return; }
+        }
+        if (type === 'equipment' && field === 'no' && value) {
+            const isDuplicate = equipmentRows.some((r, i) => i !== index && r.no && r.no === value);
+            if (isDuplicate) { alert(`Machinery number "${value}" is already added. Please select a different one.`); return; }
+        }
+        if (type === 'nd_equipment' && field === 'equipment' && value) {
+            const isDuplicate = nextDayEquipment.some((r, i) => i !== index && r.equipment && r.equipment.toLowerCase() === value.toLowerCase());
+            if (isDuplicate) { alert(`Equipment "${value}" is already added. Please select a different one.`); return; }
         }
 
         const setRows = {
@@ -491,7 +521,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                             style={{ border: 'none', background: 'transparent' }}
                                                         />
                                                     </td>
-                                                    <td data-label="Unit"><input value={row.unit} onChange={e => updateRow('nd_material', i, 'unit', e.target.value)} placeholder="Unit" className="table-input-clean" /></td>
+                                                    <td data-label="Unit"><input value={row.unit} readOnly placeholder="Auto-filled" className="table-input-clean" style={{ backgroundColor: row.unit ? '#F1F5F9' : 'transparent', color: '#64748B' }} /></td>
                                                     <td data-label="Qty Needed"><input value={row.qty} onChange={e => updateRow('nd_material', i, 'qty', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                     <td className="action-cell"><button onClick={() => removeRow('nd_material', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                                 </tr>
@@ -556,7 +586,10 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                         <CustomSelect
                                                             options={[
                                                                 { value: '', label: 'Select Equipment' },
-                                                                ...Array.from(new Set(masterVehicles.map(v => v.vehicleType))).filter(Boolean).map(type => ({ value: type, label: type }))
+                                                                ...masterVehicles.map(v => ({
+                                                                    value: v.name || v.vehicle_name || v.registrationNo || `${v.make || ''} ${v.model || ''}`.trim(),
+                                                                    label: v.name || v.vehicle_name || v.registrationNo || `${v.make || ''} ${v.model || ''}`.trim()
+                                                                }))
                                                             ]}
                                                             value={row.equipment}
                                                             onChange={val => updateRow('nd_equipment', i, 'equipment', val)}
@@ -597,7 +630,20 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         </tr></thead>
                                         <tbody>{contractorRows.map((row, i) => (
                                             <tr key={i}>
-                                                <td data-label="Contractor Name"><input value={row.contractor} onChange={e => updateRow('contractor', i, 'contractor', e.target.value)} placeholder="e.g. ABC Plumbing" className="table-input-clean" /></td>
+                                                <td data-label="Contractor Name">
+                                                    <CustomSelect
+                                                        options={[
+                                                            { value: '', label: 'Select Vendor' },
+                                                            ...allVendors.map(v => ({ value: v.name, label: v.name }))
+                                                        ]}
+                                                        value={row.contractor}
+                                                        onChange={val => updateRow('contractor', i, 'contractor', val)}
+                                                        placeholder="Select Vendor"
+                                                        width="full"
+                                                        searchable={true}
+                                                        style={{ border: 'none', background: 'transparent' }}
+                                                    />
+                                                </td>
                                                 <td data-label="Work Title"><input value={row.title} onChange={e => updateRow('contractor', i, 'title', e.target.value)} placeholder="e.g. PvP Piping" className="table-input-clean" /></td>
                                                 <td data-label="Today"><input value={row.progress} onChange={e => updateRow('contractor', i, 'progress', e.target.value)} placeholder="e.g. 80 Rmt" className="table-input-clean" /></td>
                                                 <td data-label="Overall"><input value={row.overall} onChange={e => updateRow('contractor', i, 'overall', e.target.value)} placeholder="e.g. 1500 Rmt" className="table-input-clean" /></td>
@@ -724,13 +770,27 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     }} onMouseEnter={e => e.currentTarget.style.background = '#E2E8F0'} onMouseLeave={e => e.currentTarget.style.background = '#F1F5F9'}>
                         Discard
                     </button>
-                    <button onClick={handleSubmit} disabled={loading} style={{
-                        padding: '10px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white',
-                        fontWeight: '600', fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                        boxShadow: '0 4px 12px rgba(47, 93, 138, 0.3)', transition: 'all 0.2s', transform: loading ? 'none' : 'translateY(-1px)'
-                    }} className="btn-modern-primary">
-                        {loading ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : <><Save size={18} /> Submit DPR</>}
-                    </button>
+                    {activeTab !== 'photos' ? (
+                        <button onClick={() => {
+                            const tabOrder = ['work', 'labour', 'equipment', 'next_day', 'contractor', 'photos'];
+                            const nextIdx = tabOrder.indexOf(activeTab) + 1;
+                            if (nextIdx < tabOrder.length) setActiveTab(tabOrder[nextIdx]);
+                        }} style={{
+                            padding: '10px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white',
+                            fontWeight: '600', fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                            boxShadow: '0 4px 12px rgba(47, 93, 138, 0.3)', transition: 'all 0.2s', transform: 'translateY(-1px)'
+                        }} className="btn-modern-primary">
+                            Next →
+                        </button>
+                    ) : (
+                        <button onClick={handleSubmit} disabled={loading} style={{
+                            padding: '10px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white',
+                            fontWeight: '600', fontSize: '14px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                            boxShadow: '0 4px 12px rgba(47, 93, 138, 0.3)', transition: 'all 0.2s', transform: loading ? 'none' : 'translateY(-1px)'
+                        }} className="btn-modern-primary">
+                            {loading ? <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : <><Save size={18} /> Submit DPR</>}
+                        </button>
+                    )}
                 </div>
             </div>
 

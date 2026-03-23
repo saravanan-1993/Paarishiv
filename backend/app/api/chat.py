@@ -148,6 +148,51 @@ async def create_group(group: ChatGroup, db = Depends(get_database)):
     return group_dict
 
 
+@router.put("/groups/{group_id}/members", dependencies=[Depends(get_current_user)])
+async def add_group_members(group_id: str, data: dict, db = Depends(get_database)):
+    """Add new members to an existing group."""
+    new_members = data.get("members", [])
+    if not new_members:
+        raise HTTPException(status_code=400, detail="No members provided")
+
+    group = await db.chat_groups.find_one({"_id": ObjectId(group_id)})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    existing_members = set(group.get("members", []))
+    actually_new = [m for m in new_members if m not in existing_members]
+    if not actually_new:
+        raise HTTPException(status_code=400, detail="All members are already in the group")
+
+    await db.chat_groups.update_one(
+        {"_id": ObjectId(group_id)},
+        {"$addToSet": {"members": {"$each": actually_new}}}
+    )
+
+    # Send system message to new members
+    for member in actually_new:
+        await send_system_message(
+            sender="System",
+            receiver=member,
+            content=f"You have been added to group: {group['name']}",
+            msg_type="group_invite"
+        )
+
+    # Notify existing group members
+    group_name = group["name"]
+    # Get names of new members for notification
+    for member in existing_members:
+        await send_system_message(
+            sender="System",
+            receiver=member,
+            content=f"{len(actually_new)} new member(s) added to {group_name}",
+            msg_type="system"
+        )
+
+    updated_group = await db.chat_groups.find_one({"_id": ObjectId(group_id)})
+    updated_group["_id"] = str(updated_group["_id"])
+    return updated_group
+
 @router.post("/upload", dependencies=[Depends(get_current_user)])
 async def upload_chat_file(file: UploadFile = File(...)):
     # Read file content
@@ -206,7 +251,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: Optional
                     "timestamp": datetime.now(),
                     "is_read": False,
                     "group_id": message_data.get("group_id"),
-                    "receiver": message_data.get("receiver")
+                    "receiver": message_data.get("receiver"),
+                    "attachments": message_data.get("attachments", []),
+                    "message_type": message_data.get("message_type", "text")
                 }
                 inserted = await db.chat_messages.insert_one(new_message)
                 new_message["_id"] = str(inserted.inserted_id)

@@ -317,26 +317,36 @@ const Users = () => {
                             </button>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', alignItems: 'start' }}>
                             {roles.map((role, idx) => (
-                                <div key={idx} className="card" style={{ padding: '24px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                                        <div>
+                                <div key={idx} className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                        <div style={{ flex: 1 }}>
                                             <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{role.name}</h4>
                                             <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{role.description}</p>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '12px' }}>
-                                            <Edit3 size={18} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => handleEditRole(role)} />
+                                        <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
+                                            <button
+                                                onClick={() => handleEditRole(role)}
+                                                style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#0284c7' }}
+                                            >
+                                                <Edit3 size={14} /> Edit
+                                            </button>
                                             {role.name !== 'Administrator' && role.name !== 'Super Admin' && (
-                                                <Trash2 size={18} style={{ color: '#EF4444', cursor: 'pointer' }} onClick={() => handleDeleteRole(role.name)} />
+                                                <button
+                                                    onClick={() => handleDeleteRole(role.name)}
+                                                    style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#dc2626' }}
+                                                >
+                                                    <Trash2 size={14} /> Delete
+                                                </button>
                                             )}
                                         </div>
                                     </div>
 
-                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-                                        {role.tags.map(tag => (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                                        {(role.tags || []).map(tag => (
                                             <span key={tag} style={{
-                                                padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600',
+                                                padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
                                                 backgroundColor: tag === 'System' ? '#EFF6FF' : '#f1f5f9',
                                                 color: tag === 'System' ? '#3B82F6' : 'var(--text-muted)',
                                                 border: '1px solid var(--border)'
@@ -346,7 +356,7 @@ const Users = () => {
                                         ))}
                                     </div>
 
-                                    <div style={{ padding: '16px 0', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', marginBottom: '16px' }}>
+                                    <div style={{ padding: '16px 0', borderTop: '1px solid var(--border)', flex: 1 }}>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                                             {role.permissions.map(perm => {
                                                 const acts = perm.actions || { view: true, edit: false, delete: false };
@@ -354,25 +364,25 @@ const Users = () => {
                                                     <div key={perm.name} style={{
                                                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px',
                                                         borderRadius: '6px', border: '1px solid var(--border)', fontSize: '11px', fontWeight: '600',
-                                                        color: 'var(--text-main)', background: '#f8fafc'
+                                                        color: 'var(--text-main)', background: '#f8fafc', minHeight: '38px'
                                                     }}>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                {perm.icon ? <perm.icon size={12} style={{ color: 'var(--primary)' }} /> : <Shield size={12} style={{ color: 'var(--primary)' }} />}
-                                                                <span style={{ fontSize: '12px' }}>{perm.name}</span>
+                                                                {perm.icon ? <perm.icon size={12} style={{ color: 'var(--primary)', flexShrink: 0 }} /> : <Shield size={12} style={{ color: 'var(--primary)', flexShrink: 0 }} />}
+                                                                <span style={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{perm.name}</span>
                                                             </div>
                                                             {perm.subTabs && perm.subTabs.length > 0 && (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', paddingLeft: '18px' }}>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', paddingLeft: '18px' }}>
                                                                     {perm.subTabs.map(st => (
                                                                         <span key={st} style={{ fontSize: '9px', padding: '1px 4px', backgroundColor: '#e2e8f0', borderRadius: '3px', color: 'var(--text-muted)' }}>{st}</span>
                                                                     ))}
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <div style={{ display: 'flex', gap: '3px', alignSelf: 'flex-start', paddingTop: '2px' }}>
-                                                            <span style={{ color: acts.view ? '#10B981' : '#CBD5E1' }}>V</span>
-                                                            <span style={{ color: acts.edit ? '#F59E0B' : '#CBD5E1' }}>E</span>
-                                                            <span style={{ color: acts.delete ? '#EF4444' : '#CBD5E1' }}>D</span>
+                                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0, marginLeft: '6px' }}>
+                                                            <span style={{ fontSize: '10px', fontWeight: '700', color: acts.view ? '#10B981' : '#CBD5E1' }}>V</span>
+                                                            <span style={{ fontSize: '10px', fontWeight: '700', color: acts.edit ? '#F59E0B' : '#CBD5E1' }}>E</span>
+                                                            <span style={{ fontSize: '10px', fontWeight: '700', color: acts.delete ? '#EF4444' : '#CBD5E1' }}>D</span>
                                                         </div>
                                                     </div>
                                                 );

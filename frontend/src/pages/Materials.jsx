@@ -8,7 +8,7 @@ import FuelInventoryModal from '../components/FuelInventoryModal';
 import AssetDetailsModal from '../components/AssetDetailsModal';
 import MaterialLedgerModal from '../components/MaterialLedgerModal';
 import CustomSelect from '../components/CustomSelect';
-import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { projectAPI, materialAPI, inventoryAPI, fleetAPI } from '../utils/api';
 import CreateMaterialModal from '../components/CreateMaterialModal';
 import StockRequestModal from '../components/StockRequestModal';
 import StockIssueModal from '../components/StockIssueModal';
@@ -163,6 +163,25 @@ const Materials = () => {
         } finally { setIsWarehouseLoading(false); }
     };
 
+    // Bug 42: Fetch fleet/machinery data from backend when Machinery tab is active
+    const fetchFleetData = async () => {
+        try {
+            const res = await fleetAPI.getVehicles();
+            const vehicles = res.data || [];
+            setFleet(vehicles.map(v => ({
+                id: v.id || v._id,
+                name: `${v.vehicleNumber} - ${v.vehicleType || 'N/A'}`,
+                category: v.vehicleType || v.category || 'General',
+                site: v.assignedProject || v.currentSite || 'Yard',
+                hours: v.totalHours || 0,
+                status: v.status || 'Active',
+                ...v
+            })));
+        } catch (err) {
+            console.error('Failed to fetch fleet data:', err);
+        }
+    };
+
     useEffect(() => {
         if (mainTab === 'Warehouse') {
             if (warehouseSubTab === 'Stock') fetchWarehouseStock();
@@ -172,6 +191,9 @@ const Materials = () => {
         if (mainTab === 'Coordination') {
             if (coordinationSubTab === 'Pending') fetchStockRequests();
             else fetchConsolidatedRequests();
+        }
+        if (mainTab === 'Machinery') {
+            fetchFleetData();
         }
     }, [mainTab, warehouseSubTab, coordinationSubTab]);
 
@@ -225,9 +247,9 @@ const Materials = () => {
         }
     };
 
-    // Asset Handlers
-    const handleLogAdded = (newLog) => setDailyLogs([newLog, ...dailyLogs]);
-    const handleAssetAdded = (newAsset) => setFleet([...fleet, newAsset]);
+    // Asset Handlers - Bug 42: Refresh data from backend after changes
+    const handleLogAdded = (newLog) => { setDailyLogs([newLog, ...dailyLogs]); };
+    const handleAssetAdded = () => { fetchFleetData(); };
     const handleTransferAdded = (newTransfer) => setTransfers([newTransfer, ...transfers]);
     const handleViewDetails = (asset) => {
         setSelectedAsset(asset);
@@ -246,8 +268,9 @@ const Materials = () => {
                             style={{
                                 padding: '12px 4px', fontSize: '15px', fontWeight: '800',
                                 color: mainTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                 borderBottom: mainTab === tab.id ? '3px solid var(--primary)' : '3px solid transparent',
-                                background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                                background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
                                 transition: 'all 0.2s ease', whiteSpace: 'nowrap'
                             }}
                         >
@@ -437,8 +460,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 0', fontSize: '14px', fontWeight: '700',
                                         color: warehouseSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: warehouseSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                                         whiteSpace: 'nowrap'
                                     }}
                                 >
@@ -587,8 +611,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 0', fontSize: '14px', fontWeight: '700',
                                         color: coordinationSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: coordinationSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
                                     }}
                                 >
                                     <tab.icon size={16} />
@@ -708,8 +733,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 4px', fontSize: '14px', fontWeight: '700',
                                         color: assetSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: assetSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                                         whiteSpace: 'nowrap'
                                     }}
                                 >

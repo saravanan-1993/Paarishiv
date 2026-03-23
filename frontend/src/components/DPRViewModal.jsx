@@ -73,12 +73,21 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         
         finalY = finalY + 6 + (summaryLines.length * 7);
 
+        // Weather & Workforce
+        if (dpr.weather || dpr.total_labour) {
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            if (dpr.weather) doc.text(`Weather: ${dpr.weather}`, 14, finalY);
+            if (dpr.total_labour) doc.text(`Total Workforce: ${dpr.total_labour}`, 120, finalY);
+            finalY += 8;
+        }
+
         // Work Table
         if (dpr.work_rows?.length > 0) {
             autoTable(doc, {
                 startY: finalY + 10,
-                head: [['Activity / Task', 'Today\'s Progress', 'Overall %', 'Remarks']],
-                body: dpr.work_rows.map(r => [r.task, r.today, r.total, r.remark || '—']),
+                head: [['Activity / Task', 'Today\'s Progress', 'Overall %', 'Status', 'Remarks']],
+                body: dpr.work_rows.map(r => [r.task, r.today, r.overall || r.total || '', r.status || '', r.remark || '—']),
                 theme: 'grid',
                 headStyles: { fillColor: [30, 58, 95] }
             });
@@ -90,7 +99,7 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
             autoTable(doc, {
                 startY: finalY + 10,
                 head: [['Contractor', 'Labour Type', 'Count', 'Shift', 'OT (hrs)']],
-                body: dpr.labour_rows.map(r => [r.party, r.type, r.count, r.shift, r.overtime]),
+                body: dpr.labour_rows.map(r => [r.party, r.category || r.type || '', r.count, r.shift, r.ot || r.overtime || '0']),
                 theme: 'grid',
                 headStyles: { fillColor: [30, 58, 95] }
             });
@@ -126,6 +135,42 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                 headStyles: { fillColor: [30, 58, 95] }
             });
             finalY = doc.lastAutoTable.finalY;
+        }
+
+        // Contractor Summary Table
+        if (dpr.contractor_rows?.length > 0 && dpr.contractor_rows.some(r => r.contractor)) {
+            autoTable(doc, {
+                startY: finalY + 10,
+                head: [['Contractor Name', 'Work Title', 'Today\'s Progress', 'Total Overall']],
+                body: dpr.contractor_rows.filter(r => r.contractor).map(r => [r.contractor, r.title || '', r.progress || '', r.overall || '']),
+                theme: 'grid',
+                headStyles: { fillColor: [30, 58, 95] }
+            });
+            finalY = doc.lastAutoTable.finalY;
+        }
+
+        // Issues & Notes
+        if (dpr.issues || dpr.notes) {
+            finalY += 10;
+            if (finalY > 260) { doc.addPage(); finalY = 20; }
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            if (dpr.issues) {
+                doc.text('ISSUES & DELAYS:', 14, finalY);
+                doc.setFont('helvetica', 'normal');
+                const issueLines = doc.splitTextToSize(dpr.issues, 180);
+                doc.text(issueLines, 14, finalY + 6);
+                finalY += 6 + (issueLines.length * 6);
+            }
+            if (dpr.notes) {
+                finalY += 4;
+                doc.setFont('helvetica', 'bold');
+                doc.text('GENERAL NOTES:', 14, finalY);
+                doc.setFont('helvetica', 'normal');
+                const noteLines = doc.splitTextToSize(dpr.notes, 180);
+                doc.text(noteLines, 14, finalY + 6);
+                finalY += 6 + (noteLines.length * 6);
+            }
         }
 
         // Next Day Requirements Header

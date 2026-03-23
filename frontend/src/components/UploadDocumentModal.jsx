@@ -36,13 +36,20 @@ const UploadDocumentModal = ({ isOpen, onClose, project, onDocumentUploaded }) =
         setError('');
 
         try {
+            // Upload file to Cloudinary first
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await projectAPI.uploadPhoto(formData);
+            const fileUrl = uploadRes.data?.url || '';
+
             const docMetadata = {
                 title,
                 category,
                 fileName: file.name,
                 fileSize: (file.size / 1024).toFixed(2) + ' KB',
                 fileType: file.type || file.name.split('.').pop(),
-                date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                url: fileUrl
             };
 
             await projectAPI.addDocument(project._id, docMetadata);

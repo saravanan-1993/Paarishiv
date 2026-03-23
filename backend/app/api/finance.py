@@ -63,7 +63,15 @@ async def get_payables(db = Depends(get_database)):
     
     # Fetch all material purchase expenses to check what's already paid
     expenses = await db.expenses.find({"category": "Material Purchase"}).to_list(1000)
-    
+
+    # Fetch purchase bills to get correct totals when GRN/PO don't have prices
+    purchase_bills_list = await db.purchase_bills.find().to_list(1000)
+    pb_by_grn = {}
+    for pb in purchase_bills_list:
+        grn_id = pb.get("grn_id")
+        if grn_id:
+            pb_by_grn[grn_id] = pb
+
     payables = []
     
     for grn in grns:
@@ -96,6 +104,12 @@ async def get_payables(db = Depends(get_database)):
                 if matching_po_item and matching_po_item.get("rate"):
                     total_value += float(gi.get("received_qty", 0)) * float(matching_po_item.get("rate", 0))
         
+        # If total_value is still 0, check purchase bills for the correct total
+        if total_value == 0:
+            pb = pb_by_grn.get(grn_id_str)
+            if pb and float(pb.get("total_amount", 0)) > 0:
+                total_value = float(pb["total_amount"])
+
         # Calculate how much was already paid against this specific GRN
         matching_expenses = [e for e in expenses if e.get("grn_id") == grn_id_str]
         paid_amount = sum(float(e.get("amount", 0)) for e in matching_expenses)
@@ -339,9 +353,16 @@ async def get_purchase_bills(db = Depends(get_database)):
         b["id"] = str(b.pop("_id"))
     return bills
 
-@router.post("/purchase-bills")
+@router.post("/purchase-bills", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     bill_dict = bill.dict()
+    # Ensure numeric fields are properly typed
+    bill_dict["total_amount"] = float(bill_dict.get("total_amount", 0) or 0)
+    bill_dict["tax_amount"] = float(bill_dict.get("tax_amount", 0) or 0)
+    for item in bill_dict.get("items", []):
+        item["qty"] = float(item.get("qty", 0) or 0)
+        item["rate"] = float(item.get("rate", 0) or 0)
+        item["amount"] = float(item.get("amount", 0) or 0)
     bill_dict["created_at"] = datetime.now()
     bill_dict["status"] = "Unpaid"
     

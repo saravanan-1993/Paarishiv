@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { Send, User, MessageSquare, Search, Paperclip, FileIcon, Download, Loader2, X, Bell, BellOff, Info } from 'lucide-react';
+import { Send, User, MessageSquare, Search, Paperclip, FileIcon, Download, Loader2, X, Bell, BellOff, Info, UserPlus } from 'lucide-react';
 import { chatAPI } from '../utils/api';
 
 const Chat = () => {
@@ -19,6 +19,9 @@ const Chat = () => {
     const socketRef = useRef(null);
     const [mutedChats, setMutedChats] = useState({});
     const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showAddMembers, setShowAddMembers] = useState(false);
+    const [newGroupMembers, setNewGroupMembers] = useState([]);
+    const [addingMembers, setAddingMembers] = useState(false);
     const messagesEndRef = useRef(null);
 
     const host = window.location.hostname;
@@ -218,6 +221,24 @@ const Chat = () => {
             fetchGroups();
         } catch (err) {
             console.error('Group creation failed', err);
+        }
+    };
+
+    const handleAddMembers = async () => {
+        if (!selectedUser?.isGroup || newGroupMembers.length === 0) return;
+        setAddingMembers(true);
+        try {
+            const res = await chatAPI.addGroupMembers(selectedUser._id, newGroupMembers);
+            // Update selectedUser with new members
+            setSelectedUser(prev => ({ ...prev, members: res.data.members }));
+            setNewGroupMembers([]);
+            setShowAddMembers(false);
+            fetchGroups();
+        } catch (err) {
+            console.error('Failed to add members', err);
+            alert(err?.response?.data?.detail || 'Failed to add members.');
+        } finally {
+            setAddingMembers(false);
         }
     };
 
@@ -527,7 +548,10 @@ const Chat = () => {
                                                     {msg.sender_name || msg.sender}
                                                 </div>
                                             )}
-                                            <div style={{ fontSize: '14px', lineHeight: '1.5' }}>{msg.content}</div>
+                                            {/* Only show text content if there are no attachments, or if content is not just a file share message */}
+                                            {(!msg.attachments || msg.attachments.length === 0 || (msg.content && !msg.content.startsWith('Shared a '))) && (
+                                                <div style={{ fontSize: '14px', lineHeight: '1.5' }}>{msg.content}</div>
+                                            )}
 
                                             {/* Render Attachments */}
                                             {msg.attachments && msg.attachments.length > 0 && (
@@ -938,9 +962,74 @@ const Chat = () => {
                         {/* Group Members (if group, WhatsApp style) */}
                         {selectedUser.isGroup && (
                             <div style={{ padding: '0', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginBottom: '10px' }}>
-                                <div style={{ padding: '20px', fontSize: '14px', color: '#8696a0', borderBottom: '1px solid #f0f2f5' }}>
-                                    {selectedUser.members.length} members
+                                <div style={{ padding: '20px', fontSize: '14px', color: '#8696a0', borderBottom: '1px solid #f0f2f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>{selectedUser.members.length} members</span>
+                                    <button
+                                        onClick={() => { setShowAddMembers(!showAddMembers); setNewGroupMembers([]); }}
+                                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: '700' }}
+                                    >
+                                        <UserPlus size={16} /> Add
+                                    </button>
                                 </div>
+
+                                {/* Add Members Panel */}
+                                {showAddMembers && (
+                                    <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f2f5', backgroundColor: '#f8fafc' }}>
+                                        <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '8px' }}>
+                                            {users.filter(u => isOfficeRole(u.role) && !selectedUser.members.includes(u.username)).map(u => {
+                                                const isSelected = newGroupMembers.includes(u.username);
+                                                return (
+                                                    <div
+                                                        key={u.username}
+                                                        onClick={() => {
+                                                            if (isSelected) setNewGroupMembers(newGroupMembers.filter(m => m !== u.username));
+                                                            else setNewGroupMembers([...newGroupMembers, u.username]);
+                                                        }}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px',
+                                                            cursor: 'pointer', borderRadius: '8px',
+                                                            backgroundColor: isSelected ? 'white' : 'transparent',
+                                                            border: isSelected ? '1px solid var(--primary)' : '1px solid transparent',
+                                                            marginBottom: '4px', transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            width: '16px', height: '16px', borderRadius: '4px',
+                                                            border: isSelected ? 'none' : '2px solid #cbd5e1',
+                                                            backgroundColor: isSelected ? 'var(--primary)' : 'white',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                        }}>
+                                                            {isSelected && <div style={{ width: '8px', height: '4px', borderLeft: '2px solid white', borderBottom: '2px solid white', transform: 'rotate(-45deg) translateY(-1px)' }}></div>}
+                                                        </div>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div style={{ fontSize: '13px', fontWeight: '600' }}>{u.full_name}</div>
+                                                            <div style={{ fontSize: '11px', color: '#667781' }}>{u.role}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {users.filter(u => isOfficeRole(u.role) && !selectedUser.members.includes(u.username)).length === 0 && (
+                                                <p style={{ fontSize: '13px', color: '#667781', textAlign: 'center', padding: '12px' }}>All users are already in this group</p>
+                                            )}
+                                        </div>
+                                        {newGroupMembers.length > 0 && (
+                                            <button
+                                                onClick={handleAddMembers}
+                                                disabled={addingMembers}
+                                                style={{
+                                                    width: '100%', padding: '8px', borderRadius: '8px', border: 'none',
+                                                    background: 'var(--primary)', color: 'white', fontWeight: '700',
+                                                    fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                                    justifyContent: 'center', gap: '6px'
+                                                }}
+                                            >
+                                                {addingMembers ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                                                Add {newGroupMembers.length} Member{newGroupMembers.length > 1 ? 's' : ''}
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
                                 {selectedUser.members.map(username => {
                                     const uInfo = users.find(u => u.username === username);
                                     const isYou = username === user.username;
