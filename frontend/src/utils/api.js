@@ -26,8 +26,15 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            localStorage.removeItem('erp_user');
-            window.location.href = '/login';
+            // Don't auto-logout for unauthenticated endpoints (e.g. settings/company on login page)
+            // or if we're already on the login page
+            const url = error.config?.url || '';
+            const isPublicEndpoint = url.includes('/settings/company') || url.includes('/auth/');
+            const isOnLoginPage = window.location.pathname === '/login';
+            if (!isPublicEndpoint && !isOnLoginPage) {
+                localStorage.removeItem('erp_user');
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }
