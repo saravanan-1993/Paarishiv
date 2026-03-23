@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = async (username, password) => {
-        const cleanUsername = username.trim().toLowerCase();
+        const cleanUsername = username.trim();
         const cleanPassword = password.trim();
 
         try {
