@@ -66,9 +66,7 @@ class QuickLoginRequest(BaseModel):
 
 @router.post("/quick-login")
 async def quick_login(req: QuickLoginRequest, db = Depends(get_database)):
-    """Quick login by role - only available in DEBUG mode."""
-    if not os.getenv("DEBUG", "").lower() in ("true", "1", "yes"):
-        raise HTTPException(status_code=403, detail="Quick login is disabled in production")
+    """Quick login by role for demo/testing purposes."""
 
     # Find first active employee with the requested role
     db_user = await db.employees.find_one({
