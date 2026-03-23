@@ -26,13 +26,16 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Don't auto-logout for unauthenticated endpoints (e.g. settings/company on login page)
-            // or if we're already on the login page
             const url = error.config?.url || '';
             const isPublicEndpoint = url.includes('/settings/company') || url.includes('/auth/');
             const isOnLoginPage = window.location.pathname === '/login';
-            if (!isPublicEndpoint && !isOnLoginPage) {
+            // Don't auto-logout for public endpoints or on login page
+            // Also skip if user just logged in (within last 5 seconds) to prevent race condition
+            const loginTime = parseInt(localStorage.getItem('erp_login_time') || '0');
+            const justLoggedIn = (Date.now() - loginTime) < 5000;
+            if (!isPublicEndpoint && !isOnLoginPage && !justLoggedIn) {
                 localStorage.removeItem('erp_user');
+                localStorage.removeItem('erp_login_time');
                 window.location.href = '/login';
             }
         }
