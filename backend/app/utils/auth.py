@@ -56,9 +56,9 @@ async def authenticate_user(username: str, password: str, db = None):
 
     db_user = await db.employees.find_one({
         "$or": [
-            {"email": username},
-            {"employeeCode": username},
-            {"username": username}
+            {"email": {"$regex": f"^{username}$", "$options": "i"}},
+            {"employeeCode": {"$regex": f"^{username}$", "$options": "i"}},
+            {"username": {"$regex": f"^{username}$", "$options": "i"}}
         ]
     })
     if not db_user:
