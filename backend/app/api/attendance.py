@@ -3,10 +3,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.models.attendance import AttendanceRecord, ClockInRequest, AttendanceSummary
 from app.utils.auth import get_current_user
+from app.utils.rbac import RBACPermission
 from database import get_database
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson import ObjectId
 import math
+import re
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     """Calculate distance in meters using Haversine formula."""
@@ -181,31 +183,45 @@ async def get_my_summary(current_user = Depends(get_current_user), db = Depends(
     try:
         username = current_user.get("username")
         today = datetime.now().strftime("%Y-%m-%d")
-        
+
         session = await db.attendance.find_one({"username": username, "date": today})
-        
+
         now = datetime.now()
-        # Find all records for the current month
         month_start = f"{now.year}-{now.month:02d}"
         records = await db.attendance.find({
             "username": username,
-            "date": {"$regex": f"^{month_start}"}
+            "date": {"$regex": f"^{re.escape(month_start)}"}
         }).to_list(100)
-        
-        present = len(records)
+
+        # Proper present/leave/absent calculation
+        present = sum(1 for r in records if r.get("status") == "Present")
+        leave_days = sum(1 for r in records if r.get("status") == "Leave")
         total_hours = sum(r.get("work_hours", 0) for r in records)
-        
+
+        # Calculate working days elapsed (exclude Sundays)
+        first_day = now.replace(day=1)
+        working_days_elapsed = 0
+        current_day = first_day
+        while current_day <= now:
+            if current_day.weekday() != 6:  # 6 = Sunday
+                working_days_elapsed += 1
+            current_day += timedelta(days=1)
+
+        absent_days = max(0, working_days_elapsed - present - leave_days)
+
         return {
             "present_days": present,
-            "absent_days": 0,
+            "leave_days": leave_days,
+            "absent_days": absent_days,
             "total_hours": round(total_hours, 2),
+            "working_days": working_days_elapsed,
             "current_session": {
                 "check_in": session["check_in"].isoformat() if session and session.get("check_in") else None,
                 "check_out": session["check_out"].isoformat() if session and session.get("check_out") else None,
                 "on_break": session.get("on_break", False),
                 "breaks": [
                     {
-                        **b, 
+                        **b,
                         "start": b["start"].isoformat() if b.get("start") else None,
                         "end": b["end"].isoformat() if b.get("end") else None
                     } for b in session.get("breaks", [])
@@ -215,23 +231,37 @@ async def get_my_summary(current_user = Depends(get_current_user), db = Depends(
     except Exception as e:
         print(f"Error in get_my_summary: {str(e)}")
         return {
-            "present_days": 0, "absent_days": 0, "total_hours": 0, "current_session": None, "error": str(e)
+            "present_days": 0, "leave_days": 0, "absent_days": 0, "total_hours": 0, "working_days": 0, "current_session": None, "error": str(e)
         }
 
-@router.get("/{username}/summary")
+@router.get("/{username}/summary", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_user_summary(username: str, db = Depends(get_database)):
     now = datetime.now()
+    month_prefix = f"{now.year}-{now.month:02d}"
     records = await db.attendance.find({
         "username": username,
-        "date": {"$regex": f"^{now.year}-{now.month:02d}"}
+        "date": {"$regex": f"^{re.escape(month_prefix)}"}
     }).to_list(100)
-    
-    present = len(records)
+
+    present = sum(1 for r in records if r.get("status") == "Present")
+    leave_days = sum(1 for r in records if r.get("status") == "Leave")
     total_hours = sum(r.get("work_hours", 0) for r in records)
-    
-    # Logic to return 0 for non-existent users
+
+    # Calculate working days elapsed (exclude Sundays)
+    first_day = now.replace(day=1)
+    working_days_elapsed = 0
+    current_day = first_day
+    while current_day <= now:
+        if current_day.weekday() != 6:
+            working_days_elapsed += 1
+        current_day += timedelta(days=1)
+
+    absent_days = max(0, working_days_elapsed - present - leave_days)
+
     return {
         "present_days": present,
-        "absent_days": 1, # Mocking 1 absent day
-        "total_hours": total_hours
+        "leave_days": leave_days,
+        "absent_days": absent_days,
+        "total_hours": round(total_hours, 2),
+        "working_days": working_days_elapsed
     }

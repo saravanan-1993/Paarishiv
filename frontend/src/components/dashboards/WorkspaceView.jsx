@@ -2,12 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Activity, Coffee, Briefcase as BriefcaseIcon, UserCircle, LogOut, ChevronDown, CheckCircle, Package } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { attendanceAPI } from '../../utils/api';
+import Pagination from '../../components/Pagination';
+
+const WS_PAGE_SIZE = 5;
 
 const WorkspaceView = ({
     user,
     projects = []
 }) => {
     const navigate = useNavigate();
+    // Bug 47: Pagination state
+    const [taskPage, setTaskPage] = useState(1);
+    const [reqPage, setReqPage] = useState(1);
 
     const getStringId = (val) => {
         if (!val) return '';
@@ -28,6 +34,12 @@ const WorkspaceView = ({
                     });
                 }
             });
+        });
+        // Bug 47: FIFO sort - latest first
+        all.sort((a, b) => {
+            const da = new Date(a.createdAt || a.created_at || a.due || 0);
+            const db = new Date(b.createdAt || b.created_at || b.due || 0);
+            return db - da;
         });
         return all;
     }, [projects, user]);
@@ -50,6 +62,12 @@ const WorkspaceView = ({
                     });
                 }
             });
+        });
+        // Bug 47: FIFO sort - latest first
+        all.sort((a, b) => {
+            const da = new Date(a.date || 0);
+            const db = new Date(b.date || 0);
+            return db - da;
         });
         return all;
     }, [projects, user]);
@@ -77,7 +95,7 @@ const WorkspaceView = ({
                             View All
                         </button>
                     </div>
-                    {tasks.map(t => (
+                    {tasks.slice((taskPage - 1) * WS_PAGE_SIZE, taskPage * WS_PAGE_SIZE).map(t => (
                         <div key={t.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div>
                                 <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{t.name}</p>
@@ -89,6 +107,7 @@ const WorkspaceView = ({
                         </div>
                     ))}
                     {tasks.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center' }}>No tasks assigned.</p>}
+                    {tasks.length > WS_PAGE_SIZE && <Pagination currentPage={taskPage} totalItems={tasks.length} pageSize={WS_PAGE_SIZE} onPageChange={setTaskPage} />}
                 </div>
 
                 {/* My Material Requests */}
@@ -102,7 +121,7 @@ const WorkspaceView = ({
                             View Inventory
                         </button>
                     </div>
-                    {requests.map(r => (
+                    {requests.slice((reqPage - 1) * WS_PAGE_SIZE, reqPage * WS_PAGE_SIZE).map(r => (
                         <div key={r.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div>
                                 <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{r.item}</p>
@@ -114,6 +133,7 @@ const WorkspaceView = ({
                         </div>
                     ))}
                     {requests.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center' }}>No material requests.</p>}
+                    {requests.length > WS_PAGE_SIZE && <Pagination currentPage={reqPage} totalItems={requests.length} pageSize={WS_PAGE_SIZE} onPageChange={setReqPage} />}
                 </div>
 
             </div>

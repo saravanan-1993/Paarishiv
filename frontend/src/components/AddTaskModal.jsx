@@ -32,7 +32,8 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
     // Derived values - much safer than keeping in sync via effects
     const activeProject = project || (projects || []).find(p => getStringId(p._id || p.id) === selectedProjectId) || (projects?.length > 0 ? projects[0] : null);
     const engineerId = getStringId(activeProject?.engineer_id);
-    const engineerDisplayName = engineerName || (engineerId ? engineerId.charAt(0).toUpperCase() + engineerId.slice(1) : 'Engineer');
+    // Use backend-resolved engineer_name first (authoritative), then local resolution, then fallback
+    const engineerDisplayName = activeProject?.engineer_name || engineerName || (engineerId ? engineerId.charAt(0).toUpperCase() + engineerId.slice(1) : 'Engineer');
 
     // 1. Reset form and sync internal ID when modal opens or project prop changes
     useEffect(() => {
@@ -59,10 +60,16 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
     // 2. Fetch/Resolve Engineer Name whenever the engineerId changes
     useEffect(() => {
         if (!isOpen) return;
-        
+
         const fetchName = async () => {
             if (!engineerId) {
                 setEngineerName('');
+                return;
+            }
+
+            // If backend already resolved the name, use it directly
+            if (activeProject?.engineer_name) {
+                setEngineerName(activeProject.engineer_name);
                 return;
             }
 
@@ -77,15 +84,13 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
                 try {
                     const res = await employeeAPI.getAll();
                     const emps = res.data || [];
-                    const emp = emps.find(e => 
-                        getStringId(e._id) === engineerId || 
+                    const emp = emps.find(e =>
+                        getStringId(e._id) === engineerId ||
                         getStringId(e.username) === engineerId ||
                         getStringId(e.employeeCode) === engineerId
                     );
                     if (emp) {
                         setEngineerName(emp.fullName);
-                    } else {
-                        // Keep ID capitalized as name
                     }
                 } catch (err) {
                     console.error('Failed to resolve engineer name:', err);
@@ -94,7 +99,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
         };
 
         fetchName();
-    }, [isOpen, engineerId]);
+    }, [isOpen, engineerId, activeProject?.engineer_name]);
 
     const handleTimeChange = (time) => {
         setForm(prev => ({ ...prev, dueTime: time }));

@@ -4,10 +4,12 @@ from database import db
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from datetime import datetime
+import re
 from app.utils.email import send_email, generate_po_html
 from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
 from app.utils.logging import log_activity
+from app.utils.rbac import RBACPermission
 router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
 class POItem(BaseModel):
@@ -64,7 +66,7 @@ async def get_pos(current_user: dict = Depends(get_current_user)):
     pos = await db.purchase_orders.find(query).to_list(100)
     return [po_helper(p) for p in pos]
 
-@router.get("/{id}")
+@router.get("/{id}", dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_po(id: str):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -73,21 +75,18 @@ async def get_po(id: str):
         raise HTTPException(status_code=404, detail="PO not found")
     return po_helper(po)
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_po(po: POCreate):
+@router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("Procurement", "edit"))])
+async def create_po(po: POCreate, background_tasks: BackgroundTasks):
     po_dict = po.model_dump()
     po_dict["created_at"] = datetime.now()
     result = await db.purchase_orders.insert_one(po_dict)
-    
+
     # Update linked Material Request (Individual or Consolidated) status
     if po.request_id and ObjectId.is_valid(po.request_id):
-        # 1. Try Material Requests
         mr_result = await db.material_requests.update_one(
             {"_id": ObjectId(po.request_id)},
             {"$set": {"status": "PO Created", "po_id": str(result.inserted_id)}}
         )
-        
-        # 2. Try Consolidated Requests
         if mr_result.matched_count == 0:
             await db.consolidated_requests.update_one(
                 {"_id": ObjectId(po.request_id)},
@@ -100,11 +99,28 @@ async def create_po(po: POCreate):
         user = {"username": "System", "role": "Purchase Officer"}
         await trigger_workflow_event(str(project["_id"]), "po_created", user, db, f"PO generated for {po.vendor_name}")
 
+    # Bug 6.1 - Auto-send email to vendor on PO creation
+    try:
+        vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(po.vendor_name.strip())}$", "$options": "i"}})
+        if vendor and vendor.get("email"):
+            po_data = po_helper(new_po)
+            vendor_data = {"name": vendor["name"], "email": vendor["email"]}
+            html_content = generate_po_html(po_data, vendor_data)
+            background_tasks.add_task(
+                send_email,
+                to_email=vendor["email"],
+                subject=f"Purchase Order: PO-{po_data['id'][-6:].upper()} - {po_data['project_name']}",
+                body=html_content,
+                is_html=True
+            )
+    except Exception as e:
+        pass
+
     await log_activity(db, "system", "Purchase Officer", "Create PO", f"PO created for {po.vendor_name} | Project: {po.project_name}", "info")
     return po_helper(new_po)
 
-@router.put("/{id}")
-@router.put("/{id}/")
+@router.put("/{id}", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
+@router.put("/{id}/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def update_po(id: str, po_data: dict = Body(...)):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -129,8 +145,8 @@ async def update_po(id: str, po_data: dict = Body(...)):
          
     return po_helper(updated_po)
 
-@router.put("/{id}/approve")
-@router.put("/{id}/approve/")
+@router.put("/{id}/approve", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
+@router.put("/{id}/approve/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -146,8 +162,8 @@ async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
     )
     return {"message": "PO Approved"}
 
-@router.post("/{id}/send-email")
-@router.post("/{id}/send-email/")
+@router.post("/{id}/send-email", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
+@router.post("/{id}/send-email/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def send_po_email(id: str, background_tasks: BackgroundTasks):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -160,7 +176,7 @@ async def send_po_email(id: str, background_tasks: BackgroundTasks):
     # Fetch Vendor to get email
     # Use regex for flexible matching (ignore case and trailing/leading spaces)
     vendor_name = po["vendor_name"].strip()
-    vendor = await db.vendors.find_one({"name": {"$regex": f"^{vendor_name}$", "$options": "i"}})
+    vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(vendor_name)}$", "$options": "i"}})
     
     if not vendor:
         # Try a more aggressive search if exact match fails

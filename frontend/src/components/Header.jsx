@@ -13,8 +13,24 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
     const { notifications, unreadCount, markAllAsRead } = useNotifications();
     const [notifOpen, setNotifOpen] = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
+    const [companyLogo, setCompanyLogo] = useState('');
     const notifRef = useRef(null);
     const profileRef = useRef(null);
+
+    // Bug 11.2 - Fetch company logo
+    useEffect(() => {
+        const fetchLogo = async () => {
+            try {
+                const { settingsAPI } = await import('../utils/api');
+                const res = await settingsAPI.getCompany();
+                if (res.data?.logo) setCompanyLogo(res.data.logo);
+            } catch (e) {}
+        };
+        fetchLogo();
+        const handler = () => fetchLogo();
+        window.addEventListener('companyInfoUpdated', handler);
+        return () => window.removeEventListener('companyInfoUpdated', handler);
+    }, []);
 
     // Close panel when clicking outside
     useEffect(() => {
@@ -64,11 +80,18 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                         padding: '8px',
                         color: 'var(--text-main)',
                         cursor: 'pointer',
-                        display: 'none' // Hidden by default, shown via CSS on mobile
+                        display: 'none'
                     }}
                 >
                     {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
+                {companyLogo && (
+                    <img
+                        src={companyLogo.startsWith('http') || companyLogo.startsWith('/static') ? companyLogo : `/api${companyLogo}`}
+                        alt="Logo"
+                        style={{ height: '36px', objectFit: 'contain', borderRadius: '6px' }}
+                    />
+                )}
             </div>
 
             <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -179,21 +202,31 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                         <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.name}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{user?.role}</div>
                     </div>
-                    <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '10px',
-                        backgroundColor: 'var(--primary)',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: '800',
-                        fontSize: '15px',
-                        boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
-                    }}>
-                        {user?.name?.charAt(0) || 'U'}
-                    </div>
+                    {user?.avatar ? (
+                        <img src={user.avatar} alt={user.name} style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '10px',
+                            objectFit: 'cover',
+                            boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
+                        }} />
+                    ) : (
+                        <div style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '10px',
+                            backgroundColor: 'var(--primary)',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: '800',
+                            fontSize: '15px',
+                            boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
+                        }}>
+                            {user?.name?.charAt(0) || 'U'}
+                        </div>
+                    )}
                     <ChevronDown size={14} style={{ color: 'var(--text-muted)', marginLeft: '4px', transform: profileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
 
                     {/* Profile Dropdown */}

@@ -14,6 +14,7 @@ import VehicleModal from '../components/VehicleModal';
 import TripModal from '../components/TripModal';
 import TripExpenseModal from '../components/TripExpenseModal';
 import DriverModal from '../components/DriverModal';
+import Pagination from '../components/Pagination';
 
 const Fleet = () => {
     const { user } = useAuth();
@@ -48,6 +49,12 @@ const Fleet = () => {
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [selectedTrip, setSelectedTrip] = useState(null);
     const [selectedDriver, setSelectedDriver] = useState(null);
+    const PAGE_SIZE = 15;
+    const [tripPage, setTripPage] = useState(1);
+    const [driverPage, setDriverPage] = useState(1);
+    // Bug 44: Fleet Reports date filter
+    const [reportStartDate, setReportStartDate] = useState('');
+    const [reportEndDate, setReportEndDate] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -247,7 +254,7 @@ const Fleet = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {trips.map((trip, i) => (
+                        {trips.slice((tripPage - 1) * PAGE_SIZE, tripPage * PAGE_SIZE).map((trip, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>T-{trip.tripId}</td>
                                 <td>
@@ -295,6 +302,7 @@ const Fleet = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination currentPage={tripPage} totalItems={trips.length} pageSize={PAGE_SIZE} onPageChange={setTripPage} />
             </div>
         </div>
     );
@@ -333,7 +341,7 @@ const Fleet = () => {
                             </div>
                         </div>
                         <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                            <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }}>History</button>
+                            <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }} onClick={() => { setSelectedTrip(v); setActiveTab('Trips'); }}>History</button>
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 <button className="icon-btn" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>
                                 <button className="icon-btn" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>
@@ -386,7 +394,7 @@ const Fleet = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {drivers.map((driver, i) => (
+                        {drivers.slice((driverPage - 1) * PAGE_SIZE, driverPage * PAGE_SIZE).map((driver, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -428,6 +436,7 @@ const Fleet = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination currentPage={driverPage} totalItems={drivers.length} pageSize={PAGE_SIZE} onPageChange={setDriverPage} />
             </div>
         </div>
     );
@@ -506,21 +515,73 @@ const Fleet = () => {
                                 </table>
                             </div>
                         )}
-                        {activeTab === 'Reports' && (
+                        {activeTab === 'Reports' && (() => {
+                            // Bug 44: Filter trips by date range for reports
+                            const filteredTrips = trips.filter(t => {
+                                if (!reportStartDate && !reportEndDate) return true;
+                                const tripDate = new Date(t.date || t.createdAt || t.created_at);
+                                if (isNaN(tripDate.getTime())) return true;
+                                if (reportStartDate && tripDate < new Date(reportStartDate)) return false;
+                                if (reportEndDate) {
+                                    const end = new Date(reportEndDate);
+                                    end.setHours(23, 59, 59, 999);
+                                    if (tripDate > end) return false;
+                                }
+                                return true;
+                            });
+
+                            // Build vehicle-wise summary from filtered trips
+                            const vehicleSummary = {};
+                            filteredTrips.forEach(t => {
+                                const vNum = t.vehicleNumber || 'Unknown';
+                                if (!vehicleSummary[vNum]) vehicleSummary[vNum] = { vehicle: vNum, trips: 0, revenue: 0, expense: 0, profit: 0 };
+                                vehicleSummary[vNum].trips += 1;
+                                vehicleSummary[vNum].revenue += (t.totalRevenue || 0);
+                                vehicleSummary[vNum].expense += (t.totalExpense || 0);
+                                vehicleSummary[vNum].profit += (t.netProfit || (t.totalRevenue || 0) - (t.totalExpense || 0));
+                            });
+                            const reportData = (reportStartDate || reportEndDate) ? Object.values(vehicleSummary) : (stats.vehicleStats || []);
+
+                            const handleExportCSV = () => {
+                                const dateLabel = reportStartDate || reportEndDate ? `${reportStartDate || 'Start'} to ${reportEndDate || 'End'}` : 'All Time';
+                                let csv = `Fleet Performance Report - ${dateLabel}\n`;
+                                csv += 'Vehicle,Trips,Revenue (₹),Expense (₹),Net Profit (₹),Efficiency %\n';
+                                reportData.forEach(v => {
+                                    const eff = v.revenue > 0 ? ((v.profit / v.revenue) * 100).toFixed(1) : '0';
+                                    csv += `${v.vehicle},${v.trips},${v.revenue},${v.expense},${v.profit},${eff}%\n`;
+                                });
+                                const blob = new Blob([csv], { type: 'text/csv' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `Fleet_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                            };
+
+                            return (
                             <div className="animate-fade-in card">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Fleet Performance Report</h3>
                                         <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Consolidated trip and profitability data</p>
                                     </div>
-                                    <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <Download size={18} /> EXPORT CSV
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', backgroundColor: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                            <Calendar size={14} color="var(--text-muted)" />
+                                            <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '13px', fontWeight: '600' }} />
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '12px', fontWeight: '700' }}>TO</span>
+                                            <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '13px', fontWeight: '600' }} />
+                                        </div>
+                                        <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={handleExportCSV}>
+                                            <Download size={18} /> EXPORT CSV
+                                        </button>
+                                    </div>
                                 </div>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
-                                            <th>Date</th>
+                                            <th>Period</th>
                                             <th>Vehicle</th>
                                             <th>Trips</th>
                                             <th>Total Revenue</th>
@@ -530,9 +591,9 @@ const Fleet = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stats.vehicleStats?.map((v, i) => (
+                                        {reportData.map((v, i) => (
                                             <tr key={i}>
-                                                <td>All Time</td>
+                                                <td>{reportStartDate || reportEndDate ? `${reportStartDate || '—'} to ${reportEndDate || '—'}` : 'All Time'}</td>
                                                 <td style={{ fontWeight: '700' }}>{v.vehicle}</td>
                                                 <td>{v.trips}</td>
                                                 <td>₹{v.revenue.toLocaleString()}</td>
@@ -545,10 +606,14 @@ const Fleet = () => {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {reportData.length === 0 && (
+                                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No data for selected period</td></tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
-                        )}
+                            );
+                        })()}
                     </>
                 )}
 

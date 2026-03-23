@@ -117,9 +117,30 @@ async def sync_inventory(db = Depends(get_database)):
     return {"message": f"Inventory synced from {len(grns)} GRNs. Total {count} item updates processed."}
 
 @router.post("/")
-async def create_material(material: MaterialBase, db = Depends(get_database)):
-    result = await db.materials.insert_one(material.dict())
-    return {"id": str(result.inserted_id), **material.dict()}
+async def create_material(material: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Accept flexible dict to avoid field mismatch with frontend
+    material_data = {
+        "name": material.get("name"),
+        "category": material.get("category", "Construction"),
+        "unit": material.get("unit", "Nos"),
+        "min_stock_level": material.get("min_stock_level", 0),
+        "current_stock": material.get("current_stock", 0),
+        "stock_handling_type": material.get("stock_handling_type", "Direct Site"),
+        "created_at": datetime.now(),
+        "created_by": current_user.get("username", "system")
+    }
+    if not material_data["name"]:
+        raise HTTPException(status_code=400, detail="Material name is required")
+
+    # Check for duplicate material name
+    existing = await db.materials.find_one({"name": {"$regex": f"^{material_data['name']}$", "$options": "i"}})
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Material '{material_data['name']}' already exists")
+
+    result = await db.materials.insert_one(material_data)
+    material_data["_id"] = str(result.inserted_id)
+    material_data["created_at"] = material_data["created_at"].isoformat() if material_data.get("created_at") else None
+    return {"id": str(result.inserted_id), **{k: v for k, v in material_data.items() if k != "_id"}}
 
 @router.get("/inventory/ledger")
 async def get_material_ledger(project_name: str, material_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):

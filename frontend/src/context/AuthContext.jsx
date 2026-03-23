@@ -56,38 +56,52 @@ export const AuthProvider = ({ children }) => {
                 localStorage.setItem('erp_token', data.access_token);
                 return true;
             }
+
+            // Bug 1.2 - Return specific error message from backend (e.g. inactive account)
+            if (response.status === 403 || response.status === 401) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMsg = errorData.detail || 'Invalid username or password';
+                throw new Error(errorMsg);
+            }
         } catch (error) {
+            if (error.message && error.message !== 'Failed to fetch') {
+                throw error; // Re-throw for Login.jsx to display
+            }
             console.error("Login API error:", error);
         }
 
-        // Fallback for demo or if backend is offline/unreachable
-        if (cleanUsername === 'admin' && cleanPassword === 'password') {
-            const userData = { username: 'admin', role: 'Super Admin', name: 'Super Admin User' };
-            setUser(userData);
-            localStorage.setItem('erp_user', JSON.stringify(userData));
-            return true;
-        } else if (cleanUsername === 'engineer' && cleanPassword === 'password') {
-            const userData = { username: 'engineer', role: 'Site Engineer', name: 'Suki Engineer' };
-            setUser(userData);
-            localStorage.setItem('erp_user', JSON.stringify(userData));
-            return true;
-        } else if (cleanUsername === 'coordinator' && cleanPassword === 'password') {
-            const userData = { username: 'coordinator', role: 'Project Coordinator', name: 'Project Coordinator' };
-            setUser(userData);
-            localStorage.setItem('erp_user', JSON.stringify(userData));
-            return true;
-        } else if (cleanUsername === 'purchase' && cleanPassword === 'password') {
-            const userData = { username: 'purchase', role: 'Purchase Officer', name: 'Purchase Officer' };
-            setUser(userData);
-            localStorage.setItem('erp_user', JSON.stringify(userData));
-            return true;
-        } else if (cleanUsername === 'accountant' && cleanPassword === 'password') {
-            const userData = { username: 'accountant', role: 'Accountant', name: 'Accountant' };
-            setUser(userData);
-            localStorage.setItem('erp_user', JSON.stringify(userData));
-            return true;
-        }
+        return false;
+    };
 
+    const quickLogin = async (role) => {
+        try {
+            const baseUrl = '/api';
+            const response = await fetch(`${baseUrl}/auth/quick-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const userData = {
+                    ...data.user,
+                    token: data.access_token
+                };
+                setUser(userData);
+                localStorage.setItem('erp_user', JSON.stringify(userData));
+                localStorage.setItem('erp_token', data.access_token);
+                return true;
+            }
+
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Quick login failed');
+        } catch (error) {
+            if (error.message && error.message !== 'Failed to fetch') {
+                throw error;
+            }
+            console.error("Quick login error:", error);
+        }
         return false;
     };
 
@@ -103,7 +117,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, updateUser, loading }}>
+        <AuthContext.Provider value={{ user, login, quickLogin, logout, updateUser, loading }}>
             {children}
         </AuthContext.Provider>
     );

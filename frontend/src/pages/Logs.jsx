@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, Search, Filter, Clock, Download, AlertTriangle, Shield, CheckCircle, RefreshCw, Trash2, Loader2, Info } from 'lucide-react';
 import { logsAPI } from '../utils/api';
+import Pagination from '../components/Pagination';
 
 const TYPE_CONFIG = {
     info:    { icon: History,       color: '#3B82F6', bg: '#EFF6FF', label: 'Info' },
@@ -28,6 +29,8 @@ const Logs = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('All');
     const [showFilters, setShowFilters] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 20;
 
     const fetchLogs = async () => {
         setLoading(true);
@@ -42,6 +45,8 @@ const Logs = () => {
     };
 
     useEffect(() => { fetchLogs(); }, []);
+
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter]);
 
     const filtered = logs.filter(log => {
         const matchType   = typeFilter === 'All' || log.type === typeFilter;
@@ -87,13 +92,6 @@ const Logs = () => {
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                         <RefreshCw size={16} /> Refresh
-                    </button>
-                    <button
-                        className="btn btn-outline"
-                        onClick={exportCSV}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-                    >
-                        <Download size={16} /> Export CSV
                     </button>
                 </div>
             </div>
@@ -179,7 +177,7 @@ const Logs = () => {
                         <p style={{ fontSize: '13px', marginTop: '4px' }}>System activity will appear here as users perform actions.</p>
                     </div>
                 ) : (
-                    filtered.map((log, i) => {
+                    filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((log, i) => {
                         const cfg  = TYPE_CONFIG[log.type] || TYPE_CONFIG.info;
                         const Icon = cfg.icon;
                         return (
@@ -187,7 +185,7 @@ const Logs = () => {
                                 key={log.id || i}
                                 style={{
                                     padding: '16px 24px',
-                                    borderBottom: i === filtered.length - 1 ? 'none' : '1px solid var(--border)',
+                                    borderBottom: '1px solid var(--border)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '18px',
@@ -227,6 +225,11 @@ const Logs = () => {
                             </div>
                         );
                     })
+                )}
+                {!loading && filtered.length > 0 && (
+                    <div style={{ padding: '0 24px' }}>
+                        <Pagination currentPage={currentPage} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setCurrentPage} />
+                    </div>
                 )}
             </div>
 

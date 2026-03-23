@@ -5,6 +5,7 @@ from database import db
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from datetime import datetime
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
 
@@ -48,20 +49,26 @@ def vendor_helper(vendor) -> dict:
         "created_at": vendor.get("created_at")
     }
 
-@router.get("/", response_model=List[dict])
+@router.get("/", response_model=List[dict], dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_vendors():
     vendors = await db.vendors.find().to_list(100)
     return [vendor_helper(v) for v in vendors]
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("Procurement", "edit", "Vendors"))])
 async def create_vendor(vendor: VendorCreate):
+    # Bug 9.3 - Prevent duplicate email entries
+    if vendor.email and vendor.email.strip():
+        existing = await db.vendors.find_one({"email": vendor.email.strip()})
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Vendor with email '{vendor.email}' already exists")
+
     vendor_dict = vendor.model_dump()
     vendor_dict["created_at"] = datetime.now()
     result = await db.vendors.insert_one(vendor_dict)
     new_vendor = await db.vendors.find_one({"_id": result.inserted_id})
     return vendor_helper(new_vendor)
 
-@router.put("/{id}")
+@router.put("/{id}", dependencies=[Depends(RBACPermission("Procurement", "edit", "Vendors"))])
 async def update_vendor(id: str, vendor: VendorUpdate):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -72,7 +79,7 @@ async def update_vendor(id: str, vendor: VendorUpdate):
         raise HTTPException(status_code=404, detail="Vendor not found")
     return vendor_helper(updated_vendor)
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(RBACPermission("Procurement", "delete", "Vendors"))])
 async def delete_vendor(id: str):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
@@ -81,7 +88,7 @@ async def delete_vendor(id: str):
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"message": "Vendor deleted successfully"}
-@router.get("/{id}/ledger")
+@router.get("/{id}/ledger", dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_vendor_ledger(id: str):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")

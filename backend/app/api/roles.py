@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any
 from database import get_database
+from app.utils.auth import get_current_user
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/roles", tags=["roles"])
 
@@ -35,7 +37,7 @@ SYSTEM_FEATURES = [
 
 SUB_TABS = {
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
-    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits'],
+    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
     'Budget & Finance': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Budget Control': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
@@ -61,7 +63,6 @@ DEFAULT_ROLES = [
             { "name": 'Reports', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Fleet Management', "actions": { "view": True, "edit": True, "delete": True } },
-            { "name": 'User Management', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'System Logs', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Settings', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Settings'] },
             { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": True } },
@@ -215,7 +216,8 @@ DEFAULT_ROLES = [
     }
 ]
 
-@router.get("/")
+# C4 Fix: Added auth dependency to GET and RBAC to POST
+@router.get("/", dependencies=[Depends(get_current_user)])
 async def get_roles(db = Depends(get_database)):
     roles_doc = await db.roles.find_one({"_id": "global_roles"})
     if not roles_doc:
@@ -224,7 +226,8 @@ async def get_roles(db = Depends(get_database)):
         return DEFAULT_ROLES
     return roles_doc.get("roles", DEFAULT_ROLES)
 
-@router.post("/")
+# C4 Fix: Only admins can save roles (User Management merged into HRMS)
+@router.post("/", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def save_roles(roles: List[Dict[str, Any]], db = Depends(get_database)):
     # Upsert the roles
     await db.roles.update_one(

@@ -11,7 +11,6 @@ import {
     Users,
     Package,
     FileText,
-    UserCog,
     History,
     Settings,
     ChevronLeft,
@@ -71,6 +70,8 @@ const menuItems = [
             { label: 'Payroll', tabId: 'Payroll' },
             { label: 'Surprise Visits', tabId: 'Surprise Visits' },
             { label: 'Workforce', tabId: 'Workforce' },
+            { label: 'Authorized Users', tabId: 'Authorized Users' },
+            { label: 'Roles & Permissions', tabId: 'Roles & Permissions' },
         ]
     },
     {
@@ -132,16 +133,6 @@ const menuItems = [
             { label: 'Manpower', tabId: 'Manpower' },
         ]
     },
-    {
-        icon: UserCog,
-        label: 'User Management',
-        path: '/users',
-        adminOnly: true,
-        subItems: [
-            { label: 'Authorized Users', tabId: 'Authorized Users' },
-            { label: 'Roles & Permissions', tabId: 'Roles & Permissions' },
-        ]
-    },
     { icon: History, label: 'System Logs', path: '/logs', adminOnly: true },
     {
         icon: Settings,
@@ -151,7 +142,6 @@ const menuItems = [
             { label: 'Profile', tabId: 'Profile' },
             { label: 'Company Profile', tabId: 'Company Profile' },
             { label: 'Security', tabId: 'Security' },
-            { label: 'Notifications', tabId: 'Notifications' },
             { label: 'Cloudinary', tabId: 'Cloudinary' },
             { label: 'SMTP', tabId: 'SMTP' },
         ]
@@ -279,6 +269,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
             return { ...item, subItems: nested };
         }
         return item;
+    }).filter(item => {
+        // Hide parent menu items that have subItems defined but all are filtered out
+        if (item.subItems && item.subItems.length === 0) return false;
+        return true;
     });
 
     const toggleMenu = (e, label) => {

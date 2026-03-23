@@ -152,10 +152,10 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
                                     <h4 style={{ fontWeight: '700', fontSize: '15px' }}>Module & Sub-Tab Access</h4>
                                     <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Select modules and toggle individual sub-tabs.</p>
                                 </div>
-                                <div style={{ display: 'flex', gap: '30px', marginRight: '50px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
-                                    <span style={{ width: '40px', textAlign: 'center' }}>VIEW</span>
-                                    <span style={{ width: '40px', textAlign: 'center' }}>EDIT</span>
-                                    <span style={{ width: '40px', textAlign: 'center' }}>DELETE</span>
+                                <div style={{ display: 'flex', gap: '30px', marginRight: '16px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
+                                    <span style={{ width: '18px', textAlign: 'center' }}>VIEW</span>
+                                    <span style={{ width: '18px', textAlign: 'center' }}>EDIT</span>
+                                    <span style={{ width: '18px', textAlign: 'center' }}>DELETE</span>
                                 </div>
                             </div>
 

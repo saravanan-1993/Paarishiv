@@ -3,6 +3,7 @@ from typing import List, Optional
 import json
 from database import get_database
 from app.utils.auth import get_current_user
+from app.utils.rbac import RBACPermission
 from datetime import datetime
 from bson import ObjectId
 from app.utils.cloudinary import upload_file
@@ -22,9 +23,11 @@ async def save_surprise_attendance(
     current_user = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    # Verify Admin role (Super Admin in the system)
-    if "Super Admin" not in current_user.get("roles", []):
-        raise HTTPException(status_code=403, detail="Only Admins can mark surprise attendance")
+    # Verify Admin role (Super Admin / Administrator / HR Manager)
+    allowed_roles = ["Super Admin", "Administrator", "HR Manager", "Project Coordinator"]
+    user_role = current_user.get("role", "")
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admins/HR/Coordinators can mark surprise attendance")
 
     # Check daily rule: Max 2 sessions per project per day
     count = await db.surprise_attendance.count_documents({
@@ -64,7 +67,7 @@ async def save_surprise_attendance(
     
     return {"success": True, "id": str(result.inserted_id)}
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_surprise_attendance(
     project_id: Optional[str] = None,
     date: Optional[str] = None,

@@ -93,7 +93,7 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
                         <div style={{ flex: 1 }}>
                             <CustomSelect
                                 label="Vehicle Type"
-                                options={['Tipper', 'Lorry', 'JCB', 'Tractor', 'Other'].map(opt => ({ value: opt, label: opt }))}
+                                options={['Tipper', 'Lorry', 'JCB', 'Tractor', 'Excavator', 'Crane', 'Concrete Mixer', 'Dumper', 'Compressor', 'Roller', 'Bulldozer', 'Backhoe Loader', 'Transit Mixer', 'Piling Rig', 'Generator', 'Water Tanker', 'Car', 'Pickup', 'Other'].map(opt => ({ value: opt, label: opt }))}
                                 value={formData.vehicleType}
                                 onChange={(val) => setFormData({ ...formData, vehicleType: val })}
                                 width="full"

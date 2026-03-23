@@ -8,7 +8,7 @@ import FuelInventoryModal from '../components/FuelInventoryModal';
 import AssetDetailsModal from '../components/AssetDetailsModal';
 import MaterialLedgerModal from '../components/MaterialLedgerModal';
 import CustomSelect from '../components/CustomSelect';
-import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { projectAPI, materialAPI, inventoryAPI, fleetAPI } from '../utils/api';
 import CreateMaterialModal from '../components/CreateMaterialModal';
 import StockRequestModal from '../components/StockRequestModal';
 import StockIssueModal from '../components/StockIssueModal';
@@ -16,6 +16,7 @@ import StockReturnModal from '../components/StockReturnModal';
 import MaterialTransferModal from '../components/MaterialTransferModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
+import Pagination from '../components/Pagination';
 
 const Materials = () => {
     const { user } = useAuth();
@@ -76,6 +77,11 @@ const Materials = () => {
     const [isStockRequestOpen, setIsStockRequestOpen] = useState(false);
     const [isStockIssueOpen, setIsStockIssueOpen] = useState(false);
     const [isStockReturnOpen, setIsStockReturnOpen] = useState(false);
+    const MAT_PAGE_SIZE = 20;
+    const [invPage, setInvPage] = useState(1);
+    const [whPage, setWhPage] = useState(1);
+    const [reqPage, setReqPage] = useState(1);
+    const [ledgerMPage, setLedgerMPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [isWarehouseLoading, setIsWarehouseLoading] = useState(false);
 
@@ -157,6 +163,25 @@ const Materials = () => {
         } finally { setIsWarehouseLoading(false); }
     };
 
+    // Bug 42: Fetch fleet/machinery data from backend when Machinery tab is active
+    const fetchFleetData = async () => {
+        try {
+            const res = await fleetAPI.getVehicles();
+            const vehicles = res.data || [];
+            setFleet(vehicles.map(v => ({
+                id: v.id || v._id,
+                name: `${v.vehicleNumber} - ${v.vehicleType || 'N/A'}`,
+                category: v.vehicleType || v.category || 'General',
+                site: v.assignedProject || v.currentSite || 'Yard',
+                hours: v.totalHours || 0,
+                status: v.status || 'Active',
+                ...v
+            })));
+        } catch (err) {
+            console.error('Failed to fetch fleet data:', err);
+        }
+    };
+
     useEffect(() => {
         if (mainTab === 'Warehouse') {
             if (warehouseSubTab === 'Stock') fetchWarehouseStock();
@@ -166,6 +191,9 @@ const Materials = () => {
         if (mainTab === 'Coordination') {
             if (coordinationSubTab === 'Pending') fetchStockRequests();
             else fetchConsolidatedRequests();
+        }
+        if (mainTab === 'Machinery') {
+            fetchFleetData();
         }
     }, [mainTab, warehouseSubTab, coordinationSubTab]);
 
@@ -219,9 +247,9 @@ const Materials = () => {
         }
     };
 
-    // Asset Handlers
-    const handleLogAdded = (newLog) => setDailyLogs([newLog, ...dailyLogs]);
-    const handleAssetAdded = (newAsset) => setFleet([...fleet, newAsset]);
+    // Asset Handlers - Bug 42: Refresh data from backend after changes
+    const handleLogAdded = (newLog) => { setDailyLogs([newLog, ...dailyLogs]); };
+    const handleAssetAdded = () => { fetchFleetData(); };
     const handleTransferAdded = (newTransfer) => setTransfers([newTransfer, ...transfers]);
     const handleViewDetails = (asset) => {
         setSelectedAsset(asset);
@@ -240,8 +268,9 @@ const Materials = () => {
                             style={{
                                 padding: '12px 4px', fontSize: '15px', fontWeight: '800',
                                 color: mainTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                 borderBottom: mainTab === tab.id ? '3px solid var(--primary)' : '3px solid transparent',
-                                background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                                background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
                                 transition: 'all 0.2s ease', whiteSpace: 'nowrap'
                             }}
                         >
@@ -364,7 +393,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredInventory.map((item) => (
+                                        {filteredInventory.slice((invPage - 1) * MAT_PAGE_SIZE, invPage * MAT_PAGE_SIZE).map((item) => (
                                             <tr key={item.id}>
                                                 <td style={{ fontWeight: '600' }}>{item.material_name}</td>
                                                 {selectedProject === 'all' && <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{item.project_name}</td>}
@@ -394,6 +423,7 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={invPage} totalItems={filteredInventory.length} pageSize={MAT_PAGE_SIZE} onPageChange={setInvPage} />
                             </div>
                         )}
                     </div>
@@ -430,8 +460,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 0', fontSize: '14px', fontWeight: '700',
                                         color: warehouseSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: warehouseSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                                         whiteSpace: 'nowrap'
                                     }}
                                 >
@@ -446,7 +477,7 @@ const Materials = () => {
                                 <div style={{ padding: '60px', textAlign: 'center' }}>
                                     <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto' }} />
                                 </div>
-                            ) : warehouseSubTab === 'Stock' ? (
+                            ) : warehouseSubTab === 'Stock' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -457,7 +488,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {warehouseStock.map((item, i) => (
+                                        {warehouseStock.slice((whPage - 1) * MAT_PAGE_SIZE, whPage * MAT_PAGE_SIZE).map((item, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontWeight: '700' }}>{item.material_name}</td>
                                                 <td style={{ fontSize: '16px', fontWeight: '800' }}>{item.stock}</td>
@@ -468,7 +499,8 @@ const Materials = () => {
                                         {warehouseStock.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>No stock found in warehouse.</td></tr>}
                                     </tbody>
                                 </table>
-                            ) : warehouseSubTab === 'Requests' ? (
+                                <Pagination currentPage={whPage} totalItems={warehouseStock.length} pageSize={MAT_PAGE_SIZE} onPageChange={setWhPage} />
+                            </>) : warehouseSubTab === 'Requests' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -480,7 +512,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stockRequests.map((req, i) => (
+                                        {stockRequests.slice((reqPage - 1) * MAT_PAGE_SIZE, reqPage * MAT_PAGE_SIZE).map((req, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '13px' }}>{new Date(req.created_at).toLocaleDateString()}</td>
                                                 <td style={{ fontWeight: '700' }}>{req.project_name}</td>
@@ -511,7 +543,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : (
+                                <Pagination currentPage={reqPage} totalItems={stockRequests.length} pageSize={MAT_PAGE_SIZE} onPageChange={setReqPage} />
+                            </>) : (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -525,7 +558,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stockLedger.map((log, i) => (
+                                        {stockLedger.slice((ledgerMPage - 1) * MAT_PAGE_SIZE, ledgerMPage * MAT_PAGE_SIZE).map((log, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '11px' }}>{new Date(log.date).toLocaleString()}</td>
                                                 <td>
@@ -542,7 +575,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            )}
+                                <Pagination currentPage={ledgerMPage} totalItems={stockLedger.length} pageSize={MAT_PAGE_SIZE} onPageChange={setLedgerMPage} />
+                            </>)}
                         </div>
                     </div>
                 ) : mainTab === 'Coordination' ? (
@@ -577,8 +611,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 0', fontSize: '14px', fontWeight: '700',
                                         color: coordinationSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: coordinationSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
                                     }}
                                 >
                                     <tab.icon size={16} />
@@ -698,8 +733,9 @@ const Materials = () => {
                                     style={{
                                         padding: '12px 4px', fontSize: '14px', fontWeight: '700',
                                         color: assetSubTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
+                                        borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                         borderBottom: assetSubTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                        background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                        background: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                                         whiteSpace: 'nowrap'
                                     }}
                                 >

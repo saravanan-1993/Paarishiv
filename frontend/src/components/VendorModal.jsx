@@ -5,6 +5,7 @@ import { vendorAPI } from '../utils/api';
 const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
     const isEditMode = !!vendorToEdit;
     const [isSaving, setIsSaving] = useState(false);
+    const [showCustomCategory, setShowCustomCategory] = useState(false);
     const [formData, setFormData] = useState(
         vendorToEdit
             ? { name: vendorToEdit.name || '', contact: vendorToEdit.contact || '', phone: vendorToEdit.phone || '', email: vendorToEdit.email || '', category: vendorToEdit.category || '', gstin: vendorToEdit.gstin || '', location: vendorToEdit.location || '', website: vendorToEdit.website || '', rate_card: vendorToEdit.rate_card || [] }
@@ -36,7 +37,8 @@ const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
             onClose();
         } catch (err) {
             console.error('Failed to save vendor:', err);
-            alert('Failed to save vendor. Please check connection.');
+            const errorMsg = err.response?.data?.detail || 'Failed to save vendor. Please check the connection.';
+            alert(errorMsg);
         } finally {
             setIsSaving(false);
         }
@@ -171,19 +173,42 @@ const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
                                 <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>Category*</label>
                                 <div style={{ position: 'relative' }}>
                                     <Tag size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                    <select
-                                        name="category"
-                                        value={formData.category}
-                                        onChange={handleChange}
-                                        style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'white' }}
-                                        required
-                                    >
-                                        <option value="">Select Category</option>
-                                        <option value="material">Material Supplier</option>
-                                        <option value="labor">Labor Contractor</option>
-                                        <option value="equipment">Equipment Rental</option>
-                                        <option value="subcontractor">Subcontractor</option>
-                                    </select>
+                                    {showCustomCategory ? (
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                name="category"
+                                                value={formData.category}
+                                                onChange={handleChange}
+                                                placeholder="Enter custom category"
+                                                style={{ flex: 1, padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                                required
+                                            />
+                                            <button type="button" onClick={() => { setShowCustomCategory(false); setFormData(prev => ({ ...prev, category: '' })); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: '#f1f5f9', cursor: 'pointer', fontSize: '12px' }}>Back</button>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            name="category"
+                                            value={formData.category}
+                                            onChange={(e) => {
+                                                if (e.target.value === '__custom__') {
+                                                    setShowCustomCategory(true);
+                                                    setFormData(prev => ({ ...prev, category: '' }));
+                                                } else {
+                                                    handleChange(e);
+                                                }
+                                            }}
+                                            style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'white' }}
+                                            required
+                                        >
+                                            <option value="">Select Category</option>
+                                            <option value="material">Material Supplier</option>
+                                            <option value="labor">Labor Contractor</option>
+                                            <option value="equipment">Equipment Rental</option>
+                                            <option value="subcontractor">Subcontractor</option>
+                                            <option value="__custom__">+ Add Custom Category</option>
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 

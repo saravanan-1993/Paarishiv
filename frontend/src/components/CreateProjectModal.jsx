@@ -34,8 +34,8 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
                     const list = emps
                         .filter(filterFn)
                         .map(emp => ({
-                            // Use _id as the primary unique value to prevent jumper-back bugs with duplicate codes
-                            value: (emp._id ? emp._id.toString() : '') || emp.username || emp.employeeCode,
+                            // Bug 1.5 Fix: Use employeeCode as value for consistent matching with login username
+                            value: emp.employeeCode || emp.username || (emp._id ? emp._id.toString() : ''),
                             label: emp.fullName
                         }));
 

@@ -112,38 +112,39 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X /></button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {/* Header Info */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', background: '#F8FAFC', padding: '16px', borderRadius: '12px' }}>
                         <div>
-                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)' }}>TRIP ID</label>
-                            <div style={{ fontWeight: '700', color: 'var(--primary)' }}>T-{formData.tripId}</div>
+                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>TRIP ID</label>
+                            <div style={{ fontWeight: '700', color: 'var(--primary)', marginTop: '4px' }}>{formData.tripId}</div>
                         </div>
                         <div>
-                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)' }}>DATE</label>
-                            <div style={{ fontWeight: '700' }}>{new Date().toLocaleDateString()}</div>
+                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>DATE</label>
+                            <div style={{ fontWeight: '700', marginTop: '4px' }}>{new Date().toLocaleDateString()}</div>
                         </div>
                         <div>
-                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)' }}>STATUS</label>
-                            <div style={{ color: '#F59E0B', fontWeight: '800' }}>OPEN</div>
+                            <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>STATUS</label>
+                            <div style={{ color: '#F59E0B', fontWeight: '800', marginTop: '4px' }}>OPEN</div>
                         </div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                        <div style={{ flex: 1 }}>
+                        <div>
                             <CustomSelect
-                                label="Select Vehicle"
+                                label="Select Vehicle *"
                                 options={vehicles.map(v => ({ value: v.id, label: `${v.vehicleNumber} (${v.vehicleType})` }))}
                                 value={formData.vehicleId}
                                 onChange={handleVehicleChange}
                                 width="full"
                                 icon={Truck}
                                 searchable={true}
+                                placeholder="Choose a vehicle"
                             />
                         </div>
-                        <div style={{ flex: 1 }}>
+                        <div>
                             <CustomSelect
-                                label="Assign Driver"
+                                label="Assign Driver *"
                                 options={drivers.map(d => ({ value: d.id, label: d.fullName }))}
                                 value={formData.driverId}
                                 onChange={(val) => {
@@ -153,10 +154,10 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                                 width="full"
                                 icon={User}
                                 searchable={true}
-                                placeholder="Select Driver"
+                                placeholder="Choose a driver"
                             />
                             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/users'}>User Management</span>
+                                New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/hr?tab=Authorized+Users'}>HRMS</span>
                             </p>
                         </div>
                     </div>
@@ -202,26 +203,26 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>Load Type (e.g. Blue Metal)</label>
-                            <input value={formData.loadType} onChange={e => setFormData({ ...formData, loadType: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '700' }}>Load Type *</label>
+                            <input value={formData.loadType} onChange={e => setFormData({ ...formData, loadType: e.target.value })} placeholder="e.g. Blue Metal, M-Sand, Cement" style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>Rate / Fixed Amount</label>
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '700' }}>Rate / Fixed Amount (₹)</label>
                             <div style={{ position: 'relative' }}>
                                 <IndianRupee size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                                <input type="number" value={formData.ratePerLoad} onChange={e => setFormData({ ...formData, ratePerLoad: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '10px 10px 10px 36px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <input type="number" value={formData.ratePerLoad} onChange={e => setFormData({ ...formData, ratePerLoad: parseFloat(e.target.value) || 0 })} placeholder="0" style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }} />
                             </div>
                         </div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>From Location</label>
-                            <input value={formData.fromLocation} onChange={e => setFormData({ ...formData, fromLocation: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '700' }}>From Location</label>
+                            <input value={formData.fromLocation} onChange={e => setFormData({ ...formData, fromLocation: e.target.value })} placeholder="Enter pickup location" style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }} />
                         </div>
                         <div>
-                            <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>To Location</label>
-                            <input value={formData.toLocation} onChange={e => setFormData({ ...formData, toLocation: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '700' }}>To Location</label>
+                            <input value={formData.toLocation} onChange={e => setFormData({ ...formData, toLocation: e.target.value })} placeholder="Enter drop-off location" style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }} />
                         </div>
                     </div>
 

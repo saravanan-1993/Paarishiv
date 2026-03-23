@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { projectAPI, employeeAPI } from '../utils/api';
-import { X, UserPlus, Upload, Camera, FileText, Plus, Building2, Edit3, Briefcase } from 'lucide-react';
+import { projectAPI, employeeAPI, hrmsAPI } from '../utils/api';
+import { X, UserPlus, Upload, Camera, FileText, Building2, Edit3, Briefcase } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 
 
@@ -30,20 +30,45 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
     });
 
     const [projects, setProjects] = React.useState([]);
+    const [designationOptions, setDesignationOptions] = React.useState([]);
+    const [departmentOptions, setDepartmentOptions] = React.useState([]);
+
+    const refreshDesignations = async () => {
+        try {
+            const res = await hrmsAPI.getDesignations();
+            setDesignationOptions((res.data || []).map(d => ({ value: d, label: d })));
+        } catch { /* fallback handled below */ }
+    };
+    const refreshDepartments = async () => {
+        try {
+            const res = await hrmsAPI.getDepartments();
+            setDepartmentOptions((res.data || []).map(d => ({ value: d, label: d })));
+        } catch { /* fallback handled below */ }
+    };
 
     React.useEffect(() => {
-        const fetchProjects = async () => {
+        const fetchData = async () => {
             try {
-                const res = await projectAPI.getAll();
-                setProjects(res.data);
+                const [projRes, desigRes, deptRes] = await Promise.allSettled([
+                    projectAPI.getAll(),
+                    hrmsAPI.getDesignations(),
+                    hrmsAPI.getDepartments()
+                ]);
+                if (projRes.status === 'fulfilled') setProjects(projRes.value.data);
+                if (desigRes.status === 'fulfilled') {
+                    setDesignationOptions((desigRes.value.data || []).map(d => ({ value: d, label: d })));
+                }
+                if (deptRes.status === 'fulfilled') {
+                    setDepartmentOptions((deptRes.value.data || []).map(d => ({ value: d, label: d })));
+                }
             } catch (err) {
-                console.error('Failed to fetch projects', err);
+                console.error('Failed to fetch data', err);
             }
         };
-        if (isOpen) fetchProjects();
+        if (isOpen) fetchData();
     }, [isOpen]);
 
-    const [selectedRoles, setSelectedRoles] = useState(employee?.roles || []);
+    const [selectedRole, setSelectedRole] = useState(employee?.roles?.[0] || '');
 
     // Update state when employee prop changes
     React.useEffect(() => {
@@ -69,7 +94,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                 dailyWage: employee.dailyWage || '0',
                 dob: employee.dob || ''
             });
-            setSelectedRoles(employee.roles || []);
+            setSelectedRole(employee.roles?.[0] || '');
         } else {
             setFormData({
                 fullName: '',
@@ -92,7 +117,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                 dailyWage: '0',
                 dob: ''
             });
-            setSelectedRoles([]);
+            setSelectedRole('');
         }
     }, [employee, isOpen]);
 
@@ -114,25 +139,17 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
         setFiles(prev => ({ ...prev, [name]: selectedFiles[0] }));
     };
 
-    const toggleRole = (roleName) => {
-        setSelectedRoles(prev =>
-            prev.includes(roleName)
-                ? prev.filter(r => r !== roleName)
-                : [...prev, roleName]
-        );
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (selectedRoles.length === 0) {
-            alert("Please select at least one role.");
+        if (!selectedRole) {
+            alert("Please select a role.");
             return;
         }
 
         try {
             const employeeData = {
                 ...formData,
-                roles: selectedRoles,
+                roles: [selectedRole],
                 basicSalary: parseFloat(formData.basicSalary) || 0,
                 hra: parseFloat(formData.hra) || 0,
                 dailyWage: parseFloat(formData.dailyWage) || 0,
@@ -144,12 +161,39 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                 delete employeeData.password;
             }
 
+            let empId;
             if (isEdit) {
                 await employeeAPI.update(employee._id || employee.id, employeeData);
+                empId = employee._id || employee.id;
             } else {
-                await employeeAPI.create(employeeData);
+                const res = await employeeAPI.create(employeeData);
+                empId = res.data?._id || res.data?.id;
             }
-            onEmployeeAdded(); // This will refresh the employee list in HRMS.jsx
+
+            // Upload documents if any files selected
+            if (empId) {
+                const uploadPromises = [];
+                if (files.passbook) {
+                    const fd = new FormData();
+                    fd.append('file', files.passbook);
+                    uploadPromises.push(employeeAPI.uploadDocument(empId, fd, 'passbook'));
+                }
+                if (files.documents) {
+                    const fd = new FormData();
+                    fd.append('file', files.documents);
+                    uploadPromises.push(employeeAPI.uploadDocument(empId, fd, 'kyc'));
+                }
+                if (files.photo) {
+                    const fd = new FormData();
+                    fd.append('file', files.photo);
+                    uploadPromises.push(employeeAPI.uploadDocument(empId, fd, 'photo'));
+                }
+                if (uploadPromises.length > 0) {
+                    await Promise.allSettled(uploadPromises);
+                }
+            }
+
+            onEmployeeAdded();
             onClose();
         } catch (err) {
             console.error(isEdit ? 'Failed to update employee' : 'Failed to create employee', err);
@@ -212,77 +256,56 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                                 <input name="email" required value={formData.email} onChange={handleChange} type="email" placeholder="email@example.com" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                             </div>
                             <div className="form-group">
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Password *</label>
-                                <input name="password" required value={formData.password} onChange={handleChange} type="password" placeholder="Set initial password" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>{isEdit ? 'New Password' : 'Password *'}</label>
+                                <input name="password" required={!isEdit} value={formData.password} onChange={handleChange} type="password" placeholder={isEdit ? 'Leave empty to keep current' : 'Set initial password'} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                {isEdit && <p style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Leave blank to keep existing password</p>}
                             </div>
                         </div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                         <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                                <label style={{ fontSize: '13px', fontWeight: '700' }}>Assigned Roles *</label>
-                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Select one or more</span>
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                                {roles.map(r => (
-                                    <div
-                                        key={r.name}
-                                        onClick={() => toggleRole(r.name)}
-                                        style={{
-                                            padding: '8px 16px',
-                                            borderRadius: '20px',
-                                            fontSize: '13px',
-                                            fontWeight: '600',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s',
-                                            backgroundColor: selectedRoles.includes(r.name) ? 'var(--primary)' : 'white',
-                                            color: selectedRoles.includes(r.name) ? 'white' : 'var(--text-muted)',
-                                            border: `1px solid ${selectedRoles.includes(r.name) ? 'var(--primary)' : 'var(--border)'}`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}
-                                    >
-                                        {r.name}
-                                        {selectedRoles.includes(r.name) && <X size={14} />}
-                                    </div>
-                                ))}
-                                <div
-                                    style={{
-                                        padding: '8px 16px',
-                                        borderRadius: '20px',
-                                        fontSize: '13px',
-                                        fontWeight: '700',
-                                        cursor: 'pointer',
-                                        backgroundColor: '#eff6ff',
-                                        color: 'var(--primary)',
-                                        border: '1px dashed var(--primary)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}
-                                    onClick={() => {
-                                        onClose();
-                                        // Logic to trigger role creation handled in parent (HR.jsx)
-                                        document.dispatchEvent(new CustomEvent('openCreateRole'));
-                                    }}
-                                >
-                                    <Plus size={14} /> NEW ROLE
-                                </div>
-                            </div>
+                            <CustomSelect
+                                label="Assign Role *"
+                                options={roles.map(r => ({ value: r.name, label: r.name }))}
+                                value={selectedRole}
+                                onChange={(val) => setSelectedRole(val)}
+                                placeholder="Select a role"
+                                width="full"
+                                searchable={false}
+                            />
                         </div>
                         <div className="form-group">
                             <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Phone *</label>
                             <input name="phone" required value={formData.phone} onChange={handleChange} type="text" placeholder="Phone number" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                         </div>
                         <div className="form-group">
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Designation *</label>
-                            <input name="designation" required value={formData.designation} onChange={handleChange} type="text" placeholder="e.g. Senior Mason" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <CustomSelect
+                                label="Designation *"
+                                options={designationOptions}
+                                value={formData.designation}
+                                onChange={(val) => setFormData(prev => ({ ...prev, designation: val }))}
+                                onAdd={async (val) => {
+                                    try { await hrmsAPI.addDesignation(val); await refreshDesignations(); } catch (e) { console.error(e); }
+                                }}
+                                placeholder="Select or type designation"
+                                width="full"
+                                creatable={true}
+                            />
                         </div>
                         <div className="form-group">
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Department *</label>
-                            <input name="department" required value={formData.department} onChange={handleChange} type="text" placeholder="e.g. Operations" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <CustomSelect
+                                label="Department *"
+                                options={departmentOptions}
+                                value={formData.department}
+                                onChange={(val) => setFormData(prev => ({ ...prev, department: val }))}
+                                onAdd={async (val) => {
+                                    try { await hrmsAPI.addDepartment(val); await refreshDepartments(); } catch (e) { console.error(e); }
+                                }}
+                                placeholder="Select or type department"
+                                width="full"
+                                creatable={true}
+                            />
                         </div>
                         <div className="form-group">
                             <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Date of Joining *</label>
@@ -305,6 +328,10 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                             <input name="pfNumber" value={formData.pfNumber} onChange={handleChange} type="text" placeholder="Enter PF account" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                         </div>
                         <div className="form-group">
+                            <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>ESI Number</label>
+                            <input name="esiNumber" value={formData.esiNumber} onChange={handleChange} type="text" placeholder="Enter ESI number" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                        </div>
+                        <div className="form-group">
                             <CustomSelect
                                 label="Assign Site/Project"
                                 options={projects.map(p => ({ value: p.id || p._id, label: p.name }))}
@@ -319,8 +346,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                             <CustomSelect
                                 label="Salary Type"
                                 options={[
-                                    { value: 'monthly', label: 'Monthly Salary' },
-                                    { value: 'daily', label: 'Daily Wage' }
+                                    { value: 'monthly', label: 'Monthly Salary' }
                                 ]}
                                 value={formData.salaryType}
                                 onChange={(val) => setFormData(prev => ({ ...prev, salaryType: val }))}
@@ -328,12 +354,6 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                                 searchable={false}
                             />
                         </div>
-                        {formData.salaryType === 'daily' && (
-                            <div className="form-group">
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Daily Wage Rate</label>
-                                <input name="dailyWage" value={formData.dailyWage} onChange={handleChange} type="number" placeholder="₹ per day" style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                            </div>
-                        )}
                     </div>
 
                     <div style={{ marginTop: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>

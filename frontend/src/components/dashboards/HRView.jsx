@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Clock, AlertTriangle, UserCheck, Calendar } from 'lucide-react';
+import { Users, Clock, AlertTriangle, UserCheck, Calendar, Cake } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const HRView = ({ stats }) => {
@@ -82,15 +82,22 @@ const HRView = ({ stats }) => {
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <AlertTriangle size={20} color="#EF4444" /> Absentees / Latecomers
+                            <Cake size={20} color="#EC4899" /> Today's Birthdays
                         </h3>
-                        <button className="btn btn-outline" onClick={() => navigate('/hrms')} style={{ padding: '6px 12px', fontSize: '12px' }}>
-                            View All
-                        </button>
                     </div>
-                    <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-                        Tracking absent employees and exceptions for today's shifts.
-                    </p>
+                    {hrmsStats.birthdays && hrmsStats.birthdays.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {hrmsStats.birthdays.map((b, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', backgroundColor: '#FDF2F8', borderRadius: '8px' }}>
+                                    <Cake size={16} color="#EC4899" />
+                                    <span style={{ fontSize: '14px', fontWeight: '600' }}>{b.name}</span>
+                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>({b.employeeCode})</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>No birthdays today.</p>
+                    )}
                 </div>
             </div>
         </div>

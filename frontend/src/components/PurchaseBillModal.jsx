@@ -6,6 +6,7 @@ import CustomSelect from './CustomSelect';
 const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [grns, setGrns] = useState([]);
+    const [pos, setPos] = useState([]);
     const [loadingGrns, setLoadingGrns] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -24,9 +25,12 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
     useEffect(() => {
         if (isOpen) {
             setLoadingGrns(true);
-            grnAPI.getAll().then(res => {
-                // Only show GRNs that aren't billed yet (assuming status is 'Received' or similar)
-                setGrns((res.data || []).filter(g => g.status !== 'Billed'));
+            Promise.all([
+                grnAPI.getAll(),
+                purchaseOrderAPI.getAll()
+            ]).then(([grnRes, poRes]) => {
+                setGrns((grnRes.data || []).filter(g => g.status !== 'Billed'));
+                setPos(poRes.data || []);
             }).finally(() => setLoadingGrns(false));
         }
     }, [isOpen]);
@@ -34,12 +38,14 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
     const handleGRNSelect = (grnId) => {
         const grn = grns.find(g => g.id === grnId);
         if (grn) {
+            // Fallback to PO data if GRN doesn't have vendor/project name
+            const linkedPO = pos.find(p => p.id === grn.po_id);
             setFormData({
                 ...formData,
                 grn_id: grn.id,
                 po_id: grn.po_id,
-                vendor_name: grn.vendor_name || '', // Need to ensure backend sends this or fetch from PO
-                project_name: grn.project_name || ''
+                vendor_name: grn.vendor_name || linkedPO?.vendor_name || '',
+                project_name: grn.project_name || linkedPO?.project_name || ''
             });
 
             // Set items from GRN (using received quantities)
@@ -82,7 +88,8 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
             onClose();
         } catch (err) {
             console.error('Failed to create purchase bill:', err);
-            alert('Failed to save bill.');
+            const errorMsg = err.response?.data?.detail || 'Failed to save bill. Please try again.';
+            alert(errorMsg);
         } finally {
             setIsSaving(false);
         }

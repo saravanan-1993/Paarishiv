@@ -5,11 +5,14 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime, timedelta
 import calendar
+import re
+from app.utils.auth import get_current_user
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/hrms", tags=["hrms"])
 
 # ── Settings ────────────────────────────────────────────────────────────────
-@router.get("/settings")
+@router.get("/settings", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_hrms_settings(db = Depends(get_database)):
     settings = await db.settings.find_one({"type": "hrms_config"})
     if not settings:
@@ -24,7 +27,7 @@ async def get_hrms_settings(db = Depends(get_database)):
     del settings["_id"]
     return settings
 
-@router.post("/settings")
+@router.post("/settings", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def update_hrms_settings(data: dict, db = Depends(get_database)):
     if "id" in data: del data["id"]
     data["type"] = "hrms_config"
@@ -37,7 +40,7 @@ async def update_hrms_settings(data: dict, db = Depends(get_database)):
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
-@router.get("/dashboard/stats")
+@router.get("/dashboard/stats", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_hrms_stats(db = Depends(get_database)):
     now = datetime.now()
     today_str = now.strftime("%Y-%m-%d")
@@ -52,16 +55,40 @@ async def get_hrms_stats(db = Depends(get_database)):
     monthly_payable = sum(float(emp.get("basicSalary", 0) or 0) for emp in active_employees if emp.get("salaryType") in ["monthly", None])
     daily_wage_payable = sum(float(emp.get("dailyWage", 0) or 0) * 25 for emp in active_employees if emp.get("salaryType") == "daily") # Estimate 25 days
     
+    # Bug 2.1 - Today's birthdays and latecomers
+    today_mm_dd = now.strftime("-%m-%d")  # e.g. "-03-18"
+    birthdays = []
+    for emp in active_employees:
+        dob = emp.get("dob") or emp.get("dateOfBirth") or ""
+        if isinstance(dob, datetime):
+            dob = dob.strftime("%Y-%m-%d")
+        if dob and dob.endswith(today_mm_dd):
+            birthdays.append({"name": emp.get("fullName", ""), "employeeCode": emp.get("employeeCode", "")})
+
+    # Latecomers - employees who clocked in after office start time
+    hrms_settings = await db.settings.find_one({"type": "hrms_config"})
+    office_start = (hrms_settings or {}).get("officeStartTime", "09:00")
+    grace = (hrms_settings or {}).get("gracePeriod", 15)
+    try:
+        start_h, start_m = map(int, office_start.split(":"))
+        late_threshold = f"{start_h:02d}:{(start_m + grace):02d}"
+    except Exception:
+        late_threshold = "09:15"
+    today_attendance = await db.attendance.find({"date": today_str}).to_list(1000)
+    latecomers_count = sum(1 for a in today_attendance if (a.get("clockIn") or "") > late_threshold and a.get("status") == "Present")
+
     return {
         "totalEmployees": total_employees,
         "todayPresent": today_present,
         "pendingLeaves": pending_leaves,
-        "monthlyPayable": monthly_payable + daily_wage_payable
+        "monthlyPayable": monthly_payable + daily_wage_payable,
+        "latecomers": latecomers_count,
+        "birthdays": birthdays
     }
 
 # ── Attendance ───────────────────────────────────────────────────────────────
 
-@router.get("/attendance", response_model=List[dict])
+@router.get("/attendance", response_model=List[dict], dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_attendance(date: Optional[str] = None, db = Depends(get_database)):
     query = {}
     if date:
@@ -72,7 +99,7 @@ async def get_attendance(date: Optional[str] = None, db = Depends(get_database))
         del r["_id"]
     return records
 
-@router.get("/attendance/range", response_model=List[dict])
+@router.get("/attendance/range", response_model=List[dict], dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_attendance_range(from_date: str, to_date: str, db = Depends(get_database)):
     query = {
         "date": {"$gte": from_date, "$lte": to_date}
@@ -83,20 +110,24 @@ async def get_attendance_range(from_date: str, to_date: str, db = Depends(get_da
         del r["_id"]
     return records
 
-@router.post("/attendance")
+@router.post("/attendance", dependencies=[Depends(RBACPermission("HRMS", "edit", "Attendance"))])
 async def save_attendance(records: List[AttendanceBase], db = Depends(get_database)):
     for record in records:
         data = record.dict()
-        # Find if record already exists for this employee and date (using multiple possible ID fields for robustness)
+        emp_id = data["employeeId"]
+
+        # Bug 2.2 & 2.4 - Remove all duplicate entries first, then insert single record
+        await db.attendance.delete_many({
+            "$or": [
+                {"employeeId": emp_id, "date": data["date"]},
+                {"username": emp_id, "date": data["date"]},
+                {"user_id": emp_id, "date": data["date"]}
+            ]
+        })
+
+        # Upsert the single correct record using employeeId as the primary key
         await db.attendance.update_one(
-            {
-                "$or": [
-                    {"employeeId": data["employeeId"]},
-                    {"username": data["employeeId"]},
-                    {"user_id": data["employeeId"]}
-                ],
-                "date": data["date"]
-            },
+            {"employeeId": emp_id, "date": data["date"]},
             {"$set": data},
             upsert=True
         )
@@ -104,7 +135,7 @@ async def save_attendance(records: List[AttendanceBase], db = Depends(get_databa
 
 # ── Leaves ────────────────────────────────────────────────────────────────────
 
-@router.get("/leaves", response_model=List[dict])
+@router.get("/leaves", response_model=List[dict], dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_leaves(db = Depends(get_database)):
     leaves = await db.leaves.find().sort("fromDate", -1).to_list(500)
     for l in leaves:
@@ -112,7 +143,7 @@ async def get_leaves(db = Depends(get_database)):
         del l["_id"]
     return leaves
 
-@router.post("/leaves")
+@router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     result = await db.leaves.insert_one(leave.dict())
     
@@ -120,7 +151,7 @@ async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     # For now, just insert the leave request
     return {"id": str(result.inserted_id)}
 
-@router.put("/leaves/{leave_id}")
+@router.put("/leaves/{leave_id}", dependencies=[Depends(RBACPermission("HRMS", "edit", "Leave Management"))])
 async def update_leave_status(leave_id: str, status_update: dict, db = Depends(get_database)):
     status = status_update.get("status")
     approved_by = status_update.get("approvedBy")
@@ -158,7 +189,7 @@ async def update_leave_status(leave_id: str, status_update: dict, db = Depends(g
 
 # ── Payroll ───────────────────────────────────────────────────────────────────
 
-@router.get("/payroll", response_model=List[dict])
+@router.get("/payroll", response_model=List[dict], dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_payroll(month: str, db = Depends(get_database)):
     records = await db.payroll.find({"month": month}).to_list(500)
     for r in records:
@@ -166,7 +197,7 @@ async def get_payroll(month: str, db = Depends(get_database)):
         del r["_id"]
     return records
 
-@router.post("/payroll/generate")
+@router.post("/payroll/generate", dependencies=[Depends(RBACPermission("HRMS", "edit", "Payroll"))])
 async def generate_payroll(month: str, db = Depends(get_database)):
     # 1. Get all active employees
     employees = await db.employees.find({"status": "Active"}).to_list(1000)
@@ -181,19 +212,19 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         # 2. Count present days and leaves from attendance
         present_days = await db.attendance.count_documents({
             "employeeId": emp_id,
-            "date": {"$regex": f"^{month}"},
+            "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Present"
         })
         
         leave_days = await db.attendance.count_documents({
             "employeeId": emp_id,
-            "date": {"$regex": f"^{month}"},
+            "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Leave"
         })
         
         lop_days = await db.attendance.count_documents({
             "employeeId": emp_id,
-            "date": {"$regex": f"^{month}"},
+            "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Absent"
         })
         
@@ -229,3 +260,48 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         payroll_records.append(record)
         
     return {"message": f"Payroll generated for {len(employees)} employees", "count": len(employees)}
+
+# ── Master Data (Designations & Departments) ──────────────────────────────────
+
+@router.get("/designations", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def get_designations(db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Get from master_data collection
+    master = await db.master_data.find({"type": "designation"}).to_list(500)
+    master_values = [m["value"] for m in master]
+    # Also get unique designations from employees
+    employees = await db.employees.find({"designation": {"$exists": True, "$ne": ""}}).to_list(5000)
+    emp_values = list(set(e.get("designation", "") for e in employees if e.get("designation")))
+    # Merge and deduplicate
+    all_values = sorted(set(master_values + emp_values))
+    return all_values
+
+@router.post("/designations", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def add_designation(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    value = data.get("value", "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Designation value is required")
+    existing = await db.master_data.find_one({"type": "designation", "value": {"$regex": f"^{re.escape(value)}$", "$options": "i"}})
+    if existing:
+        return {"message": "Already exists", "value": existing["value"]}
+    await db.master_data.insert_one({"type": "designation", "value": value, "created_at": datetime.now(), "created_by": current_user.get("username")})
+    return {"message": "Designation added", "value": value}
+
+@router.get("/departments", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def get_departments(db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    master = await db.master_data.find({"type": "department"}).to_list(500)
+    master_values = [m["value"] for m in master]
+    employees = await db.employees.find({"department": {"$exists": True, "$ne": ""}}).to_list(5000)
+    emp_values = list(set(e.get("department", "") for e in employees if e.get("department")))
+    all_values = sorted(set(master_values + emp_values))
+    return all_values
+
+@router.post("/departments", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+async def add_department(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    value = data.get("value", "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Department value is required")
+    existing = await db.master_data.find_one({"type": "department", "value": {"$regex": f"^{re.escape(value)}$", "$options": "i"}})
+    if existing:
+        return {"message": "Already exists", "value": existing["value"]}
+    await db.master_data.insert_one({"type": "department", "value": value, "created_at": datetime.now(), "created_by": current_user.get("username")})
+    return {"message": "Department added", "value": value}

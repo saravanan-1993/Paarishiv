@@ -29,14 +29,13 @@ export const SYSTEM_FEATURES = [
 
 export const SUB_TABS = {
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
-    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce'],
+    'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
     'Fleet Management': ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
-    'User Management': ['Authorized Users', 'Roles & Permissions'],
     'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower'],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };
@@ -58,7 +57,6 @@ export const DEFAULT_ROLES = [
             { name: 'Reports', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Reports'] },
             { name: 'Team Chat', actions: { view: true, edit: true, delete: true } },
             { name: 'Fleet Management', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Fleet Management'] },
-            { name: 'User Management', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['User Management'] },
             { name: 'System Logs', actions: { view: true, edit: true, delete: true } },
             { name: 'Settings', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Settings'] },
             { name: 'Site Reports', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Site Reports'] },
@@ -82,7 +80,6 @@ export const DEFAULT_ROLES = [
             { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
             { name: 'Fleet Management', actions: { view: true, edit: true, delete: false } },
             { name: 'Tasks', actions: { view: true, edit: true, delete: false } },
-            { name: 'User Management', actions: { view: false, edit: false, delete: false } },
             { name: 'System Logs', actions: { view: false, edit: false, delete: false } },
             { name: 'Settings', actions: { view: false, edit: false, delete: false } },
         ],
@@ -197,7 +194,19 @@ export const getRoles = () => {
 export const fetchAndSyncRoles = async () => {
     try {
         const baseUrl = '/api';
-        const res = await fetch(`${baseUrl}/roles/`);
+        // Must include auth token - backend requires authentication
+        let token = localStorage.getItem('token');
+        if (!token) {
+            try {
+                const userData = localStorage.getItem('erp_user');
+                if (userData) token = JSON.parse(userData).token;
+            } catch (e) { }
+        }
+        const res = await fetch(`${baseUrl}/roles/`, {
+            headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            }
+        });
         if (res.ok) {
             const data = await res.json();
             localStorage.setItem('erp_roles', JSON.stringify(data));
@@ -213,12 +222,22 @@ export const fetchAndSyncRoles = async () => {
 export const saveRoles = (roles) => {
     localStorage.setItem('erp_roles', JSON.stringify(roles));
     window.dispatchEvent(new Event('rolesUpdated'));
-    // Fire and forget save to backend
+    // Save to backend with auth token
     try {
+        let token = localStorage.getItem('token');
+        if (!token) {
+            try {
+                const userData = localStorage.getItem('erp_user');
+                if (userData) token = JSON.parse(userData).token;
+            } catch (e) { }
+        }
         const baseUrl = '/api';
         fetch(`${baseUrl}/roles/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
             body: JSON.stringify(roles)
         });
     } catch (err) { }
@@ -226,6 +245,9 @@ export const saveRoles = (roles) => {
 
 export const hasPermission = (user, moduleName, action = 'view') => {
     if (!user) return false;
+
+    // Backward compat: User Management merged into HRMS
+    const effectiveModule = moduleName === 'User Management' ? 'HRMS' : moduleName;
 
     // Super Admin / Administrator explicitly overrides everything
     const roleNormalized = user.role?.trim();
@@ -252,7 +274,7 @@ export const hasPermission = (user, moduleName, action = 'view') => {
 
     if (!matchedRole) return false;
 
-    const perm = matchedRole.permissions?.find(p => p.name === moduleName);
+    const perm = matchedRole.permissions?.find(p => p.name === effectiveModule);
     if (!perm) return false;
 
     return !!perm.actions[action];

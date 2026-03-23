@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
     CheckCircle2, Clock, PlayCircle, Plus, Search, Filter,
-    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell
+    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell, Eye
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { projectAPI, employeeAPI } from '../../utils/api';
 import CompleteTaskModal from '../../components/CompleteTaskModal';
 import AddTaskModal from '../../components/AddTaskModal';
-
+import TaskDetailsModal from '../../components/TaskDetailsModal';
 import CustomSelect from '../../components/CustomSelect';
 
 const Tasks = () => {
@@ -43,9 +43,12 @@ const Tasks = () => {
     // Modals
     const [isCompleteModalOpen, setIsCompleteModalOpen] = useState(false);
     const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+    const [viewingTask, setViewingTask] = useState(null);
     const [selectedTask, setSelectedTask] = useState(null);
     const [selectedProject, setSelectedProject] = useState(null);
     const [openStatusId, setOpenStatusId] = useState(null);
+    const [notifiedTaskIds, setNotifiedTaskIds] = useState(new Set());
 
     // Options for CustomSelect
     const projectOptions = [
@@ -148,7 +151,8 @@ const Tasks = () => {
     const handleNotifyAdmin = async (task) => {
         try {
             await projectAPI.notifyTask(task.pId, task.id);
-            alert('Admin has been notified successfully! 🚀');
+            setNotifiedTaskIds(prev => new Set([...prev, `${task.pId}-${task.id}`]));
+            alert('Admin has been notified successfully!');
         } catch (err) {
             console.error('Failed to notify admin:', err);
             alert('Failed to notify admin. Please check your connection.');
@@ -396,10 +400,20 @@ const Tasks = () => {
                                     <td style={{ color: 'var(--text-main)', fontSize: '14px', fontWeight: '600' }}>
                                         {resolveEmployeeName(t.assignedTo)}
                                     </td>
-                                    <td style={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center' }}>
+                                    <td style={{ textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                                        {/* View Button */}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setViewingTask({ ...t, assignedTo: resolveEmployeeName(t.assignedTo) }); setIsViewModalOpen(true); }}
+                                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', background: '#F1F5F9', border: '1px solid #E2E8F0', cursor: 'pointer', color: '#475569', fontSize: '11px', fontWeight: '600', transition: 'all 0.2s' }}
+                                            className="hover-scale"
+                                            title="View task details"
+                                        >
+                                            <Eye size={13} /> View
+                                        </button>
+
                                         {/* Share Action - Only if not completed */}
                                         {t.status !== 'Completed' && (
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleShare(t, 'whatsapp'); }}
                                                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: '#dcfce7', border: 'none', cursor: 'pointer', color: '#10B981', transition: 'all 0.2s' }}
@@ -425,14 +439,20 @@ const Tasks = () => {
 
                                         {t.status === 'Completed' ? (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <button
-                                                    className="btn btn-outline hover-scale"
-                                                    style={{ padding: '4px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
-                                                    onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
-                                                    title="Notify Admin about this completed task"
-                                                >
-                                                    <Bell size={12} /> Update Admin
-                                                </button>
+                                                {t.adminNotified || notifiedTaskIds.has(`${t.pId}-${t.id}`) ? (
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', fontSize: '11px', fontWeight: '700', color: '#059669', background: '#ECFDF5', borderRadius: '6px', border: '1px solid #A7F3D0' }}>
+                                                        <CheckCircle size={12} /> Updated
+                                                    </span>
+                                                ) : (
+                                                    <button
+                                                        className="btn btn-outline hover-scale"
+                                                        style={{ padding: '4px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
+                                                        onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
+                                                        title="Notify Admin about this completed task"
+                                                    >
+                                                        <Bell size={12} /> Update Admin
+                                                    </button>
+                                                )}
                                                 <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '700', justifyContent: 'flex-end' }}>
                                                     <CheckCircle size={16} /> Done
                                                 </span>
@@ -480,6 +500,13 @@ const Tasks = () => {
                 onClose={() => setIsAddTaskModalOpen(false)}
                 projects={projectsData}
                 onTaskAdded={fetchTasks}
+            />
+
+            {/* View Task Details Modal */}
+            <TaskDetailsModal
+                isOpen={isViewModalOpen}
+                onClose={() => { setIsViewModalOpen(false); setViewingTask(null); }}
+                task={viewingTask}
             />
 
         </div>

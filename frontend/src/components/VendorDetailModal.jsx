@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, AlertCircle, ShoppingCart, Truck, Package, IndianRupee, History, FileText } from 'lucide-react';
+import { X, CheckCircle2, AlertCircle, ShoppingCart, Truck, Package, IndianRupee, History, FileText, Download } from 'lucide-react';
 import { vendorAPI } from '../utils/api';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
     const [ledgerData, setLedgerData] = useState({ ledger: [], stats: { total_po: 0, total_received: 0, total_paid: 0, balance: 0 } });
@@ -22,30 +24,92 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
             return;
         }
 
-        const headers = ["Date", "Activity Type", "Reference", "Amount", "Mode/Method", "Status"];
-        const rows = ledgerData.ledger.map(row => [
-            row.date || '—',
-            row.type || '—',
-            row.ref || '—',
-            row.amount || 0,
-            row.method || '—',
-            row.status || '—'
-        ]);
+        try {
+            const doc = new jsPDF();
+            const { stats } = ledgerData;
 
-        const csvContent = [
-            headers.join(","),
-            ...rows.map(r => r.join(","))
-        ].join("\n");
+            // Header
+            doc.setFontSize(22);
+            doc.setTextColor(59, 130, 246);
+            doc.setFont("helvetica", "bold");
+            doc.text("VENDOR LEDGER REPORT", 14, 22);
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `Ledger_${vendor.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.setFont("helvetica", "normal");
+            doc.text(`Generated: ${new Date().toLocaleDateString()}`, 196, 22, { align: "right" });
+
+            // Vendor Info
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, 28, 196, 28);
+
+            doc.setFontSize(14);
+            doc.setTextColor(30, 41, 59);
+            doc.setFont("helvetica", "bold");
+            doc.text(vendor.name || 'N/A', 14, 38);
+
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(100, 116, 139);
+            let infoY = 44;
+            if (vendor.category) { doc.text(`Category: ${vendor.category}`, 14, infoY); infoY += 5; }
+            if (vendor.location) { doc.text(`Address: ${vendor.location}`, 14, infoY); infoY += 5; }
+            if (vendor.phone) { doc.text(`Phone: ${vendor.phone}`, 14, infoY); infoY += 5; }
+            if (vendor.email) { doc.text(`Email: ${vendor.email}`, 14, infoY); infoY += 5; }
+            if (vendor.gstin) { doc.text(`GSTIN: ${vendor.gstin}`, 14, infoY); infoY += 5; }
+
+            // Summary Stats
+            infoY += 5;
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, infoY, 196, infoY);
+            infoY += 8;
+
+            doc.setFontSize(11);
+            doc.setTextColor(30, 41, 59);
+            doc.setFont("helvetica", "bold");
+            doc.text("SUMMARY", 14, infoY);
+            infoY += 8;
+
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            const formatAmt = (v) => `Rs. ${(v || 0).toLocaleString('en-IN')}`;
+            doc.text(`Total Ordered (POs):  ${formatAmt(stats.total_po)}`, 14, infoY); infoY += 6;
+            doc.text(`Total Billed (GRNs):  ${formatAmt(stats.total_received)}`, 14, infoY); infoY += 6;
+            doc.text(`Total Paid:  ${formatAmt(stats.total_paid)}`, 14, infoY); infoY += 6;
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(239, 68, 68);
+            doc.text(`Balance Payable:  ${formatAmt(stats.balance)}`, 14, infoY); infoY += 10;
+
+            // Ledger Table
+            const formatDate = (d) => {
+                if (!d) return '—';
+                try { return new Date(d).toLocaleDateString('en-IN'); } catch { return String(d); }
+            };
+
+            const tableData = ledgerData.ledger.map(row => [
+                formatDate(row.date),
+                row.type || '—',
+                row.ref || '—',
+                formatAmt(row.amount),
+                row.method || '—',
+                row.status || '—'
+            ]);
+
+            autoTable(doc, {
+                startY: infoY,
+                head: [['Date', 'Activity Type', 'Reference', 'Amount', 'Mode/Method', 'Status']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246], fontStyle: 'bold' },
+                styles: { fontSize: 9 },
+                columnStyles: { 3: { halign: 'right' } }
+            });
+
+            doc.save(`Vendor_Ledger_${vendor.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            alert('Failed to generate report.');
+        }
     };
 
     if (!isOpen || !vendor) return null;
@@ -151,7 +215,7 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
                 {/* Footer */}
                 <div style={{ padding: '24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                     <button className="btn btn-outline" onClick={handleDownloadLedger} style={{ padding: '10px 24px' }}>
-                        <FileText size={18} /> Download Ledger
+                        <Download size={18} /> Download Report
                     </button>
                     <button className="btn btn-primary" style={{ padding: '10px 24px' }}>
                         <ShoppingCart size={18} /> Create New PO

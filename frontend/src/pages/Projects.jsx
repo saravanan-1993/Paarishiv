@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import CreateProjectModal from '../components/CreateProjectModal';
+import Pagination from '../components/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { projectAPI } from '../utils/api';
 import { hasPermission, hasFeature } from '../utils/rbac';
@@ -41,6 +42,8 @@ const Projects = () => {
     const [filterStatus, setFilterStatus] = useState('All');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [projPage, setProjPage] = useState(1);
+    const PROJ_PAGE_SIZE = 12;
 
     // ── Fetch projects from backend ─────────────────────────────────────────
     const fetchProjects = async () => {
@@ -74,10 +77,21 @@ const Projects = () => {
         const matchStatus = filterStatus === 'All' || p.status === filterStatus;
 
         if (user?.role === 'Site Engineer') {
-            return matchSearch && matchStatus && p.engineer_id === user.username;
+            const isAssigned = p.engineer_id === user.username ||
+                               p.engineer_id === user.employeeCode ||
+                               p.engineer_id === user.id;
+            return matchSearch && matchStatus && isAssigned;
+        }
+        if (user?.role === 'Project Coordinator') {
+            const isAssigned = p.coordinator_id === user.username ||
+                               p.coordinator_id === user.employeeCode ||
+                               p.coordinator_id === user.id;
+            return matchSearch && matchStatus && isAssigned;
         }
         return matchSearch && matchStatus;
     });
+    const paginatedProjects = filtered.slice((projPage - 1) * PROJ_PAGE_SIZE, projPage * PROJ_PAGE_SIZE);
+    useEffect(() => { setProjPage(1); }, [searchTerm, filterStatus]);
 
     return (
         <div className="projects-container" style={{ position: 'relative' }}>
@@ -205,7 +219,7 @@ const Projects = () => {
                 {/* ── Project Cards Grid ───────────────────────────────────── */}
                 {!loading && !error && filtered.length > 0 && (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '24px' }}>
-                        {filtered.map((project) => {
+                        {paginatedProjects.map((project) => {
                             const status = project.status || 'Ongoing';
                             const style = STATUS_STYLE[status] || STATUS_STYLE['Ongoing'];
                             const progress = project.progress || 0;
@@ -292,6 +306,9 @@ const Projects = () => {
                             );
                         })}
                     </div>
+                )}
+                {!loading && !error && filtered.length > 0 && (
+                    <Pagination currentPage={projPage} totalItems={filtered.length} pageSize={PROJ_PAGE_SIZE} onPageChange={setProjPage} />
                 )}
             </div>
 

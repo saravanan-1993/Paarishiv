@@ -4,22 +4,25 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Users, UserPlus, CheckCircle, Clock, Calendar, IndianRupee,
     Briefcase, Wallet, FileText, Plus, Search, Filter,
-    Check, X, XCircle, AlertCircle, TrendingUp, BarChart2, Shield, Edit3, Loader2, Eye, Power, Trash2, UserCheck, UserX, Save
+    Check, X, XCircle, AlertCircle, TrendingUp, BarChart2, Shield, ShieldCheck, Edit3, Loader2, Eye, Power, Trash2, UserCheck, UserX, Save,
+    Mail, MoreVertical, Edit2, ListTodo, ShoppingCart, Package, UserCog, History, Settings as SettingsIcon2
 } from 'lucide-react';
 import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission, hasSubTabAccess, DEFAULT_ROLES } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, DEFAULT_ROLES, getRoles, saveRoles, fetchAndSyncRoles } from '../utils/rbac';
 import AddEmployeeModal from '../components/AddEmployeeModal';
 import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
 import SurpriseVisitModal from '../components/SurpriseVisitModal';
 import ProcessPayrollModal from '../components/ProcessPayrollModal';
+import CreateRoleModal from '../components/CreateRoleModal';
 import { surpriseVisitAPI } from '../utils/api';
-import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star } from 'lucide-react';
+import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star, LayoutDashboard } from 'lucide-react';
 import HrmsSettingsModal from '../components/HrmsSettingsModal';
 import CustomSelect from '../components/CustomSelect';
 import AttendanceCalendar from '../components/AttendanceCalendar';
 import AttendanceRoster from '../components/AttendanceRoster';
+import Pagination from '../components/Pagination';
 
 const HRMS = () => {
     const { user } = useAuth();
@@ -29,7 +32,7 @@ const HRMS = () => {
     const [activeTab, setActiveTab] = useState('Dashboard');
 
     const availableTabs = useMemo(() => [
-        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce'
+        'Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'
     ].filter(tab => hasSubTabAccess(user, 'HRMS', tab)), [user]);
 
     useEffect(() => {
@@ -59,6 +62,8 @@ const HRMS = () => {
     const [payroll, setPayroll] = useState([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [empPage, setEmpPage] = useState(1);
+    const EMP_PAGE_SIZE = 20;
 
     // Modals
     const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
@@ -86,6 +91,98 @@ const HRMS = () => {
     const [manpowerFilter, setManpowerFilter] = useState('Approved');
     const [selectedManpowerProject, setSelectedManpowerProject] = useState('All');
     const [refreshingManpower, setRefreshingManpower] = useState(false);
+
+    // === User Management State ===
+    const [umSearchTerm, setUmSearchTerm] = useState('');
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+    const [newUser, setNewUser] = useState({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' });
+    const [umUsers, setUmUsers] = useState([]);
+    const [umLoading, setUmLoading] = useState(false);
+    const [openMenuId, setOpenMenuId] = useState(null);
+    const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+    const [editingRole, setEditingRole] = useState(null);
+    const [editingUser, setEditingUser] = useState(null);
+
+    const iconMapping = {
+        'Dashboard': LayoutDashboard, 'Projects': Briefcase, 'Tasks': ListTodo,
+        'Accounts': Wallet, 'Procurement': ShoppingCart, 'HRMS': Users,
+        'Inventory Management': Package, 'Reports': FileText, 'System Logs': History, 'Settings': SettingsIcon2
+    };
+
+    const loadRoles = () => {
+        return getRoles().map(r => ({
+            ...r,
+            permissions: r.permissions.map(p => ({ ...p, icon: iconMapping[p.name] || LayoutDashboard }))
+        }));
+    };
+
+    const [umRoles, setUmRoles] = useState(loadRoles());
+
+    const fetchUmUsers = async () => {
+        try {
+            setUmLoading(true);
+            const res = await employeeAPI.getAll();
+            setUmUsers(res.data.map(u => ({
+                id: u._id, name: u.fullName || u.name || u.employeeCode,
+                employeeCode: u.employeeCode || '',
+                email: u.email || 'No email', role: u.roles ? u.roles[0] : (u.role || 'Staff'),
+                status: u.status || 'Active', lastLogin: u.lastLogin || 'N/A'
+            })));
+        } catch (err) { console.error('Failed to fetch users', err); }
+        finally { setUmLoading(false); }
+    };
+
+    const handleDeleteUser = async (userId) => {
+        if (!window.confirm('Are you sure you want to delete this user?')) return;
+        try { await employeeAPI.delete(userId); fetchUmUsers(); }
+        catch (err) { console.error('Delete failed', err); alert('Failed to delete user'); }
+    };
+
+    const handleEditUser = (u) => {
+        setNewUser({ id: u.id, fullName: u.name, employeeCode: u.employeeCode || '', email: u.email === 'No email' ? '' : u.email, roles: [u.role], password: '', status: u.status });
+        setEditingUser(u);
+        setIsAddUserModalOpen(true);
+    };
+
+    const handleCreateUser = async () => {
+        if (!newUser.fullName || !newUser.employeeCode || (!editingUser && !newUser.password)) {
+            alert('Please fill in required fields (Name, Code, Password)'); return;
+        }
+        try {
+            if (editingUser) { await employeeAPI.update(editingUser.id, newUser); }
+            else { await employeeAPI.create(newUser); }
+            setIsAddUserModalOpen(false); setEditingUser(null);
+            setNewUser({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' });
+            fetchUmUsers();
+        } catch (err) {
+            const detail = err.response?.data?.detail;
+            const errorMsg = Array.isArray(detail) ? detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join('\n') : detail || 'Failed to save user';
+            alert(errorMsg);
+        }
+    };
+
+    const handleToggleUserStatus = async (u) => {
+        try { await employeeAPI.update(u.id, { status: u.status === 'Active' ? 'Inactive' : 'Active' }); fetchUmUsers(); }
+        catch (err) { console.error('Status update failed', err); }
+    };
+
+    const handleRoleCreated = (newRole, isUpdate) => {
+        let updatedRoles;
+        if (isUpdate) { updatedRoles = umRoles.map(r => r.name === editingRole.name ? newRole : r); }
+        else { updatedRoles = [...umRoles, newRole]; }
+        setUmRoles(updatedRoles);
+        saveRoles(updatedRoles.map(r => ({ name: r.name, description: r.description, tags: r.tags, permissions: r.permissions.map(p => ({ name: p.name, actions: p.actions, subTabs: p.subTabs })), dashboardCards: r.dashboardCards || [], features: r.features || [] })));
+        setEditingRole(null); setIsRoleModalOpen(false);
+    };
+
+    const handleDeleteRole = (roleName) => {
+        if (roleName === 'Administrator' || roleName === 'Super Admin') { alert(`Cannot delete ${roleName} role`); return; }
+        if (window.confirm(`Are you sure you want to delete the ${roleName} role?`)) {
+            const updated = umRoles.filter(r => r.name !== roleName);
+            setUmRoles(updated);
+            saveRoles(updated.map(r => ({ name: r.name, description: r.description, tags: r.tags, permissions: r.permissions.map(p => ({ name: p.name, actions: p.actions, subTabs: p.subTabs })), dashboardCards: r.dashboardCards || [], features: r.features || [] })));
+        }
+    };
 
     useEffect(() => {
         fetchInitialData();
@@ -191,6 +288,8 @@ const HRMS = () => {
 
     useEffect(() => {
         if (activeTab === 'Attendance') {
+            // Refresh employee list so newly added employees appear
+            employeeAPI.getAll().then(res => setEmployees(res.data)).catch(() => {});
             fetchAttendance(selectedDate);
             fetchLeaves(); // Also refresh leaves for accurate mapping
         }
@@ -198,7 +297,24 @@ const HRMS = () => {
         if (activeTab === 'Payroll') fetchPayroll(selectedMonth);
         if (activeTab === 'Surprise Visits') fetchSurpriseVisits();
         if (activeTab === 'Workforce') fetchManpowerRequests();
+        if (activeTab === 'Authorized Users') fetchUmUsers();
+        if (activeTab === 'Roles & Permissions') {
+            const syncRoles = async () => {
+                const serverRoles = await fetchAndSyncRoles();
+                if (serverRoles) {
+                    setUmRoles(serverRoles.map(r => ({ ...r, permissions: r.permissions.map(p => ({ ...p, icon: iconMapping[p.name] || LayoutDashboard })) })));
+                }
+            };
+            syncRoles();
+        }
     }, [activeTab, selectedDate, selectedMonth, manpowerFilter]);
+
+    // Close user action dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = () => setOpenMenuId(null);
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         if (employees.length > 0) {
@@ -241,15 +357,19 @@ const HRMS = () => {
                 }
 
                 // Check if employee is on approved leave for selectedDate
-                const isOnLeave = (leaves || []).some(l =>
-                    l && l.status === 'Approved' &&
-                    (
-                        (l.employeeId && (l.employeeId === empId || l.employeeId === emp.employeeCode)) ||
-                        (l.employeeName && l.employeeName.trim() === emp.fullName.trim())
-                    ) &&
-                    selectedDate >= l.fromDate &&
-                    selectedDate <= l.toDate
-                );
+                const isOnLeave = (leaves || []).some(l => {
+                    if (!l || !l.status || l.status.toLowerCase() !== 'approved') return false;
+                    const matchesEmployee = (l.employeeId && (l.employeeId === empId || l.employeeId === emp.employeeCode)) ||
+                        (l.employeeName && l.employeeName.trim() === emp.fullName?.trim());
+                    if (!matchesEmployee) return false;
+                    // Robust date comparison using Date objects
+                    if (!l.fromDate || !l.toDate || !selectedDate) return false;
+                    const selDate = new Date(selectedDate).setHours(0, 0, 0, 0);
+                    const fromDate = new Date(l.fromDate).setHours(0, 0, 0, 0);
+                    const toDate = new Date(l.toDate).setHours(0, 0, 0, 0);
+                    if (isNaN(selDate) || isNaN(fromDate) || isNaN(toDate)) return false;
+                    return selDate >= fromDate && selDate <= toDate;
+                });
 
                 return {
                     employeeId: empId,
@@ -413,6 +533,9 @@ const HRMS = () => {
         const matchesRole = selectedRole === 'All' || emp.designation === selectedRole;
         return matchesSearch && matchesRole;
     });
+    // Bug 1.7 - Pagination
+    const paginatedEmployees = filteredEmployees.slice((empPage - 1) * EMP_PAGE_SIZE, empPage * EMP_PAGE_SIZE);
+    useEffect(() => { setEmpPage(1); }, [searchQuery, selectedRole]);
 
     const renderDashboard = () => (
         <div className="animate-fade-in">
@@ -658,7 +781,7 @@ const HRMS = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredEmployees.map((emp, i) => (
+                        {paginatedEmployees.map((emp, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{emp.employeeCode || 'E-NEW'}</td>
                                 <td style={{ fontWeight: '600' }}>{emp.fullName}</td>
@@ -680,14 +803,30 @@ const HRMS = () => {
                                     </span>
                                 </td>
                                 <td>
-                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                         <button
                                             className="icon-btn"
                                             title="View Details"
-                                            onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: 'Operations' }); setIsEmployeeDetailsOpen(true); }}
+                                            onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: emp.department || emp.designation || '' }); setIsEmployeeDetailsOpen(true); }}
                                             style={{ background: '#f0f9ff', color: '#0369a1', borderRadius: '8px', border: '1px solid #bae6fd', padding: '8px', transition: 'all 0.2s' }}
                                         >
                                             <Eye size={16} />
+                                        </button>
+                                        <button
+                                            className="icon-btn"
+                                            title="Generate Payslip"
+                                            onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: emp.department || emp.designation || '', basicSalary: emp.basicSalary, bankAccount: emp.bankAccount, designation: emp.designation, role: emp.roles?.[0] || '' }); setIsEmployeeDetailsOpen(true); }}
+                                            style={{ background: '#ecfdf5', color: '#059669', borderRadius: '8px', border: '1px solid #a7f3d0', padding: '8px', transition: 'all 0.2s' }}
+                                        >
+                                            <FileText size={16} />
+                                        </button>
+                                        <button
+                                            className="icon-btn"
+                                            title="Attendance Log"
+                                            onClick={() => { setActiveTab('Attendance'); }}
+                                            style={{ background: '#f5f3ff', color: '#7c3aed', borderRadius: '8px', border: '1px solid #ddd6fe', padding: '8px', transition: 'all 0.2s' }}
+                                        >
+                                            <History size={16} />
                                         </button>
                                         <button
                                             className="icon-btn"
@@ -718,6 +857,7 @@ const HRMS = () => {
                         ))}
                     </tbody>
                 </table>
+                <Pagination currentPage={empPage} totalItems={filteredEmployees.length} pageSize={EMP_PAGE_SIZE} onPageChange={setEmpPage} />
             </div>
         </div>
     );
@@ -1028,7 +1168,6 @@ const HRMS = () => {
                     />
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="btn btn-outline"><FileText size={18} /> Export Payslips</button>
                     <button className="btn btn-primary" onClick={generatePayrollRecord}>GENERATE PAYROLL</button>
                 </div>
             </div>
@@ -1260,7 +1399,6 @@ const HRMS = () => {
                             </button>
                         )}
                         <button className="btn btn-outline" onClick={fetchInitialData}><Clock size={18} /> Refresh</button>
-                        <button className="btn btn-primary" onClick={() => setIsAddEmployeeOpen(true)}><UserPlus size={18} /> ADD EMPLOYEE</button>
                     </div>
                 </div>
 
@@ -1272,9 +1410,10 @@ const HRMS = () => {
                             style={{
                                 padding: '12px 20px', fontSize: '14px', fontWeight: activeTab === tab ? '700' : '600',
                                 color: activeTab === tab ? 'var(--primary)' : 'var(--text-muted)',
+                                borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                 borderBottom: activeTab === tab ? '3px solid var(--primary)' : '3px solid transparent',
                                 background: activeTab === tab ? 'rgba(37, 99, 235, 0.05)' : 'none',
-                                border: 'none', cursor: 'pointer', borderRadius: '8px 8px 0 0', outline: 'none', transition: 'all 0.2s'
+                                cursor: 'pointer', borderRadius: '8px 8px 0 0', outline: 'none', transition: 'all 0.2s'
                             }}
                         >
                             {tab.toUpperCase()}
@@ -1380,9 +1519,218 @@ const HRMS = () => {
                         {activeTab === 'Leave Management' && renderLeaves()}
                         {activeTab === 'Payroll' && renderPayroll()}
                         {activeTab === 'Workforce' && renderManpowerReq()}
+
+                        {/* === Authorized Users Tab === */}
+                        {activeTab === 'Authorized Users' && (
+                            <div className="animate-fade-in">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                    <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Manage System Users</h3>
+                                    <button className="btn btn-primary" onClick={() => { setEditingUser(null); setNewUser({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' }); setIsAddUserModalOpen(true); }}>
+                                        <UserPlus size={18} /> Add New User
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>
+                                    {[
+                                        { label: 'Total Users', value: umUsers.length, icon: Shield, color: '#3B82F6' },
+                                        { label: 'Super Admins', value: umUsers.filter(u => u.role === 'Super Admin' || u.role === 'Admin' || u.role === 'Administrator').length, icon: ShieldCheck, color: '#10B981' },
+                                        { label: 'Site Engineers', value: umUsers.filter(u => u.role.includes('Engineer')).length, icon: Shield, color: '#F59E0B' },
+                                        { label: 'Active Now', value: umUsers.filter(u => u.status === 'Active').length, icon: CheckCircle, color: '#8B5CF6' },
+                                    ].map((stat, i) => (
+                                        <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px' }}>
+                                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: `${stat.color}15`, color: stat.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <stat.icon size={20} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{stat.label}</div>
+                                                <div style={{ fontSize: '20px', fontWeight: '700' }}>{stat.value}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
+                                    <div style={{ display: 'flex', gap: '16px' }}>
+                                        <div style={{ flex: 1, position: 'relative' }}>
+                                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                            <input type="text" placeholder="Search by name, email or role..." value={umSearchTerm} onChange={(e) => setUmSearchTerm(e.target.value)} style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '14px' }} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="card">
+                                    <h3 style={{ marginBottom: '20px', fontSize: '18px' }}>Authorized System Users</h3>
+                                    {umLoading ? (
+                                        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><Loader2 className="animate-spin" size={32} color="var(--primary)" /></div>
+                                    ) : (
+                                        <table className="data-table">
+                                            <thead><tr><th>User Details</th><th>Role</th><th>Status</th><th>Last Login</th><th>Action</th></tr></thead>
+                                            <tbody>
+                                                {umUsers.filter(u => u.name.toLowerCase().includes(umSearchTerm.toLowerCase()) || u.role.toLowerCase().includes(umSearchTerm.toLowerCase())).map((u, i) => (
+                                                    <tr key={i}>
+                                                        <td>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', fontSize: '14px' }}>{u.name.charAt(0)}</div>
+                                                                <div>
+                                                                    <div style={{ fontWeight: '600', fontSize: '14px' }}>{u.name}</div>
+                                                                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Mail size={12} /> {u.email}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <span style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-main)', fontSize: '12px', fontWeight: '600', color: (u.role === 'Super Admin' || u.role === 'Admin') ? 'var(--primary)' : 'var(--text-muted)', border: (u.role === 'Super Admin' || u.role === 'Admin') ? '1px solid var(--primary-light)' : '1px solid var(--border)' }}>{u.role}</span>
+                                                        </td>
+                                                        <td>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                {u.status === 'Active' ? <CheckCircle size={14} color="#10B981" /> : <XCircle size={14} color="#EF4444" />}
+                                                                <span style={{ fontSize: '13px', color: u.status === 'Active' ? '#10B981' : '#EF4444', fontWeight: '500' }}>{u.status}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{u.lastLogin}</td>
+                                                        <td style={{ textAlign: 'right', paddingRight: '20px' }}>
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0', gap: '4px' }}>
+                                                                <button onClick={() => handleEditUser(u)} title="Edit User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit2 size={16} /></button>
+                                                                <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
+                                                                <button onClick={() => handleDeleteUser(u.id)} title="Delete User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>
+                                                                <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
+                                                                <div style={{ position: 'relative' }}>
+                                                                    <button title="More Options" onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === u.id ? null : u.id); }} style={{ padding: '8px', borderRadius: '8px', border: 'none', background: openMenuId === u.id ? '#F1F5F9' : 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MoreVertical size={16} /></button>
+                                                                    {openMenuId === u.id && (
+                                                                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', backgroundColor: 'white', borderRadius: '12px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 100, minWidth: '180px', padding: '6px' }}>
+                                                                            <div onClick={() => handleToggleUserStatus(u)} style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }} className="dropdown-item-hover">
+                                                                                {u.status === 'Active' ? <XCircle size={14} color="#EF4444" /> : <CheckCircle size={14} color="#10B981" />}
+                                                                                {u.status === 'Active' ? 'Deactivate User' : 'Activate User'}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {umUsers.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No users found in the system.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* === Roles & Permissions Tab === */}
+                        {activeTab === 'Roles & Permissions' && (
+                            <div className="animate-fade-in">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Role Definitions</h3>
+                                        <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Define access permissions for each role below</p>
+                                    </div>
+                                    <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }}>
+                                        <Plus size={18} /> CREATE ROLE
+                                    </button>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', alignItems: 'start' }}>
+                                    {umRoles.map((role, idx) => (
+                                        <div key={idx} className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{role.name}</h4>
+                                                    <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{role.description}</p>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
+                                                    <button onClick={() => { setEditingRole(role); setIsRoleModalOpen(true); }} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#0284c7' }}><Edit3 size={14} /> Edit</button>
+                                                    {role.name !== 'Administrator' && role.name !== 'Super Admin' && (
+                                                        <button onClick={() => handleDeleteRole(role.name)} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#dc2626' }}><Trash2 size={14} /> Delete</button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                                                {(role.tags || []).map(tag => (
+                                                    <span key={tag} style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', backgroundColor: tag === 'System' ? '#EFF6FF' : '#f1f5f9', color: tag === 'System' ? '#3B82F6' : 'var(--text-muted)', border: '1px solid var(--border)' }}>{tag}</span>
+                                                ))}
+                                            </div>
+                                            <div style={{ padding: '16px 0', borderTop: '1px solid var(--border)', flex: 1 }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                                                    {role.permissions.map(perm => {
+                                                        const acts = perm.actions || { view: true, edit: false, delete: false };
+                                                        return (
+                                                            <div key={perm.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '11px', fontWeight: '600', color: 'var(--text-main)', background: '#f8fafc', minHeight: '38px' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, minWidth: 0 }}>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        {perm.icon ? <perm.icon size={12} style={{ color: 'var(--primary)', flexShrink: 0 }} /> : <Shield size={12} style={{ color: 'var(--primary)', flexShrink: 0 }} />}
+                                                                        <span style={{ fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{perm.name}</span>
+                                                                    </div>
+                                                                    {perm.subTabs && perm.subTabs.length > 0 && (
+                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', paddingLeft: '18px' }}>
+                                                                            {perm.subTabs.map(st => (
+                                                                                <span key={st} style={{ fontSize: '9px', padding: '1px 4px', backgroundColor: '#e2e8f0', borderRadius: '3px', color: 'var(--text-muted)' }}>{st}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '4px', flexShrink: 0, marginLeft: '6px' }}>
+                                                                    <span style={{ fontSize: '10px', fontWeight: '700', color: acts.view ? '#10B981' : '#CBD5E1' }}>V</span>
+                                                                    <span style={{ fontSize: '10px', fontWeight: '700', color: acts.edit ? '#F59E0B' : '#CBD5E1' }}>E</span>
+                                                                    <span style={{ fontSize: '10px', fontWeight: '700', color: acts.delete ? '#EF4444' : '#CBD5E1' }}>D</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
             </div>
+
+            {/* User Management Modals */}
+            <CreateRoleModal
+                isOpen={isRoleModalOpen}
+                onClose={() => { setIsRoleModalOpen(false); setEditingRole(null); }}
+                onRoleCreated={handleRoleCreated}
+                initialData={editingRole}
+            />
+            {isAddUserModalOpen && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div className="card animate-fade-in" style={{ width: '450px', padding: '32px', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <h3 style={{ marginBottom: '24px' }}>{editingUser ? 'Edit System User' : 'Create New System User'}</h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Full Name *</label>
+                                <input placeholder="Enter full name" value={newUser.fullName} onChange={(e) => setNewUser({ ...newUser, fullName: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>User Code / ID *</label>
+                                <input placeholder="e.g. EMP1001" value={newUser.employeeCode} onChange={(e) => setNewUser({ ...newUser, employeeCode: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600' }}>Email Address</label>
+                                <input placeholder="email@example.com" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '600' }}>Assign Role</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    {umRoles.map(r => r.name).map(role => (
+                                        <div key={role} style={{ padding: '6px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', backgroundColor: newUser.roles.includes(role) ? 'var(--primary)' : '#f1f5f9', color: newUser.roles.includes(role) ? 'white' : 'var(--text-muted)', border: newUser.roles.includes(role) ? '1px solid var(--primary)' : '1px solid var(--border)' }} onClick={() => setNewUser({ ...newUser, roles: [role] })}>{role}</div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', fontWeight: '600' }}>{editingUser ? 'New Password (Optional)' : 'Initial Password *'}</label>
+                                {editingUser && <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>Leave blank to keep current password</p>}
+                                <input type="password" placeholder="••••••••" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+                            <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => { setIsAddUserModalOpen(false); setEditingUser(null); }}>Cancel</button>
+                            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleCreateUser}>{editingUser ? 'Update User' : 'Create User'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <AddEmployeeModal
                 isOpen={isAddEmployeeOpen}

@@ -140,6 +140,8 @@ export const employeeAPI = {
     create: (data) => api.post('/employees/', data),
     update: (id, data) => api.put(`/employees/${id}`, data),
     delete: (id) => api.delete(`/employees/${id}`),
+    uploadDocument: (id, formData, docType) => api.post(`/employees/${id}/documents?doc_type=${docType || 'general'}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    getDocuments: (id) => api.get(`/employees/${id}/documents`),
 };
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -150,6 +152,7 @@ export const chatAPI = {
     getHistoryGroup: (groupId) => api.get(`/chat/history/group/${groupId}`),
     getGroups: (username) => api.get(`/chat/groups/${username}`),
     createGroup: (groupData) => api.post('/chat/groups', groupData),
+    addGroupMembers: (groupId, members) => api.put(`/chat/groups/${groupId}/members`, { members }),
     getNotifications: (userId) => api.get(`/chat/notifications/${userId}`),
     markAsRead: (userId, senderId, groupId = null) =>
         api.post(`/chat/mark-read/${userId}/${senderId}${groupId ? `?group_id=${groupId}` : ''}`),
@@ -195,7 +198,11 @@ export const hrmsAPI = {
     getPayroll: (month) => api.get('/hrms/payroll', { params: { month } }),
     generatePayroll: (month) => api.post('/hrms/payroll/generate', null, { params: { month } }),
     getSettings: () => api.get('/hrms/settings'),
-    updateSettings: (data) => api.post('/hrms/settings', data)
+    updateSettings: (data) => api.post('/hrms/settings', data),
+    getDesignations: () => api.get('/hrms/designations'),
+    addDesignation: (value) => api.post('/hrms/designations', { value }),
+    getDepartments: () => api.get('/hrms/departments'),
+    addDepartment: (value) => api.post('/hrms/departments', { value })
 };
 
 // ── Surprise Visit Attendance ────────────────────────────────────────────────
@@ -259,9 +266,11 @@ export const settingsAPI = {
     updateCloudinary: (data) => api.post('/settings/cloudinary', data),
     getSMTP: () => api.get('/settings/smtp'),
     updateSMTP: (data) => api.post('/settings/smtp', data),
+    testSMTP: (data) => api.post('/settings/smtp/test', data),
     uploadLogo: (formData) => api.post('/settings/logo', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
+    changePassword: (data) => api.post('/settings/password', data),
 };
 
 export const profileAPI = {

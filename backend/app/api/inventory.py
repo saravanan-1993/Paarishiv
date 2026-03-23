@@ -4,8 +4,9 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime
 from pydantic import BaseModel
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
+from app.utils.rbac import RBACPermission
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -44,7 +45,7 @@ async def get_warehouse_inventory(db = Depends(get_database)):
         for item in inventory
     ]
 
-@router.post("/requests")
+@router.post("/requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def create_material_request(request: MaterialRequestCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     request_dict = request.dict()
     request_dict["status"] = "Pending"
@@ -72,20 +73,34 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
         if project_name and project_name != "all":
             query["project_name"] = project_name
     elif current_user.get("role") == "Site Engineer":
-        projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
+        # Bug 5.2 - Check multiple fields for Site Engineer project matching
+        username = current_user.get("username")
+        user_id = current_user.get("_id", "")
+        project_query = {"$or": [
+            {"engineer_id": username},
+            {"engineer_id": str(user_id)},
+        ]}
+        # Also check if employee has a siteId
+        emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
+        if emp and emp.get("siteId"):
+            project_query["$or"].append({"_id": emp["siteId"]})
+        projects = await db.projects.find(project_query).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
-        
+
         if project_name and project_name != "all":
             if project_name in project_names:
                 query["project_name"] = project_name
             else:
                 return []
         else:
-            query["project_name"] = {"$in": project_names}
+            if project_names:
+                query["project_name"] = {"$in": project_names}
+            else:
+                return []
     else:
         # Default restricted view
         return []
-        
+
     requests = await db.material_requests.find(query).sort("created_at", -1).to_list(100)
     return [
         {
@@ -182,23 +197,24 @@ async def get_consolidated_requests(db = Depends(get_database)):
 
 @router.put("/requests/{request_id}/status")
 async def update_request_status(request_id: str, payload: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    oid = validate_object_id(request_id, "request")
     # Only Coordinator, Admin, Purchase Officer or Inventory Manager can approve
     allowed_approvers = ["Project Coordinator", "Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
     if current_user.get("role") not in allowed_approvers:
         raise HTTPException(status_code=403, detail="Not authorized to approve requests")
-        
+
     status = payload.get("status")
     remarks = payload.get("remarks", "")
-    
+
     update_data = {
         "status": status,
         "coordinator_remarks": remarks,
         "updated_at": datetime.now(),
         "coordinator_id": current_user.get("username")
     }
-    
+
     result = await db.material_requests.update_one(
-        {"_id": ObjectId(request_id)},
+        {"_id": oid},
         {"$set": update_data}
     )
     
@@ -214,9 +230,10 @@ async def update_request_status(request_id: str, payload: dict, db = Depends(get
 
 @router.post("/requests/{request_id}/issue")
 async def issue_stock(request_id: str, issue: StockIssue, db = Depends(get_database)):
+    oid = validate_object_id(request_id, "request")
     # 1. Update Material Request
     result = await db.material_requests.update_one(
-        {"_id": ObjectId(request_id)},
+        {"_id": oid},
         {
             "$set": {
                 "status": "Issued",
@@ -235,11 +252,21 @@ async def issue_stock(request_id: str, issue: StockIssue, db = Depends(get_datab
     total_issue_value = 0
     
     for item in issue.issued_items:
-        # Decrement from Warehouse Inventory
-        await db.warehouse_inventory.update_one(
-            {"material_name": item["name"]},
-            {"$inc": {"stock": -item["quantity"]}}
+        qty = float(item["quantity"])
+        # C10 Fix: Atomic check-and-decrement to prevent race conditions
+        # Only decrement if stock >= requested quantity
+        result_update = await db.warehouse_inventory.update_one(
+            {"material_name": item["name"], "stock": {"$gte": qty}},
+            {"$inc": {"stock": -qty}}
         )
+        if result_update.matched_count == 0:
+            # Either item doesn't exist or insufficient stock
+            wh_item = await db.warehouse_inventory.find_one({"material_name": item["name"]})
+            wh_stock = float(wh_item.get("stock", 0)) if wh_item else 0
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient warehouse stock for '{item['name']}'. Available: {wh_stock}, Requested: {qty}"
+            )
         
         # Increase Site Stock
         await db.inventory.update_one(
@@ -290,14 +317,26 @@ class StockReturn(BaseModel):
 @router.post("/return")
 async def return_stock(ret: StockReturn, db = Depends(get_database)):
     for item in ret.items:
-        # 1. Reduce Site Stock
-        await db.inventory.update_one(
+        qty = float(item["quantity"])
+        # Bug 5.4 Fix: Atomic check-and-decrement to prevent negative site stock
+        result_update = await db.inventory.update_one(
             {
                 "project_name": ret.project_name,
-                "material_name": item["name"]
+                "material_name": item["name"],
+                "stock": {"$gte": qty}
             },
-            {"$inc": {"stock": -item["quantity"]}}
+            {"$inc": {"stock": -qty}}
         )
+        if result_update.matched_count == 0:
+            site_item = await db.inventory.find_one({
+                "project_name": ret.project_name,
+                "material_name": item["name"]
+            })
+            available = float(site_item.get("stock", 0)) if site_item else 0
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient site stock for '{item['name']}'. Available: {available}, Return qty: {qty}"
+            )
         
         # 2. Increase Warehouse Stock
         await db.warehouse_inventory.update_one(
@@ -327,10 +366,23 @@ async def get_stock_ledger(material_name: Optional[str] = None, db = Depends(get
         query["material_name"] = material_name
         
     if current_user.get("role") == "Site Engineer":
-        projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
+        # Bug 5.2 - Check multiple fields for Site Engineer project matching
+        username = current_user.get("username")
+        user_id = current_user.get("_id", "")
+        project_query = {"$or": [
+            {"engineer_id": username},
+            {"engineer_id": str(user_id)},
+        ]}
+        emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
+        if emp and emp.get("siteId"):
+            project_query["$or"].append({"_id": emp["siteId"]})
+        projects = await db.projects.find(project_query).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
-        query["project_name"] = {"$in": project_names}
-        
+        if project_names:
+            query["project_name"] = {"$in": project_names}
+        else:
+            return []
+
     logs = await db.stock_ledger.find(query).sort("date", -1).to_list(1000)
     
     # Calculate running balance if material specified?
@@ -371,12 +423,13 @@ async def get_stock_ledger(material_name: Optional[str] = None, db = Depends(get
 
 @router.post("/requests/{request_id}/settle")
 async def settle_stock(request_id: str, settlement: StockSettlementCreate, db = Depends(get_database)):
+    oid = validate_object_id(request_id, "request")
     # 1. Update Material Request
     await db.material_requests.update_one(
-        {"_id": ObjectId(request_id)},
+        {"_id": oid},
         {"$set": {"status": "Settled", "settled_at": datetime.now()}}
     )
-    
+
     # 2. Log Settlement
     request = await db.material_requests.find_one({"_id": ObjectId(request_id)})
     settlement_dict = {
@@ -420,7 +473,7 @@ class MaterialTransfer(BaseModel):
     items: List[dict] # [{"name": "Switch", "quantity": 50, "unit": "Nos", "price": 100}]
     notes: Optional[str] = ""
 
-@router.post("/transfers/request")
+@router.post("/transfers/request", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def request_material_transfer(transfer: MaterialTransferRequest, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # 1. Validate source project user? Or just anyone?
     request_dict = transfer.dict()
@@ -468,7 +521,8 @@ async def get_lifo_rate(db, material_name, project_name):
 
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    request = await db.material_transfer_requests.find_one({"_id": ObjectId(transfer_id)})
+    oid = validate_object_id(transfer_id, "transfer")
+    request = await db.material_transfer_requests.find_one({"_id": oid})
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
     
@@ -482,35 +536,59 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
     calculated_items = []
 
     for item in items:
+        qty = float(item["quantity"])
+
+        # C10 Fix: Atomic check-and-decrement for transfer stock
+        deduct_result = await db.inventory.update_one(
+            {"project_name": from_proj, "material_name": item["name"], "stock": {"$gte": qty}},
+            {"$inc": {"stock": -qty}}
+        )
+        if deduct_result.matched_count == 0:
+            source_inv = await db.inventory.find_one({
+                "project_name": from_proj,
+                "material_name": item["name"]
+            })
+            available_stock = float(source_inv.get("stock", 0)) if source_inv else 0
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for '{item['name']}' at {from_proj}. Available: {available_stock}, Requested: {qty}"
+            )
+
         # Get LIFO Rate
         rate = await get_lifo_rate(db, item["name"], from_proj)
-        item_val = float(item["quantity"]) * rate
+        item_val = qty * rate
         total_transfer_value += item_val
         calculated_items.append({**item, "rate": rate, "value": item_val})
 
-        # 1. Deduct from Source Project
-        await db.inventory.update_one(
-            {"project_name": from_proj, "material_name": item["name"]},
-            {"$inc": {"stock": -item["quantity"]}}
-        )
-        
         # 2. Add to Destination Project
         await db.inventory.update_one(
             {"project_name": to_proj, "material_name": item["name"]},
-            {"$inc": {"stock": item["quantity"]}, "$set": {"unit": item.get("unit", "Nos")}},
+            {"$inc": {"stock": qty}, "$set": {"unit": item.get("unit", "Nos")}},
             upsert=True
         )
-        
-        # 3. Log to Stock Ledger
+
+        # 3. Log to Stock Ledger - separate OUT and IN entries for clarity
+        ref_code = f"XFER-{transfer_id[-6:].upper()}"
+        now = datetime.now()
         await db.stock_ledger.insert_one({
-            "date": datetime.now(),
+            "date": now,
             "material_name": item["name"],
-            "project_name": f"{from_proj} -> {to_proj}",
-            "type": "Transfer",
-            "ref": f"XFER-{transfer_id[-6:].upper()}",
-            "in_qty": item["quantity"],
-            "out_qty": item["quantity"],
-            "created_at": datetime.now()
+            "project_name": from_proj,
+            "type": "Transfer Out",
+            "ref": ref_code,
+            "in_qty": 0,
+            "out_qty": qty,
+            "created_at": now
+        })
+        await db.stock_ledger.insert_one({
+            "date": now,
+            "material_name": item["name"],
+            "project_name": to_proj,
+            "type": "Transfer In",
+            "ref": ref_code,
+            "in_qty": qty,
+            "out_qty": 0,
+            "created_at": now
         })
 
     # 4. Accounting Entries
@@ -557,8 +635,9 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
 
 @router.put("/transfers/{transfer_id}/reject")
 async def reject_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    oid = validate_object_id(transfer_id, "transfer")
     await db.material_transfer_requests.update_one(
-        {"_id": ObjectId(transfer_id)},
+        {"_id": oid},
         {"$set": {
             "status": "Rejected",
             "updated_at": datetime.now(),

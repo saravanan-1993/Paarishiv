@@ -10,7 +10,7 @@ const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
-    const { login, user } = useAuth();
+    const { login, quickLogin, user } = useAuth();
     const navigate = useNavigate();
     const [companyInfo, setCompanyInfo] = useState({
         companyName: 'Civil ERP',
@@ -48,38 +48,36 @@ const Login = () => {
                 setError('Invalid username or password');
             }
         } catch (err) {
-            setError('Login failed. Please check your connection.');
+            setError(err.message || 'Login failed. Please check your connection.');
         } finally {
             setIsLoggingIn(false);
         }
     };
 
-    const handleDemoLogin = async (dUsername, dPassword) => {
-        setUsername(dUsername);
-        setPassword(dPassword);
+    const handleQuickLogin = async (role) => {
         setError('');
         setIsLoggingIn(true);
 
         try {
-            const success = await login(dUsername, dPassword);
+            const success = await quickLogin(role);
             if (success) {
                 navigate('/');
             } else {
-                setError('Invalid demo credentials');
+                setError(`No active ${role} account found`);
             }
         } catch (err) {
-            setError('Login failed. Please check your connection.');
+            setError(err.message || 'Quick login failed.');
         } finally {
             setIsLoggingIn(false);
         }
     };
 
     const demoRoles = [
-        { label: 'Site Engineer', username: 'engineer', password: 'password' },
-        { label: 'Coordinator', username: 'coordinator', password: 'password' },
-        { label: 'Purchase Officer', username: 'purchase', password: 'password' },
-        { label: 'Accountant', username: 'accountant', password: 'password' },
-        { label: 'Super Admin', username: 'admin', password: 'password', full: true }
+        { label: 'Site Engineer', role: 'Site Engineer' },
+        { label: 'Coordinator', role: 'Project Coordinator' },
+        { label: 'Purchase Officer', role: 'Purchase Officer' },
+        { label: 'Accountant', role: 'Accountant' },
+        { label: 'Administrator', role: 'Administrator', full: true }
     ];
 
     return (
@@ -276,7 +274,7 @@ const Login = () => {
                             {demoRoles.map((role) => (
                                 <button
                                     key={role.username}
-                                    onClick={() => handleDemoLogin(role.username, role.password)}
+                                    onClick={() => handleQuickLogin(role.role)}
                                     disabled={isLoggingIn}
                                     style={{
                                         padding: '12px',
