@@ -388,8 +388,21 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
         except Exception:
             pass
         
-    bill_dict["id"] = str(result.inserted_id)
-    return bill_dict
+    return {
+        "id": str(result.inserted_id),
+        "bill_no": bill_dict.get("bill_no"),
+        "vendor_name": bill_dict.get("vendor_name"),
+        "project_name": bill_dict.get("project_name"),
+        "bill_date": bill_dict.get("bill_date"),
+        "total_amount": bill_dict.get("total_amount"),
+        "tax_amount": bill_dict.get("tax_amount"),
+        "items": bill_dict.get("items", []),
+        "notes": bill_dict.get("notes", ""),
+        "status": bill_dict.get("status"),
+        "grn_id": bill_dict.get("grn_id"),
+        "po_id": bill_dict.get("po_id"),
+        "created_at": str(bill_dict.get("created_at", "")),
+    }
 
 # ── Project Finance Summary ──────────────────────────────────────────────────
 
