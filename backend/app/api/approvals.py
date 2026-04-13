@@ -163,6 +163,11 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
         if type == "leaves":
             await db.leaves.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "purchase_orders":
+            # Only Super Admin, Administrator, General Manager, or Manager can approve/reject POs
+            allowed_roles = ["super admin", "administrator", "general manager", "manager"]
+            user_role = (current_user.get("role") or "").strip().lower()
+            if user_role not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Only General Manager or Super Admin can approve/reject Purchase Orders")
             await db.purchase_orders.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "materials":
             await db.material_requests.update_one({"_id": oid}, {"$set": update_fields})

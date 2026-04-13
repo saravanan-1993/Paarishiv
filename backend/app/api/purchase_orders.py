@@ -148,6 +148,11 @@ async def update_po(id: str, po_data: dict = Body(...)):
 @router.put("/{id}/approve", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 @router.put("/{id}/approve/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
+    # Only Super Admin, Administrator, General Manager, or Manager can approve POs
+    allowed_roles = ["super admin", "administrator", "general manager", "manager"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only General Manager or Super Admin can approve Purchase Orders")
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
     po = await db.purchase_orders.find_one({"_id": ObjectId(id)})
