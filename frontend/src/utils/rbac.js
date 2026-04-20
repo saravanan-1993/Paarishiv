@@ -93,7 +93,7 @@ export const DEFAULT_ROLES = [
         tags: ['project_coordinator'],
         permissions: [
             { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: true, delete: false } },
+            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR', 'Documents', 'Workflow Tracking'] },
             { name: 'HRMS', actions: { view: true, edit: false, delete: false } },
             { name: 'Inventory Management', actions: { view: true, edit: true, delete: false } },
             { name: 'Reports', actions: { view: true, edit: false, delete: false } },
@@ -163,7 +163,7 @@ export const DEFAULT_ROLES = [
             { name: 'HRMS', actions: { view: true, edit: false, delete: false } },
         ],
         dashboardCards: ['inventory_card', 'approvals_card'],
-        features: ['create_po', 'approve_po', 'add_vendor', 'create_grn'],
+        features: ['create_po', 'add_vendor', 'create_grn'],
         userCount: 2
     },
     {

@@ -511,7 +511,7 @@ const Dashboard = () => {
                         )}
 
                         {/* ── Project Overview KPI Cards ───────────────────────── */}
-                        {(isSuperAdmin || isProjectCoordinator || isGM) && (
+                        {(isSuperAdmin || isGM) && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
                                 {projectKPIs.map((kpi, i) => (
                                     <div key={i} className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${kpi.color}` }}>

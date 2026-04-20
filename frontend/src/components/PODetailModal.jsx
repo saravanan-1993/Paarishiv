@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, CheckCircle, Download, Printer, AlertCircle, Plus, Trash2, Save } from 'lucide-react';
 import { purchaseOrderAPI, projectAPI } from '../utils/api';
 
-const PODetailModal = ({ isOpen, onClose, po, onSuccess }) => {
+const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState(null);
     const [projects, setProjects] = useState([]);
@@ -273,11 +273,15 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess }) => {
                     ) : (
                         <>
                             <button className="btn btn-outline" onClick={onClose}>Close</button>
-                            {po.status === 'Pending' && (
-                                <button className="btn btn-primary" onClick={handleApprove} disabled={isSaving} style={{ padding: '10px 32px' }}>
-                                    <CheckCircle size={18} /> {isSaving ? 'APPROVING...' : 'APPROVE PO'}
-                                </button>
-                            )}
+                            {po.status === 'Pending' && (() => {
+                                const role = (user?.role || '').toLowerCase();
+                                const canApprove = ['super admin', 'administrator', 'general manager', 'manager'].includes(role);
+                                return canApprove ? (
+                                    <button className="btn btn-primary" onClick={handleApprove} disabled={isSaving} style={{ padding: '10px 32px' }}>
+                                        <CheckCircle size={18} /> {isSaving ? 'APPROVING...' : 'APPROVE PO'}
+                                    </button>
+                                ) : null;
+                            })()}
                         </>
                     )}
                 </div>

@@ -6,13 +6,17 @@ import {
     Search, Filter, ChevronDown
 } from 'lucide-react';
 import { approvalsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import PODetailModal from '../components/PODetailModal';
 import MaterialRequestDetailModal from '../components/MaterialRequestDetailModal';
 
 const Approvals = () => {
+    const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('leaves');
+    const userRole = (user?.role || '').toLowerCase();
+    const canApprovePO = ['super admin', 'administrator', 'general manager', 'manager'].includes(userRole);
 
     const tabMapping = useMemo(() => ({
         'Leaves': 'leaves',
@@ -302,7 +306,7 @@ const Approvals = () => {
                 >
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApprovePO && (
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button
                             onClick={() => handleAction('purchase_orders', item._id, 'reject')}
@@ -895,6 +899,7 @@ const Approvals = () => {
                 onClose={() => setSelectedPO(null)}
                 po={selectedPO}
                 onSuccess={() => { setSelectedPO(null); fetchData(); }}
+                user={user}
             />
 
             <MaterialRequestDetailModal

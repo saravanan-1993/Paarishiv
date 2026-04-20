@@ -826,6 +826,7 @@ const Workflow = () => {
                 onClose={() => setIsPODetailOpen(false)}
                 po={selectedPO}
                 onSuccess={fetchPOs}
+                user={user}
             />
             <GRNDetailModal isOpen={isGRNDetailOpen} onClose={() => setIsGRNDetailOpen(false)} grn={selectedGRN} />
         </div>
