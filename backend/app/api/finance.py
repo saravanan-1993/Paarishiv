@@ -146,10 +146,27 @@ async def get_payables(db = Depends(get_database)):
             else:
                 status = "Pending"
 
-        # Prepare items for JSON serialization
+        # Build a rate lookup: ONLY from linked PO rates + purchase bill for this GRN
+        rate_lookup = {}
+        if po:
+            for pi in po.get("items", []):
+                if pi.get("name") and pi.get("rate") is not None and float(pi.get("rate", 0)) > 0:
+                    rate_lookup[pi["name"]] = float(pi["rate"])
+        # Fallback: purchase bill rates for THIS GRN only
+        pb = pb_by_grn.get(grn_id_str)
+        if pb:
+            for pi in pb.get("items", []):
+                if pi.get("name") and pi.get("rate") is not None and float(pi.get("rate", 0)) > 0:
+                    if pi["name"] not in rate_lookup:
+                        rate_lookup[pi["name"]] = float(pi["rate"])
+
+        # Prepare items with price auto-filled from rate lookup
         clean_items = []
         for gi in grn_items:
             clean_item = {k: v for k, v in gi.items()}
+            # Add price from: 1) existing price on item  2) rate lookup
+            if not clean_item.get("price") or float(clean_item.get("price", 0) or 0) == 0:
+                clean_item["price"] = rate_lookup.get(gi.get("name"), 0)
             clean_items.append(clean_item)
 
         # Date serialization
@@ -188,28 +205,93 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
             {"$inc": {"spent": expense.amount}}
         )
     
-    # If the partial/full payment came with updated item prices, update them in the GRN
+    # If the partial/full payment came with updated item prices, update GRN + PO + Purchase Bill
     if expense.grn_id and expense.items:
         try:
+            valid_items = [item for item in expense.items if isinstance(item, dict)]
             await db.grns.update_one(
                 {"_id": ObjectId(expense.grn_id)},
-                {"$set": {"items": [item for item in expense.items if isinstance(item, dict)], "total_amount": expense.total_amount}}
+                {"$set": {"items": valid_items, "total_amount": expense.total_amount}}
             )
+
+            # Update linked PO with actual rates from accountant
+            grn_doc = await db.grns.find_one({"_id": ObjectId(expense.grn_id)})
+            if grn_doc and grn_doc.get("po_id") and ObjectId.is_valid(grn_doc["po_id"]):
+                po_doc = await db.purchase_orders.find_one({"_id": ObjectId(grn_doc["po_id"])})
+                if po_doc:
+                    po_items = po_doc.get("items", [])
+                    # Build price map from accountant's entry
+                    price_map = {}
+                    for ei in valid_items:
+                        if ei.get("name") and ei.get("price") and float(ei.get("price", 0)) > 0:
+                            price_map[ei["name"]] = float(ei["price"])
+                    # Update PO items that have no rate
+                    updated_po_items = []
+                    po_total = 0
+                    for pi in po_items:
+                        pi_copy = dict(pi)
+                        if (not pi_copy.get("rate") or float(pi_copy.get("rate", 0)) == 0) and pi_copy.get("name") in price_map:
+                            pi_copy["rate"] = price_map[pi_copy["name"]]
+                        rate = float(pi_copy.get("rate", 0) or 0)
+                        qty = float(pi_copy.get("qty", 0) or 0)
+                        po_total += qty * rate
+                        updated_po_items.append(pi_copy)
+                    await db.purchase_orders.update_one(
+                        {"_id": ObjectId(grn_doc["po_id"])},
+                        {"$set": {"items": updated_po_items, "total_amount": po_total}}
+                    )
+
+                    # Also update linked purchase bill
+                    await db.purchase_bills.update_many(
+                        {"grn_id": expense.grn_id},
+                        {"$set": {"total_amount": expense.total_amount}}
+                    )
+                    # Update purchase bill items with rates
+                    for pb_doc in await db.purchase_bills.find({"grn_id": expense.grn_id}).to_list(10):
+                        pb_items = pb_doc.get("items", [])
+                        for pbi in pb_items:
+                            if pbi.get("name") in price_map and (not pbi.get("rate") or float(pbi.get("rate", 0)) == 0):
+                                pbi["rate"] = price_map[pbi["name"]]
+                                pbi["amount"] = float(pbi.get("qty", 0) or 0) * pbi["rate"]
+                        pb_total = sum(float(i.get("amount", 0) or 0) for i in pb_items)
+                        await db.purchase_bills.update_one(
+                            {"_id": pb_doc["_id"]},
+                            {"$set": {"items": pb_items, "total_amount": pb_total}}
+                        )
         except Exception:
             pass
             
-    # If this marks the payable as fully paid, update GRN status
+    # If this marks the payable as fully paid, update GRN + Purchase Bill status
     if expense.grn_id and expense.mark_as_paid:
         try:
             await db.grns.update_one(
                 {"_id": ObjectId(expense.grn_id)},
                 {"$set": {"status": "Paid"}}
             )
+            # Also mark the linked purchase bill as Paid + update total with GST
+            invoice_total = float(expense.base_amount or 0) + float(expense.gst_amount or 0)
+            pb_update = {"status": "Paid", "paid_at": datetime.now().isoformat()}
+            if invoice_total > 0:
+                pb_update["total_amount"] = invoice_total
+                pb_update["tax_amount"] = float(expense.gst_amount or 0)
+            await db.purchase_bills.update_many(
+                {"grn_id": expense.grn_id},
+                {"$set": pb_update}
+            )
             # Find project by name and trigger workflow
             if expense.project and expense.project != "General":
                 project = await db.projects.find_one({"name": expense.project})
                 if project:
                     await trigger_workflow_event(str(project["_id"]), "payment_settled", current_user, db, f"Payment settled for GRN-{expense.grn_id[-6:]}")
+        except:
+            pass
+    elif expense.grn_id:
+        # Partial payment — mark purchase bill as Partially Paid
+        try:
+            await db.purchase_bills.update_many(
+                {"grn_id": expense.grn_id, "status": {"$ne": "Paid"}},
+                {"$set": {"status": "Partially Paid"}}
+            )
         except:
             pass
             

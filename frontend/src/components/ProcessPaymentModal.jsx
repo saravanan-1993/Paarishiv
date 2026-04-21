@@ -97,7 +97,9 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
             return;
         }
 
-        const paymentAmountToSend = paymentType === 'Full' ? remainingBalance : parseFloat(partialAmount);
+        const paymentAmountToSend = paymentType === 'Full' ? remainingBalance
+            : paymentType === 'Partial' ? parseFloat(partialAmount)
+            : 0; // Pending = no payment
 
         if (paymentType === 'Full' && remainingBalance <= 0) {
             alert('This invoice is already fully paid.');
@@ -109,35 +111,39 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
             return;
         }
 
-        if (paymentAmountToSend > (remainingBalance + 0.01)) { // Tiny buffer for rounding
+        if (paymentType !== 'Pending' && paymentAmountToSend > (remainingBalance + 0.01)) {
             alert(`Payment amount (₹${paymentAmountToSend.toLocaleString()}) cannot exceed the remaining balance (₹${remainingBalance.toLocaleString()}).`);
             return;
         }
 
         setLoading(true);
         try {
+            const isPending = paymentType === 'Pending';
             const payload = {
                 date,
                 project: invoice.project || "General",
                 category: 'Material Purchase',
-                amount: paymentAmountToSend, // Total Payment amount
+                amount: paymentAmountToSend,
                 base_amount: parseFloat(baseAmount),
                 gst_amount: gstAmount,
                 invoice_no: invoiceNo,
-                paymentMode,
+                paymentMode: isPending ? 'Pending' : paymentMode,
                 payee: invoice.vendor,
-                description: remarks || `Payment for Invoice ${invoiceNo} (Ref: ${invoice.voucher_no})`,
+                description: remarks || (isPending
+                    ? `Invoice recorded (pending payment) — ${invoiceNo} (Ref: ${invoice.voucher_no})`
+                    : `Payment for Invoice ${invoiceNo} (Ref: ${invoice.voucher_no})`),
                 reference,
                 grn_id: invoice.id,
                 voucher_no: invoice.voucher_no,
-                receipt_url: invoiceFile ? "file_uploaded.pdf" : null, // Placeholder for file
-                mark_as_paid: paymentType === 'Full' || (Math.abs(remainingBalance - paymentAmountToSend) < 0.01),
+                receipt_url: invoiceFile ? "file_uploaded.pdf" : null,
+                mark_as_paid: !isPending && (paymentType === 'Full' || (Math.abs(remainingBalance - paymentAmountToSend) < 0.01)),
                 items: items,
-                total_amount: totalAmount
+                total_amount: totalAmount,
+                status: isPending ? 'Pending' : 'Paid'
             };
 
             await financeAPI.createExpense(payload);
-            alert('Invoice recorded and payment processed successfully!');
+            alert(isPending ? 'Invoice recorded successfully (payment pending).' : 'Invoice recorded and payment processed successfully!');
             onPaymentProcessed?.();
             onClose();
         } catch (err) {
@@ -358,6 +364,7 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                                 >
                                     <option value="Full">Pay Remaining Balance (₹{remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })})</option>
                                     <option value="Partial">Partial Payment</option>
+                                    <option value="Pending">Pending (Record Invoice Only)</option>
                                 </select>
                             </div>
                             {paymentType === 'Partial' && (
@@ -381,7 +388,7 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
                     <button className="btn btn-outline" onClick={onClose} style={{ padding: '8px 20px' }}>Cancel</button>
                     <button className="btn btn-primary" onClick={handleProcess} style={{ padding: '10px 32px' }} disabled={loading}>
-                        {loading ? 'Processing...' : <><CheckCircle2 size={18} /> Record & Pay</>}
+                        {loading ? 'Processing...' : <><CheckCircle2 size={18} /> {paymentType === 'Pending' ? 'Record Invoice' : 'Record & Pay'}</>}
                     </button>
                 </div>
             </div>

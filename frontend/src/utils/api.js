@@ -296,4 +296,34 @@ export const logsAPI = {
     clearLogs: () => api.delete('/logs/clear'),
 };
 
+// ── Quotations ────────────────────────────────────────────────────────────────
+export const quotationAPI = {
+    getAll: () => api.get('/quotations/'),
+    getOne: (id) => api.get(`/quotations/${id}`),
+    create: (data) => api.post('/quotations/', data),
+    update: (id, data) => api.put(`/quotations/${id}`, data),
+    delete: (id) => api.delete(`/quotations/${id}`),
+    // Multipart: { email, pdf_file? } → attaches PDF when provided
+    sendEmail: (id, formData) => api.post(`/quotations/${id}/send-email`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+    // Multipart: { pdf_file } → uploads to Cloudinary, returns shareable URL for WhatsApp
+    uploadPDF: (id, formData) => api.post(`/quotations/${id}/upload-pdf`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+};
+
+// ── Labour Attendance ─────────────────────────────────────────────────────────
+export const labourAttendanceAPI = {
+    getAll: (params) => api.get('/labour-attendance/', { params }),
+    getOne: (id) => api.get(`/labour-attendance/${id}`),
+    create: (data) => api.post('/labour-attendance/', data),
+    update: (id, data) => api.put(`/labour-attendance/${id}`, data),
+    delete: (id) => api.delete(`/labour-attendance/${id}`),
+    getProjectSummary: (projectName) => api.get('/labour-attendance/project-summary', { params: { project_name: projectName } }),
+    getWagesSummary: (params) => api.get('/labour-attendance/wages-summary', { params }),
+    getSalaryPayments: (params) => api.get('/labour-attendance/salary-payments', { params }),
+    processSalary: (data) => api.post('/labour-attendance/process-salary', data),
+};
+
 export default api;

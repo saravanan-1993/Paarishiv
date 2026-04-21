@@ -29,7 +29,7 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
                 grnAPI.getAll(),
                 purchaseOrderAPI.getAll()
             ]).then(([grnRes, poRes]) => {
-                setGrns((grnRes.data || []).filter(g => g.status !== 'Billed'));
+                setGrns((grnRes.data || []).filter(g => g.status !== 'Billed' && !g.is_billed));
                 setPos(poRes.data || []);
             }).finally(() => setLoadingGrns(false));
         }
@@ -38,7 +38,6 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
     const handleGRNSelect = (grnId) => {
         const grn = grns.find(g => g.id === grnId);
         if (grn) {
-            // Fallback to PO data if GRN doesn't have vendor/project name
             const linkedPO = pos.find(p => p.id === grn.po_id);
             setFormData({
                 ...formData,
@@ -48,14 +47,37 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
                 project_name: grn.project_name || linkedPO?.project_name || ''
             });
 
-            // Set items from GRN (using received quantities)
-            setItems(grn.items.map(it => ({
-                name: it.name,
-                qty: it.received_qty || it.qty,
-                unit: it.unit,
-                rate: 0, // Accountant must enter actual bill price
-                amount: 0
-            })));
+            // Build rate lookup — priority: 1) GRN enriched po_rates  2) PO items
+            const poRateMap = {};
+
+            // Source 1: po_rates from enriched GRN response (backend already resolved)
+            if (grn.po_rates && typeof grn.po_rates === 'object') {
+                Object.entries(grn.po_rates).forEach(([name, rate]) => {
+                    if (rate != null) poRateMap[name] = parseFloat(rate) || 0;
+                });
+            }
+
+            // Source 2: PO items (fallback if po_rates missing)
+            if (linkedPO?.items && Object.keys(poRateMap).length === 0) {
+                linkedPO.items.forEach(pit => {
+                    if (pit.name && pit.rate != null) {
+                        poRateMap[pit.name] = parseFloat(pit.rate) || 0;
+                    }
+                });
+            }
+
+            // Set items from GRN with rates auto-filled
+            setItems(grn.items.map(it => {
+                const rate = poRateMap[it.name] || 0;
+                const qty = parseFloat(it.received_qty || it.qty) || 0;
+                return {
+                    name: it.name,
+                    qty,
+                    unit: it.unit,
+                    rate,
+                    amount: qty * rate
+                };
+            }));
         }
     };
 

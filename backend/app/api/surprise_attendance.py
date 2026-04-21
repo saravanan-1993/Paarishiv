@@ -19,6 +19,7 @@ async def save_surprise_attendance(
     location: str = Form(None), # JSON or string
     present_employees: str = Form(...), # JSON list
     remarks: str = Form(None),
+    verified_labour: str = Form(None),    # JSON list of verified labour entries
     photo: Optional[UploadFile] = File(None),
     current_user = Depends(get_current_user),
     db = Depends(get_database)
@@ -53,6 +54,7 @@ async def save_surprise_attendance(
         "time": datetime.now().strftime("%H:%M:%S"),
         "location": json.loads(location) if location else None,
         "present_employees": json.loads(present_employees),
+        "verified_labour": json.loads(verified_labour) if verified_labour else [],
         "remarks": remarks,
         "photo_url": photo_url,
         "marked_by": current_user["username"],
@@ -60,11 +62,21 @@ async def save_surprise_attendance(
     }
 
     result = await db.surprise_attendance.insert_one(record)
-    
-    # Also sync with regular attendance if needed? 
-    # Requirement says "Store separately... Must not interfere with existing attendance data"
-    # So we don't sync.
-    
+
+    # Mark matching labour_attendance record as verified
+    verified_list = record.get("verified_labour") or []
+    has_any_verified = any(v.get("verified") for v in verified_list if isinstance(v, dict))
+    if has_any_verified:
+        await db.labour_attendance.update_one(
+            {"project_name": project_name, "date": date},
+            {"$set": {
+                "verified": True,
+                "verified_by": current_user.get("username") or current_user.get("full_name"),
+                "verified_at": datetime.now(),
+                "verified_labour": verified_list,
+            }}
+        )
+
     return {"success": True, "id": str(result.inserted_id)}
 
 @router.get("/", dependencies=[Depends(RBACPermission("HRMS", "view"))])

@@ -53,6 +53,7 @@ const Workflow = () => {
     const location = useLocation();
     const [searchParams, setSearchParams] = useSearchParams();
     const queryTab = searchParams.get('tab');
+    const requestIdFromUrl = searchParams.get('request_id');
 
     // Define tabs and then determine which one should be active based on permissions
     const availableTabs = React.useMemo(() => [
@@ -70,6 +71,13 @@ const Workflow = () => {
             setActiveSection(queryTab);
         }
     }, [queryTab, availableTabs]);
+
+    // Auto-open PO modal when navigated with request_id (from Material Request → Proceed)
+    useEffect(() => {
+        if (requestIdFromUrl && queryTab === 'POs') {
+            setIsPOModalOpen(true);
+        }
+    }, [requestIdFromUrl, queryTab]);
 
     // Also update URL when clicking tabs manually (optional but good for consistency)
     const handleTabChange = (tabId) => {
@@ -812,8 +820,9 @@ const Workflow = () => {
             />
             <POModal
                 isOpen={isPOModalOpen}
-                onClose={() => setIsPOModalOpen(false)}
-                onSuccess={fetchPOs}
+                onClose={() => { setIsPOModalOpen(false); if (requestIdFromUrl) setSearchParams({ tab: 'POs' }); }}
+                onSuccess={() => { fetchPOs(); if (requestIdFromUrl) setSearchParams({ tab: 'POs' }); }}
+                requestId={requestIdFromUrl}
             />
             <GRNModal
                 isOpen={isGRNModalOpen}

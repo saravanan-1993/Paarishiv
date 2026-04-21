@@ -45,6 +45,8 @@ const menuItems = [
             { label: 'Purchase', tabId: 'Purchase' },
             { label: 'Payments', tabId: 'Payments' },
             { label: 'Ledger', tabId: 'Ledger' },
+            { label: 'Quotation', tabId: 'Quotations', path: '/quotations' },
+            { label: 'Labour Wages', tabId: 'LabourWages', path: '/labour-wages' },
         ]
     },
     {
@@ -482,8 +484,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                             {!collapsed && expandedMenus[item.label] && item.subItems && item.subItems.length > 0 && (
                                 <div style={{ marginBottom: '8px' }}>
                                     {item.subItems.map((sub, sIdx) => {
-                                        const subPath = `${item.path}?tab=${sub.tabId}`;
-                                        const isSubActive = window.location.pathname === item.path && window.location.search.includes(`tab=${sub.tabId}`);
+                                        const subPath = sub.path || `${item.path}?tab=${sub.tabId}`;
+                                        const isSubActive = sub.path
+                                            ? window.location.pathname === sub.path
+                                            : (window.location.pathname === item.path && window.location.search.includes(`tab=${sub.tabId}`));
 
                                         return (
                                             <div
