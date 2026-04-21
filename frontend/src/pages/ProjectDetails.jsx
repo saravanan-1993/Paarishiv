@@ -32,7 +32,9 @@ import DPRModal from '../components/DPRModal';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import EditProjectModal from '../components/EditProjectModal';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, chatAPI, employeeAPI, financeAPI } from '../utils/api';
+import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI } from '../utils/api';
+import LabourAttendanceModal from '../components/LabourAttendanceModal';
+import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
@@ -395,6 +397,14 @@ const ProjectDetails = () => {
     const [finLoading, setFinLoading] = useState(false);
     const [finTab, setFinTab] = useState('sales');
 
+    // Labour Attendance state
+    const [labourRecords, setLabourRecords] = useState([]);
+    const [labourLoading, setLabourLoading] = useState(false);
+    const [isLabourModalOpen, setIsLabourModalOpen] = useState(false);
+    const [editingLabourRecord, setEditingLabourRecord] = useState(null);
+    const [labourSummary, setLabourSummary] = useState(null);
+    const [isUrgentMaterialOpen, setIsUrgentMaterialOpen] = useState(false);
+
     const reloadProject = async () => {
         try {
             const res = await projectAPI.getOne(id);
@@ -490,14 +500,41 @@ const ProjectDetails = () => {
             { name: `DPR (${dprCount})`, icon: FileText },
             { name: 'Financials', icon: Wallet },
             { name: `Documents (${docCount})`, icon: Briefcase },
+            { name: 'Labour Attendance', icon: Users },
             { name: 'Workflow Tracking', icon: Activity },
         ];
 
         return allTabs.filter(t => {
             const tabName = t.name.split(' (')[0];
+            // Labour Attendance is available to all users who can view the project
+            if (tabName === 'Labour Attendance') return hasPermission(user, 'Projects', 'view');
             return hasSubTabAccess(user, 'Projects', tabName);
         });
     }, [user, taskCount, dprCount, docCount]);
+
+    // Load labour data when Labour Attendance tab is active
+    const loadLabourData = async () => {
+        if (!project) return;
+        setLabourLoading(true);
+        try {
+            const pid = project._id || project.id;
+            const [recRes, sumRes] = await Promise.all([
+                labourAttendanceAPI.getAll({ project_id: pid }),
+                labourAttendanceAPI.getProjectSummary(project.name),
+            ]);
+            setLabourRecords(recRes.data || []);
+            setLabourSummary(sumRes.data || null);
+        } catch (err) {
+            console.error('Failed to load labour data:', err);
+        }
+        setLabourLoading(false);
+    };
+
+    useEffect(() => {
+        if (activeTab === 'Labour Attendance' && project) {
+            loadLabourData();
+        }
+    }, [activeTab, project?.name]);
 
     // Load finance data when Financials tab is active
     useEffect(() => {
@@ -589,6 +626,12 @@ const ProjectDetails = () => {
                         {user?.role === 'Site Engineer' && (
                             <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
                                 <FileText size={16} /> Submit DPR
+                            </button>
+                        )}
+                        {hasPermission(user, 'Projects', 'edit') && (
+                            <button onClick={() => setIsUrgentMaterialOpen(true)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', backgroundColor: '#EF4444', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                                <AlertTriangle size={16} /> Urgent Material
                             </button>
                         )}
                         {(user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'Project Coordinator') && (
@@ -1141,9 +1184,105 @@ const ProjectDetails = () => {
                     </div>
                 )}
 
+                {/* Labour Attendance Tab */}
+                {activeTab === 'Labour Attendance' && (
+                    <div className="card animate-fade-in">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                            <div>
+                                <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Labour Attendance</h2>
+                                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Daily labour & contractor attendance for this project</p>
+                            </div>
+                            {hasPermission(user, 'Projects', 'edit') && (
+                                <button className="btn btn-primary" onClick={() => { setEditingLabourRecord(null); setIsLabourModalOpen(true); }}>
+                                    <Plus size={16} /> Mark Attendance
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Summary cards */}
+                        {labourSummary && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                                <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Cost</span><span style={{ fontSize: 18, fontWeight: 800 }}>₹{(labourSummary.total_cost || 0).toLocaleString('en-IN')}</span></div>
+                                <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Days Recorded</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_days_recorded || 0}</span></div>
+                                <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Heads</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_heads || 0}</span></div>
+                                {Object.entries(labourSummary.categories || {}).map(([cat, data]) => (
+                                    <div key={cat} style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>{cat}</span><span style={{ fontSize: 18, fontWeight: 800 }}>{data.total_heads} · ₹{data.cost.toLocaleString('en-IN')}</span></div>
+                                ))}
+                            </div>
+                        )}
+
+                        {labourLoading ? (
+                            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
+                                <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+                                <div style={{ marginTop: 8 }}>Loading attendance records...</div>
+                            </div>
+                        ) : labourRecords.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+                                <Users size={64} style={{ margin: '0 auto 24px', opacity: 0.4 }} />
+                                <h4 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--text-main)' }}>No Labour Attendance Yet</h4>
+                                <p style={{ fontSize: 14, marginBottom: 24 }}>Click "Mark Attendance" to record daily labour count.</p>
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                            <th style={labourThStyle}>Date</th>
+                                            <th style={labourThStyle}>Breakdown</th>
+                                            <th style={{ ...labourThStyle, textAlign: 'center' }}>Total</th>
+                                            <th style={{ ...labourThStyle, textAlign: 'right' }}>Day Cost</th>
+                                            <th style={labourThStyle}>Marked By</th>
+                                            <th style={{ ...labourThStyle, textAlign: 'center' }}>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {labourRecords.map(rec => (
+                                            <tr key={rec.id} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer' }}
+                                                onClick={() => { setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}>
+                                                <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 700 }}>{fmtDate(rec.date)}</td>
+                                                <td style={{ padding: '12px 14px', fontSize: 12 }}>
+                                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                        {(rec.categories || []).map((c, i) => (
+                                                            <span key={i} style={{ padding: '2px 8px', borderRadius: 6, backgroundColor: '#F1F5F9', fontWeight: 600, fontSize: 11 }}>
+                                                                {c.party ? `${c.party} — ` : ''}{c.category}: {c.count}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '12px 14px', fontSize: 14, textAlign: 'center', fontWeight: 800 }}>{rec.total_count}</td>
+                                                <td style={{ padding: '12px 14px', fontSize: 13, textAlign: 'right', fontWeight: 700 }}>₹{(rec.day_cost || 0).toLocaleString('en-IN')}</td>
+                                                <td style={{ padding: '12px 14px', fontSize: 13, color: '#64748B' }}>{rec.marked_by}</td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                    <button onClick={e => { e.stopPropagation(); setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}
+                                                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #E2E8F0', backgroundColor: 'white', cursor: 'pointer', fontSize: 12, color: '#3B82F6', fontWeight: 600 }}>
+                                                        Edit
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
+
             </div>
 
             {/* ── Modals ──────────────────────────────────────────────── */}
+            <UrgentMaterialRequestModal
+                isOpen={isUrgentMaterialOpen}
+                onClose={() => setIsUrgentMaterialOpen(false)}
+                onSuccess={() => setIsUrgentMaterialOpen(false)}
+                project={project}
+            />
+            <LabourAttendanceModal
+                isOpen={isLabourModalOpen}
+                onClose={() => { setIsLabourModalOpen(false); setEditingLabourRecord(null); }}
+                onSuccess={() => { setIsLabourModalOpen(false); setEditingLabourRecord(null); loadLabourData(); }}
+                project={project}
+                existingRecord={editingLabourRecord}
+            />
             <AddTaskModal
                 isOpen={isAddTaskOpen}
                 onClose={() => setIsAddTaskOpen(false)}
@@ -1196,5 +1335,8 @@ const ProjectDetails = () => {
         </div>
     );
 };
+
+const labourStatStyle = { backgroundColor: 'white', padding: 14, borderRadius: 10, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 2 };
+const labourThStyle = { padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', textAlign: 'left' };
 
 export default ProjectDetails;

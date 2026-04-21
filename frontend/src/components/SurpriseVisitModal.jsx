@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Camera, MapPin, Loader2, Save, Users, Calendar, Clock, UserX, Shield as ShieldIcon } from 'lucide-react';
-import { projectAPI, employeeAPI, surpriseVisitAPI, labourAPI } from '../utils/api';
+import { projectAPI, employeeAPI, surpriseVisitAPI, labourAPI, labourAttendanceAPI } from '../utils/api';
 
 const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
     const [loading, setLoading] = useState(false);
@@ -16,17 +16,34 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
     const [photo, setPhoto] = useState(null);
     const [photoPreview, setPhotoPreview] = useState(null);
     const [location, setLocation] = useState(null);
+    const [labourData, setLabourData] = useState(null);
+    const [verifiedLabour, setVerifiedLabour] = useState({});  // key: index → { verified: bool, actual_count: number }
 
     useEffect(() => {
         if (isOpen) {
             loadData();
             captureLocation();
+            setLabourData(null);
         }
     }, [isOpen]);
 
     useEffect(() => {
         setPresentIds([]); // Clear selection when project changes
+        setLabourData(null);
     }, [selectedProject]);
+
+    // Fetch labour attendance when project + date are set
+    useEffect(() => {
+        if (!selectedProject || !date) { setLabourData(null); return; }
+        const proj = projects.find(p => (p.id || p._id) === selectedProject);
+        if (!proj) return;
+        labourAttendanceAPI.getAll({ project_name: proj.name, date })
+            .then(res => {
+                const records = res.data || [];
+                setLabourData(records.length > 0 ? records[0] : null);
+            })
+            .catch(() => setLabourData(null));
+    }, [selectedProject, date, projects]);
 
     const loadData = async () => {
         setLoading(true);
@@ -108,6 +125,22 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
                 name: s.fullName || s.name,
                 designation: s.designation || 'Staff'
             }))));
+
+            // Include verified labour data
+            if (labourData && labourData.categories) {
+                const verifiedList = labourData.categories.map((c, idx) => {
+                    const v = verifiedLabour[idx];
+                    return {
+                        party: c.party || '',
+                        category: c.category || '',
+                        reported_count: c.count,
+                        actual_count: v?.verified ? (v.actual_count ?? c.count) : null,
+                        verified: !!v?.verified,
+                        daily_wage: c.daily_wage || 0,
+                    };
+                });
+                formData.append('verified_labour', JSON.stringify(verifiedList));
+            }
 
             formData.append('remarks', remarks);
             if (photo) formData.append('photo', photo);
@@ -266,6 +299,85 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
                             )}
                         </div>
                     </div>
+
+                    {/* Labour Verification — Admin selects/verifies labour counts from Site Engineer entry */}
+                    {selectedProject && (
+                        <div style={{ marginBottom: '24px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <label style={{ fontSize: '14px', fontWeight: '800' }}>Labour Verification (Site Engineer Entry)</label>
+                                {labourData && (
+                                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#059669', backgroundColor: '#DCFCE7', padding: '2px 8px', borderRadius: '4px' }}>
+                                        {Object.values(verifiedLabour).filter(v => v.verified).length}/{(labourData.categories || []).length} Verified
+                                    </span>
+                                )}
+                            </div>
+                            <div style={{
+                                border: '1.5px solid #E0E7FF', borderRadius: '12px',
+                                padding: '12px', backgroundColor: '#FAFBFF'
+                            }}>
+                                {!labourData ? (
+                                    <div style={{ textAlign: 'center', padding: '30px 20px', color: '#64748b', fontSize: '13px' }}>
+                                        <Users size={28} style={{ margin: '0 auto 8px', opacity: 0.4 }} />
+                                        <p style={{ fontWeight: '600' }}>No labour attendance recorded by Site Engineer for this date.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', fontSize: '12px', color: '#64748B' }}>
+                                            <span>Marked by: <strong>{labourData.marked_by}</strong></span>
+                                            <span>|</span>
+                                            <span>Total: <strong>{labourData.total_count}</strong></span>
+                                            <span>|</span>
+                                            <span>Cost: <strong style={{ color: '#059669' }}>₹{(labourData.day_cost || 0).toLocaleString('en-IN')}</strong></span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                            {(labourData.categories || []).map((c, idx) => {
+                                                const v = verifiedLabour[idx] || { verified: false, actual_count: c.count };
+                                                const isVerified = v.verified;
+                                                return (
+                                                    <div
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            setVerifiedLabour(prev => ({
+                                                                ...prev,
+                                                                [idx]: { ...v, verified: !isVerified, actual_count: v.actual_count ?? c.count }
+                                                            }));
+                                                        }}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px',
+                                                            borderRadius: '8px', border: '1.5px solid',
+                                                            borderColor: isVerified ? '#10B981' : '#e2e8f0',
+                                                            backgroundColor: isVerified ? '#F0FDF4' : 'white',
+                                                            cursor: 'pointer', transition: 'all 0.2s'
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            width: '18px', height: '18px', borderRadius: '4px', border: '2px solid',
+                                                            borderColor: isVerified ? '#10B981' : '#cbd5e1',
+                                                            backgroundColor: isVerified ? '#10B981' : 'transparent',
+                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                        }}>
+                                                            {isVerified && <Check size={12} color="white" />}
+                                                        </div>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {c.party ? `${c.party}` : c.category}
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                                                {c.party ? `${c.category} · ` : ''}Count: {c.count} · ₹{(c.daily_wage || 0).toLocaleString('en-IN')}/day
+                                                            </div>
+                                                        </div>
+                                                        {isVerified && (
+                                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#10B981' }}>{c.count}</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{ marginBottom: '24px' }}>
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Inspection Photo (Optional)</label>

@@ -3,7 +3,7 @@ import { X, Plus, Trash2, ShoppingCart, Calendar, Building2, IndianRupee, Loader
 import { projectAPI, vendorAPI, purchaseOrderAPI, materialAPI, inventoryAPI } from '../utils/api';
 import CreateMaterialModal from './CreateMaterialModal';
 
-const POModal = ({ isOpen, onClose, onSuccess }) => {
+const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [vendors, setVendors] = useState([]);
     const [projects, setProjects] = useState([]);
@@ -36,15 +36,27 @@ const POModal = ({ isOpen, onClose, onSuccess }) => {
             inventoryAPI.getRequests().then(res => {
                 const approved = (res.data || []).filter(r => r.status === 'Approved');
                 setApprovedRequests(approved);
+                // Auto-select request if requestId prop is passed (from Material Request → Proceed)
+                if (requestIdProp) {
+                    const match = approved.find(r => r.id === requestIdProp);
+                    if (match) {
+                        handleRequestSelect(requestIdProp);
+                    }
+                }
             }).catch(() => { });
 
             // Fetch consolidated requests
             inventoryAPI.getConsolidated().then(res => {
                 const pending = (res.data || []).filter(r => r.status === 'Consolidated');
                 setConsolidatedRequests(pending);
+                // Also check consolidated if not found in individual
+                if (requestIdProp && !approvedRequests.find(r => r.id === requestIdProp)) {
+                    const match = pending.find(r => r.id === requestIdProp);
+                    if (match) handleConsolidatedSelect(requestIdProp);
+                }
             }).catch(() => { });
         }
-    }, [isOpen]);
+    }, [isOpen, requestIdProp]);
 
     const handleRequestSelect = (requestId) => {
         const req = approvedRequests.find(r => r.id === requestId);

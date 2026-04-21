@@ -28,9 +28,9 @@ export const SYSTEM_FEATURES = [
 ];
 
 export const SUB_TABS = {
-    'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
+    'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Labour Attendance', 'Workflow Tracking'],
     'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
-    'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
+    'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger', 'Quotations', 'LabourWages'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
@@ -71,7 +71,7 @@ export const DEFAULT_ROLES = [
         tags: ['site_engineer'],
         permissions: [
             { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR'] },
+            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR', 'Labour Attendance'] },
             { name: 'HRMS', actions: { view: true, edit: false, delete: false }, subTabs: ['Dashboard', 'Attendance', 'Leave Management'] },
             { name: 'Inventory Management', actions: { view: true, edit: true, delete: false }, subTabs: ['Materials', 'Warehouse', 'Machinery'] },
             { name: 'Accounts', actions: { view: false, edit: false, delete: false } },
@@ -181,10 +181,70 @@ export const DEFAULT_ROLES = [
     }
 ];
 
+// v2→v1 label map: v2 keys (from backend) → display labels used by the frontend
+const V2_KEY_TO_LABEL = {
+    dashboard: 'Dashboard',
+    projects: 'Projects',
+    hrms: 'HRMS',
+    accounts: 'Accounts',
+    procurement: 'Procurement',
+    inventory: 'Inventory Management',
+    fleet: 'Fleet Management',
+    approvals: 'Approvals',
+    reports: 'Reports',
+    site_reports: 'Site Reports',
+    team_chat: 'Team Chat',
+    settings: 'Settings',
+    system_logs: 'System Logs',
+};
+
+/**
+ * Normalise a single role's permissions. If `permissions` is already a v1 array
+ * it is returned as-is. If it is a v2 object (dict keyed by module_key) it is
+ * converted to the v1 array shape that the rest of the frontend expects.
+ */
+const _normalisePermissions = (role) => {
+    if (!role || typeof role !== 'object') return role;
+    const perms = role.permissions;
+    // Already v1 (array) — nothing to do
+    if (!perms || Array.isArray(perms)) return role;
+    // v2 dict → v1 array
+    const list = [];
+    for (const [key, mod] of Object.entries(perms)) {
+        if (!mod || typeof mod !== 'object') continue;
+        const label = V2_KEY_TO_LABEL[key] || key;
+        const actions = {
+            view: !!mod.view,
+            edit: !!mod.edit,
+            delete: !!mod.delete,
+        };
+        // Build subTabs from v2 submodules (whitelist visible ones)
+        const subs = mod.submodules || {};
+        const visibleSubTabs = [];
+        for (const [sKey, sVal] of Object.entries(subs)) {
+            if (sVal && typeof sVal === 'object' && sVal.view) {
+                // Convert key back to display label (best-effort: capitalise words)
+                const subLabel = sKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                visibleSubTabs.push(subLabel);
+            }
+        }
+        list.push({
+            name: label,
+            actions,
+            ...(visibleSubTabs.length ? { subTabs: visibleSubTabs } : {}),
+        });
+    }
+    return { ...role, permissions: list };
+};
+
 export const getRoles = () => {
     try {
         const stored = localStorage.getItem('erp_roles');
-        if (stored) return JSON.parse(stored);
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) return parsed.map(_normalisePermissions);
+            return parsed;
+        }
     } catch (e) {
         console.error("Failed parsing erp_roles", e);
     }

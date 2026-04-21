@@ -16,7 +16,7 @@ import ApplyLeaveModal from '../components/ApplyLeaveModal';
 import SurpriseVisitModal from '../components/SurpriseVisitModal';
 import ProcessPayrollModal from '../components/ProcessPayrollModal';
 import CreateRoleModal from '../components/CreateRoleModal';
-import { surpriseVisitAPI } from '../utils/api';
+import { surpriseVisitAPI, labourAttendanceAPI } from '../utils/api';
 import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star, LayoutDashboard } from 'lucide-react';
 import HrmsSettingsModal from '../components/HrmsSettingsModal';
 import CustomSelect from '../components/CustomSelect';
@@ -265,10 +265,22 @@ const HRMS = () => {
         }
     };
 
+    const [labourByProjectDate, setLabourByProjectDate] = useState({});
+
     const fetchSurpriseVisits = async () => {
         try {
-            const res = await surpriseVisitAPI.getAll();
-            setSurpriseVisits(res.data);
+            const [svRes, laRes] = await Promise.all([
+                surpriseVisitAPI.getAll(),
+                labourAttendanceAPI.getAll({}),
+            ]);
+            setSurpriseVisits(svRes.data);
+            // Build lookup: "projectName||date" → labour record
+            const map = {};
+            (laRes.data || []).forEach(rec => {
+                const key = `${rec.project_name}||${rec.date}`;
+                map[key] = rec;
+            });
+            setLabourByProjectDate(map);
         } catch (err) {
             console.error('Failed to fetch surprise visits', err);
         }
@@ -1501,6 +1513,51 @@ const HRMS = () => {
                                                             " {visit.remarks} "
                                                         </div>
                                                     )}
+
+                                                    {/* Labour Verification from Surprise Visit + cross-reference */}
+                                                    {(() => {
+                                                        const vl = visit.verified_labour;
+                                                        const labRec = labourByProjectDate[`${visit.project_name}||${visit.date}`];
+                                                        const hasVerified = vl && vl.length > 0;
+                                                        const hasLabRec = labRec && labRec.categories?.length > 0;
+                                                        if (!hasVerified && !hasLabRec) return null;
+                                                        return (
+                                                            <div style={{ marginTop: 14, padding: 12, borderRadius: 10, border: '1px solid #E0E7FF', backgroundColor: '#EFF6FF' }}>
+                                                                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                    <Users size={14} /> Labour {hasVerified ? 'Verification' : 'Count'}: {hasLabRec ? labRec.total_count : ''}
+                                                                    {hasLabRec && (
+                                                                        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 800, color: '#0F172A' }}>
+                                                                            Cost: ₹{(labRec.day_cost || 0).toLocaleString('en-IN')}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                                    {hasVerified ? vl.map((v, i) => {
+                                                                        const match = v.verified;
+                                                                        const mismatch = match && v.actual_count !== null && v.actual_count !== v.reported_count;
+                                                                        return (
+                                                                            <span key={i} style={{
+                                                                                fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                                                                                backgroundColor: match ? (mismatch ? '#FEF3C7' : '#DCFCE7') : '#F1F5F9',
+                                                                                color: match ? (mismatch ? '#92400E' : '#15803D') : '#64748B',
+                                                                            }}>
+                                                                                {v.party ? `${v.party} — ` : ''}{v.category}: {v.reported_count}
+                                                                                {match && v.actual_count !== null ? ` → ${v.actual_count}` : ''}
+                                                                                {match ? ' ✓' : ''}
+                                                                            </span>
+                                                                        );
+                                                                    }) : labRec.categories.map((c, i) => (
+                                                                        <span key={i} style={{
+                                                                            fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+                                                                            backgroundColor: '#DBEAFE', color: '#1D4ED8',
+                                                                        }}>
+                                                                            {c.party ? `${c.party} — ` : ''}{c.category}: {c.count}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>

@@ -484,7 +484,7 @@ const SiteReports = () => {
                                                             {req.status === 'Approved' && (
                                                                 <button
                                                                     className="btn btn-primary btn-sm"
-                                                                    onClick={() => navigate(`/procurement?tab=POs`)}
+                                                                    onClick={() => navigate(`/workflow?tab=POs&request_id=${req.id || req._id}`)}
                                                                     style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                                                                     title="Proceed to create PO"
                                                                 >
