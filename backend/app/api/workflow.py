@@ -1,8 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException
 from database import get_database
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def now_ist():
+    """Return current IST datetime as timezone-aware."""
+    return datetime.now(IST)
+
+def now_ist_iso():
+    """Return current IST time as ISO string with +05:30 offset."""
+    return datetime.now(IST).isoformat()
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
@@ -66,7 +76,7 @@ async def trigger_workflow_event(project_id: str, auto_trigger: str, user: dict,
         {"_id": tx["_id"]},
         {"$set": {
             "status": "Completed", 
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_ist_iso(),
             "remarks": remarks
         }}
     )
@@ -74,13 +84,13 @@ async def trigger_workflow_event(project_id: str, auto_trigger: str, user: dict,
     # Update all previous stages to Completed if they were pending (Waterfall effect)
     await db.project_workflow_transaction.update_many(
         {"project_id": str(project_id), "order": {"$lt": stage_master["order"]}, "status": "Pending"},
-        {"$set": {"status": "Completed", "timestamp": datetime.now().isoformat(), "remarks": "Auto-completed by progression"}}
+        {"$set": {"status": "Completed", "timestamp": now_ist_iso(), "remarks": "Auto-completed by progression"}}
     )
     
     # Update the next stage to In Progress
     await db.project_workflow_transaction.update_one(
         {"project_id": str(project_id), "order": stage_master["order"] + 1},
-        {"$set": {"status": "In Progress", "timestamp": datetime.now().isoformat()}}
+        {"$set": {"status": "In Progress", "timestamp": now_ist_iso()}}
     )
     
     # Insert Activity Log
@@ -88,7 +98,7 @@ async def trigger_workflow_event(project_id: str, auto_trigger: str, user: dict,
         "project_id": str(project_id),
         "action_name": stage_name,
         "done_by": done_by,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_ist_iso(),
         "previous_status": prev_status,
         "updated_status": "Completed"
     })
@@ -103,10 +113,12 @@ async def get_project_timeline(project_id: str, db = Depends(get_database)):
         transactions = await db.project_workflow_transaction.find({"project_id": project_id}).sort("order", 1).to_list(100)
         
     # Decorate with hold logic
-    now_dt = datetime.now()
+    now_dt = now_ist()
     for tx in transactions:
         if tx["status"] == "In Progress" and tx.get("timestamp"):
             ts_dt = datetime.fromisoformat(tx["timestamp"])
+            if ts_dt.tzinfo is None:
+                ts_dt = ts_dt.replace(tzinfo=IST)
             diff_hours = (now_dt - ts_dt).total_seconds() / 3600
             if diff_hours > 24:
                 tx["is_hold"] = True
@@ -130,7 +142,7 @@ async def get_workflow_overview(db = Depends(get_database)):
     # Find the current stage of every project
     projects = await db.projects.find({}).to_list(1000)
     overview = []
-    now_dt = datetime.now()
+    now_dt = now_ist()
     
     for p in projects:
         pid = str(p["_id"])
@@ -141,6 +153,8 @@ async def get_workflow_overview(db = Depends(get_database)):
             is_hold = False
             if current_tx.get("timestamp"):
                 ts_dt = datetime.fromisoformat(current_tx["timestamp"])
+                if ts_dt.tzinfo is None:
+                    ts_dt = ts_dt.replace(tzinfo=IST)
                 diff_hours = round((now_dt - ts_dt).total_seconds() / 3600)
                 is_hold = diff_hours > 24
                 
