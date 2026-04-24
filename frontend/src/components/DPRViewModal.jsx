@@ -3,6 +3,156 @@ import { X, ClipboardList, HardHat, Package, Truck, User, Calendar, Download, Lo
 import { settingsAPI } from '../utils/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+const CHECKLIST_ITEMS = {
+    'Concrete Pouring (CPA)': [
+        'Shuttering checked for line, level, plumb, dimensions, and stability',
+        'Formwork surface cleaned and coated with release agent',
+        'Adequate supports, bracing, and safety platforms provided',
+        'Bar bending verified with approved BBS and drawings',
+        'Cover blocks placed correctly and of approved quality',
+        'Reinforcement free from rust, mud, and oil',
+        'Proper spacing, laps, hooks, bends, and ties provided',
+        'Electrical conduits, sleeves, inserts fixed as per drawing',
+        'Opening, embedment, and sleeves verified',
+        'Safety check (Scaffolding, Working Platform, PPE)',
+        'Shoe Marking casted properly and Height of column as per plan',
+        'Lintel, Sunshade casted as per drawings',
+    ],
+    'Brickwork (BWC)': [
+        'Bricks: uniform size, no cracks, approved quality',
+        'Bricks soaked 10-12 hrs, moist before use',
+        'Cement & sand mix ratio as per drawing/spec',
+        'Sand is clean, silt-free, medium grade',
+        'Water is clean/potable',
+        'Layout marked as per approved drawings',
+        'Mortar mixed fresh, used within 30-45 mins',
+        'First course laid true to line, level, and plumb',
+        'Joint thickness 10 mm or less (horizontal & vertical)',
+        'Proper bond maintained, no continuous vertical joints',
+        'Queen closers at corners, no bats used',
+        'Wall raised max 1 m height per day',
+        'Joints raked 10-15 mm for plaster grip',
+        'Verticality & alignment checked every 3-5 courses',
+        'Cross walls properly toothed/bonded',
+        'Lintel levels, door & window openings checked',
+        'Service openings provided as per drawing',
+        'Holes left for scaffolding filled with CC',
+        'Stable scaffolding in place - tied and braced',
+        'Wall surface cleaned of loose mortar',
+        'Curing started after 24 hrs, continued 7 days',
+        'No chasing/grooving before curing complete',
+        'Final check: line, level, plumb, dimensions verified',
+        'Wastage of Mortar controlled / Half Brick used properly',
+    ],
+    'Plastering': [
+        'Surface cleaned of dust, loose mortar, and debris before plastering',
+        'All holes, joints, and chases filled and cured before plastering',
+        'Brick/block joints properly raked to receive plaster',
+        'Masonry cured at least 7 days before plastering',
+        'Scaffolding is stable and does not touch the wall surface',
+        'Plaster mix prepared in correct ratio as per drawing/spec',
+        'Sand used is clean, well-graded, and silt-free',
+        'Water used is clean/potable',
+        'Plaster thickness as per specification (12mm/15mm/20mm)',
+        'Single coat thickness does not exceed 12 mm',
+        'For double coat, second coat applied after proper curing of first coat',
+        'Mortar used within 30 minutes of mixing',
+        'Plaster surface kept rough for receiving second/finishing coat',
+        'Levels, line, and plumb checked with straight edge & spirit level (Button Mark)',
+        'Corners, edges, and junctions kept straight, neat, and true',
+        'Curing of plaster started after 24 hours, continued for 7 days minimum',
+        'No cracks, honeycombs, or hollow patches visible on plaster surface',
+        'Electrical/Plumbing chase work completed before plastering',
+        'Final surface smooth, even, and ready for painting/finishing',
+        'Before ceiling and column plastering the surface should be Hacked',
+        'Fiber mesh used among concrete, brick work and electrical point chasing areas',
+    ],
+    'Painting (PWC)': [
+        'Surface cleaned of dust, grease, loose particles, and laitance',
+        'All plastered surfaces cured and dried completely before painting',
+        'Moisture content of wall checked - no dampness or leakage present',
+        'Cracks and holes filled with approved filler/putty before primer',
+        'Primer applied as per manufacturer specification',
+        'Putty applied in required coats for smooth finish',
+        'Surface rubbed down with sandpaper between coats',
+        'Paint material approved make/brand as per project specification',
+        'Shade, color, and texture of paint verified with approved sample',
+        'Paint mixed/stirred properly before application',
+        'Correct dilution of paint maintained as per manufacturer instructions',
+        'Number of coats as specified in drawings/BOQ (min. 2 coats)',
+        'Each coat allowed to dry completely before next coat applied',
+        'Uniform shade, finish, and coverage checked across surface',
+        'No brush marks, roller marks, or patchiness visible',
+        'Edges, corners, and junctions neat and sharp',
+        'Protection provided to floors, doors, and fixtures before painting',
+        'Scaffolding stable and does not touch painted surface',
+        'Final surface smooth, even, and as per approved finish',
+        'Touch-ups done wherever required and surface cleaned after work',
+        'Adjacent areas protected by Masking tape wherever needed',
+    ],
+    'Shuttering & Bar Bending (SBC)': [
+        'Formwork material of approved quality (plywood/steel) used',
+        'Formwork surface clean, free of rust, oil, and debris',
+        'Formwork joints tight, no leakage of slurry',
+        'Formwork aligned to line, level, plumb, and dimensions as per drawing',
+        'Adequate bracing and supports provided to prevent bulging/displacement',
+        'Shuttering coated with approved form oil/release agent before concreting',
+        'Provision made for working platforms and safe access',
+        'Formwork checked for embedded items (sleeves, inserts, pipes, conduits)',
+        'Stability of shuttering checked before concreting',
+        'Steel reinforcement of approved make and grade received with test certificate',
+        'Bars free from rust, oil, mud, and dirt before use',
+        'Cutting and bending of bars as per approved bar bending schedule',
+        'Bar bends, hooks, and cranks as per IS specifications/drawings',
+        'Correct bar diameter, spacing, and quantity verified with drawings',
+        'Lapping length maintained as per IS codes/specifications',
+        'Stirrups, ties, and spacers provided at correct intervals',
+        'Cover blocks of correct thickness and grade provided',
+        'Reinforcement placed as per drawing and fixed firmly to prevent displacement',
+        'Chairs/spacers used for maintaining cover in slabs and beams',
+        'No tack welding done unless approved in design',
+        'Congestion of reinforcement avoided at beam-column junctions',
+        'Embedded items and openings kept in position before concreting',
+        'Wastage of nails and binding wire properly used',
+    ],
+    'End of Day (EDC)': [
+        'Cement bags properly stacked on wooden planks',
+        'Cement bags covered with tarpaulin',
+        'Steel bars arranged size-wise',
+        'Steel stored above ground level',
+        'Sand protected from contamination',
+        'Aggregates stored separately',
+        'Area arranged for next day material dumping',
+        'Paint buckets closed and stored safely',
+        'Putty/chemical bags sealed',
+        'Tiles stacked properly',
+        'Electrical items stored in dry area',
+        'Tools collected and stored',
+        'Power tools switched off',
+        'Mixer machine cleaned',
+        'Equipment stored properly',
+        'Scaffolding arranged',
+        'Debris cleared',
+        'No sharp objects on floor',
+        'Pathways clear',
+        'Excess mortar removed',
+        'Site cleaned',
+        'Electrical supply switched off',
+        'Wiring safe',
+        'Open pits covered',
+        'Safety boards placed',
+        'Fire extinguisher accessible',
+        'Curing arranged',
+        'Hoses stored properly',
+        'No water leakage',
+        'Gates closed',
+        'Watchman deployed',
+        'Materials secured',
+        'Daily status recorded',
+        'Overall site ready for next day',
+    ],
+};
+
 const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
     const [isDownloading, setIsDownloading] = useState(false);
     const [companyInfo, setCompanyInfo] = useState({
@@ -213,6 +363,47 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                 });
                 finalY = doc.lastAutoTable.finalY + 10;
             }
+        }
+
+        // Checklist Section in PDF
+        if (dpr.checklist && Object.keys(dpr.checklist).length > 0) {
+            doc.addPage();
+            doc.setFontSize(16);
+            doc.setTextColor(30, 58, 95);
+            doc.text('QUALITY CHECKLIST', 105, 20, { align: 'center' });
+            let clY = 30;
+
+            const clCats = {};
+            Object.entries(dpr.checklist).forEach(([key, val]) => {
+                const [cat] = key.split('::');
+                if (!clCats[cat]) clCats[cat] = [];
+                const entry = typeof val === 'string' ? { status: val, remarks: '' } : val;
+                if (entry.status) clCats[cat].push({ idx: key.split('::')[1], ...entry });
+            });
+
+            Object.entries(clCats).forEach(([cat, items]) => {
+                if (clY > 250) { doc.addPage(); clY = 20; }
+                doc.setFontSize(11);
+                doc.setTextColor(30, 58, 95);
+                doc.setFont('helvetica', 'bold');
+                doc.text(cat, 14, clY);
+                clY += 3;
+
+                autoTable(doc, {
+                    startY: clY,
+                    head: [['#', 'Check Point', 'Status', 'Remarks']],
+                    body: items.map(it => {
+                        const itemName = (CHECKLIST_ITEMS[cat] || [])[parseInt(it.idx)] || `Item ${parseInt(it.idx) + 1}`;
+                        return [parseInt(it.idx) + 1, itemName, it.status === 'OK' ? 'OK' : 'Not OK', it.remarks || '-'];
+                    }),
+                    theme: 'grid',
+                    headStyles: { fillColor: [30, 58, 95], fontSize: 7 },
+                    bodyStyles: { fontSize: 7 },
+                    columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 20, halign: 'center' }, 3: { cellWidth: 35 } },
+                    margin: { left: 14, right: 14 },
+                });
+                clY = (doc.lastAutoTable?.finalY || clY) + 10;
+            });
         }
 
         // Photos Section
@@ -497,6 +688,63 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                     )}
 
                     {/* Photos Section */}
+                    {/* Checklist Section */}
+                    {dpr.checklist && Object.keys(dpr.checklist).length > 0 && (() => {
+                        // Group by category — only items with a status
+                        const cats = {};
+                        Object.entries(dpr.checklist).forEach(([key, val]) => {
+                            const [cat] = key.split('::');
+                            if (!cats[cat]) cats[cat] = [];
+                            const entry = typeof val === 'string' ? { status: val, remarks: '' } : val;
+                            if (entry.status) cats[cat].push({ idx: key.split('::')[1], ...entry });
+                        });
+                        // Remove categories with 0 checked items
+                        Object.keys(cats).forEach(k => { if (cats[k].length === 0) delete cats[k]; });
+                        const totalChecked = Object.values(cats).reduce((s, arr) => s + arr.length, 0);
+                        if (totalChecked === 0) return null;
+                        return (
+                            <TabSection title="Quality Checklist" icon={ClipboardList} count={totalChecked}>
+                                {Object.entries(cats).map(([cat, items]) => (
+                                    <div key={cat} style={{ marginBottom: 16 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 800, color: '#1E293B', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            {cat}
+                                            <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>({items.length} items checked)</span>
+                                        </div>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                            <thead>
+                                                <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', width: 30 }}>#</th>
+                                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B' }}>Check Point</th>
+                                                    <th style={{ padding: '6px 12px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: '#64748B', width: 70 }}>Status</th>
+                                                    <th style={{ padding: '6px 12px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748B', width: 140 }}>Remarks</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {items.map((item, i) => {
+                                                    const itemName = (CHECKLIST_ITEMS[cat] || [])[parseInt(item.idx)] || `Item ${parseInt(item.idx) + 1}`;
+                                                    return (
+                                                    <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                        <td style={{ padding: '6px 12px', color: '#94A3B8' }}>{parseInt(item.idx) + 1}</td>
+                                                        <td style={{ padding: '6px 12px', color: '#334155', fontSize: 12, wordBreak: 'break-word' }}>{itemName}</td>
+                                                        <td style={{ padding: '6px 12px', textAlign: 'center' }}>
+                                                            <span style={{
+                                                                padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                                                                backgroundColor: item.status === 'OK' ? '#DCFCE7' : '#FEE2E2',
+                                                                color: item.status === 'OK' ? '#15803D' : '#B91C1C',
+                                                            }}>{item.status === 'OK' ? 'OK' : 'Not OK'}</span>
+                                                        </td>
+                                                        <td style={{ padding: '6px 12px', color: '#475569', fontSize: 11, wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: 160 }}>{item.remarks || '—'}</td>
+                                                    </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </TabSection>
+                        );
+                    })()}
+
                     {dpr.photos?.length > 0 && (
                         <TabSection title="Site Photos" icon={Package} count={dpr.photos.length}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
