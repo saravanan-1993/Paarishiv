@@ -38,7 +38,11 @@ class MaterialTransferRequest(BaseModel):
 @router.get("/warehouse")
 async def get_warehouse_inventory(db = Depends(get_database)):
     inventory = await db.warehouse_inventory.find().to_list(1000)
-    return [
+    wh_names = {item["material_name"] for item in inventory}
+
+    # Also include Warehouse Controlled materials with 0 stock
+    materials = await db.materials.find().to_list(500)
+    result = [
         {
             "id": str(item["_id"]),
             "material_name": item["material_name"],
@@ -47,6 +51,16 @@ async def get_warehouse_inventory(db = Depends(get_database)):
         }
         for item in inventory
     ]
+    for mat in materials:
+        sht = mat.get("stock_handling_type") or mat.get("tracking_type") or "Direct Site"
+        if sht in ("Warehouse Controlled", "Warehouse") and mat.get("name") not in wh_names:
+            result.append({
+                "id": str(mat["_id"]),
+                "material_name": mat["name"],
+                "unit": mat.get("unit", "Nos"),
+                "stock": 0
+            })
+    return result
 
 @router.post("/requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def create_material_request(request: MaterialRequestCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):

@@ -336,6 +336,20 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                         backgroundColor: 'white', border: '1px solid var(--border)', borderRadius: '12px',
                                         boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: '220px', overflowY: 'auto'
                                     }}>
+                                        {/* Warehouse option — always first */}
+                                        <div
+                                            onClick={() => { setFormData({ ...formData, project_name: 'Warehouse' }); setIsProjectDropdownOpen(false); }}
+                                            style={{
+                                                padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                borderBottom: '1px solid #EEF2FF',
+                                                backgroundColor: formData.project_name === 'Warehouse' ? '#EEF2FF' : 'white',
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#EEF2FF'}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.project_name === 'Warehouse' ? '#EEF2FF' : 'white'}
+                                        >
+                                            <span style={{ fontWeight: '700', color: '#6366F1', fontSize: '14px' }}>Warehouse</span>
+                                            {formData.project_name === 'Warehouse' && <Check size={16} color="#6366F1" />}
+                                        </div>
                                         {projects.length === 0 && <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No projects found</div>}
                                         {projects.map((p, idx) => (
                                             <div
@@ -447,15 +461,24 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                                 const whQty = wh?.stock || 0;
                                                 const reqQty = parseFloat(item.qty || 0);
                                                 const sufficient = whQty >= reqQty && reqQty > 0;
-                                                if (!item.name || !wh) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
+                                                const mat = materials.find(m => m.name === item.name);
+                                                const isWhControlled = mat && (mat.stock_handling_type === 'Warehouse Controlled' || mat.tracking_type === 'Warehouse Controlled' || mat.stock_handling_type === 'Warehouse');
+                                                if (!item.name) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
                                                 return (
-                                                    <span style={{
-                                                        fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                                        backgroundColor: sufficient ? '#DCFCE7' : whQty > 0 ? '#FEF3C7' : '#FEE2E2',
-                                                        color: sufficient ? '#15803D' : whQty > 0 ? '#92400E' : '#B91C1C',
-                                                    }} title={sufficient ? 'Available in warehouse — use Inventory → Send to Site' : ''}>
-                                                        {whQty}
-                                                    </span>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                        <span style={{
+                                                            fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                                            backgroundColor: sufficient ? '#DCFCE7' : whQty > 0 ? '#FEF3C7' : '#F1F5F9',
+                                                            color: sufficient ? '#15803D' : whQty > 0 ? '#92400E' : '#94A3B8',
+                                                        }} title={sufficient ? 'Available in warehouse — use Inventory → Send to Site' : ''}>
+                                                            {whQty}
+                                                        </span>
+                                                        {isWhControlled && (
+                                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#6366F1', backgroundColor: '#EEF2FF', padding: '1px 4px', borderRadius: 3, textAlign: 'center' }}>
+                                                                WH Controlled
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 );
                                             })()}
                                         </td>

@@ -134,7 +134,7 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
                                 <option value="">Select Approved PO</option>
                                 {pos.map(p => (
                                     <option key={p.id} value={p.id}>
-                                        PO-{p.id.slice(-6).toUpperCase()} • {p.vendor_name} ({p.status})
+                                        PO-{p.id.slice(-6).toUpperCase()} • {p.vendor_name} • {p.project_name} ({p.status})
                                     </option>
                                 ))}
                             </select>
