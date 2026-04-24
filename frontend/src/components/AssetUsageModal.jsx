@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Clock, Gauge, User, MapPin } from 'lucide-react';
-import { fleetAPI } from '../utils/api';
+import { fleetAPI, employeeAPI, projectAPI } from '../utils/api';
 
 const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
     const [formData, setFormData] = useState({
@@ -12,6 +12,15 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
         engineer: ''
     });
     const [loading, setLoading] = useState(false);
+    const [employees, setEmployees] = useState([]);
+    const [projects, setProjects] = useState([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            employeeAPI.getAll().then(res => setEmployees(res.data || [])).catch(() => {});
+            projectAPI.getAll().then(res => setProjects(res.data || [])).catch(() => {});
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -71,7 +80,7 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Select Machine *</label>
                         <select required value={formData.asset} onChange={(e) => setFormData({ ...formData, asset: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                             <option value="">Choose equipment</option>
-                            {fleet.map(f => <option key={f.id} value={f.id}>{f.id} - {f.name}</option>)}
+                            {fleet.map(f => <option key={f.id} value={f.id}>{f.vehicleNumber || f.name}</option>)}
                         </select>
                     </div>
 
@@ -88,12 +97,18 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
 
                     <div className="form-group" style={{ marginBottom: '16px' }}>
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Site Location *</label>
-                        <input type="text" required placeholder="Current Site" value={formData.site} onChange={(e) => setFormData({ ...formData, site: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                        <select required value={formData.site} onChange={(e) => setFormData({ ...formData, site: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <option value="">Select site</option>
+                            {projects.map(p => <option key={p._id || p.id} value={p.name}>{p.name}</option>)}
+                        </select>
                     </div>
 
                     <div className="form-group">
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Responsible Engineer *</label>
-                        <input type="text" required placeholder="Name" value={formData.engineer} onChange={(e) => setFormData({ ...formData, engineer: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                        <select required value={formData.engineer} onChange={(e) => setFormData({ ...formData, engineer: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <option value="">Select engineer</option>
+                            {employees.map(e => <option key={e._id || e.id} value={e.fullName || e.name}>{e.fullName || e.name} ({e.employeeCode || ''})</option>)}
+                        </select>
                     </div>
 
                     <div className="modal-footer" style={{ borderTop: 'none', padding: '24px 0 0 0', gap: '12px', justifyContent: 'flex-end' }}>

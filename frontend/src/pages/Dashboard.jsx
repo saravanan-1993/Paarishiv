@@ -3,7 +3,7 @@ import {
     Briefcase, CheckCircle, Wallet, TrendingUp,
     Package, Users, AlertTriangle, Store, Loader2,
     RefreshCw, ArrowRight, Clock, Activity, PieChart as PieChartIcon, Target, ChevronDown,
-    Coffee, Briefcase as BriefcaseIcon, UserCircle, LogOut
+    Coffee, Briefcase as BriefcaseIcon, UserCircle, LogOut, Warehouse, IndianRupee, HardHat, FileText
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, hrmsAPI, attendanceAPI, approvalsAPI, workflowAPI } from '../utils/api';
+import { projectAPI, hrmsAPI, attendanceAPI, approvalsAPI, workflowAPI, financeAPI, billingAPI, inventoryAPI, labourAttendanceAPI, logsAPI } from '../utils/api';
 import { hasPermission, hasDashboardCard } from '../utils/rbac';
 import WorkspaceView from '../components/dashboards/WorkspaceView';
 import HRView from '../components/dashboards/HRView';
@@ -95,6 +95,12 @@ const Dashboard = () => {
     const [hrmsStats, setHrmsStats] = useState(null);
     const [pendingApprovalsAmount, setPendingApprovalsAmount] = useState(0);
     const [workflowOverview, setWorkflowOverview] = useState([]);
+
+    // New dashboard data
+    const [financeSummary, setFinanceSummary] = useState({ totalExpenses: 0, totalReceived: 0, totalBilled: 0 });
+    const [warehouseSummary, setWarehouseSummary] = useState({ items: [], totalValue: 0, lowStock: 0 });
+    const [labourSummary, setLabourSummary] = useState({ todayCount: 0, monthCost: 0 });
+    const [recentActivities, setRecentActivities] = useState([]);
 
     // Attendance State
     const [attendanceStatus, setAttendanceStatus] = useState(null);
@@ -184,6 +190,56 @@ const Dashboard = () => {
                 }
             }
 
+            // Fetch finance summary
+            if (isSuperAdmin || isAccountant || isGM) {
+                try {
+                    const [expRes, billRes] = await Promise.all([
+                        financeAPI.getExpenses(),
+                        billingAPI.getAll(),
+                    ]);
+                    const exps = expRes.data || [];
+                    const bills = billRes.data || [];
+                    setFinanceSummary({
+                        totalExpenses: exps.reduce((s, e) => s + parseFloat(e.amount || 0), 0),
+                        totalReceived: bills.reduce((s, b) => s + parseFloat(b.collection_amount || 0), 0),
+                        totalBilled: bills.reduce((s, b) => s + parseFloat(b.total_amount || 0), 0),
+                    });
+                } catch (e) { console.warn('Finance summary failed', e); }
+            }
+
+            // Fetch warehouse summary
+            if (isSuperAdmin || isInventoryManager) {
+                try {
+                    const whRes = await inventoryAPI.getWarehouse();
+                    const whItems = whRes.data || [];
+                    const mwRes = await inventoryAPI.getMaterialWiseReport();
+                    const mwData = mwRes.data || [];
+                    const totalVal = mwData.reduce((s, m) => s + (m.total_value || 0), 0);
+                    const lowCount = whItems.filter(w => w.stock > 0 && w.stock < 10).length;
+                    setWarehouseSummary({ items: whItems, totalValue: totalVal, lowStock: lowCount, totalItems: whItems.length });
+                } catch (e) { console.warn('Warehouse summary failed', e); }
+            }
+
+            // Fetch labour summary
+            if (isSuperAdmin || isGM || isProjectCoordinator) {
+                try {
+                    const today = new Date().toISOString().split('T')[0];
+                    const laRes = await labourAttendanceAPI.getAll({ date: today });
+                    const todayRecs = laRes.data || [];
+                    const todayCount = todayRecs.reduce((s, r) => s + (r.total_count || 0), 0);
+                    const todayCost = todayRecs.reduce((s, r) => s + (r.day_cost || 0), 0);
+                    setLabourSummary({ todayCount, todayCost, records: todayRecs.length });
+                } catch (e) { console.warn('Labour summary failed', e); }
+            }
+
+            // Fetch recent activities
+            if (isSuperAdmin || isGM) {
+                try {
+                    const logRes = await logsAPI.getLogs(10);
+                    setRecentActivities((logRes.data || []).slice(0, 10));
+                } catch (e) { console.warn('Activity logs failed', e); }
+            }
+
         } catch (err) {
             console.error('Dashboard fetch error:', err);
         } finally {
@@ -241,7 +297,7 @@ const Dashboard = () => {
     // ── Derived Global Stats ────────────────────────────────────────────────
     const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
     const totalSpent = projects.reduce((s, p) => s + (p.spent || 0), 0);
-    const totalReceived = projects.reduce((s, p) => s + (p.receivedAmount || 0), 0);
+    const totalReceived = financeSummary.totalReceived || projects.reduce((s, p) => s + (p.receivedAmount || 0), 0);
     const totalPending = Math.max(0, totalBudget - totalReceived);
     const totalRemaining = Math.max(0, totalBudget - totalSpent);
     const overallUtilization = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
@@ -506,6 +562,56 @@ const Dashboard = () => {
                                             ))}
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Financial + Warehouse + Labour Summary ─────────── */}
+                        {isSuperAdmin && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+                                {[
+                                    { label: 'Total Billed', value: fmt(financeSummary.totalBilled), icon: FileText, color: '#3B82F6', bg: '#EFF6FF' },
+                                    { label: 'Total Received', value: fmt(financeSummary.totalReceived), icon: IndianRupee, color: '#10B981', bg: '#ECFDF5' },
+                                    { label: 'Total Expenses', value: fmt(financeSummary.totalExpenses), icon: TrendingUp, color: '#EF4444', bg: '#FEF2F2' },
+                                    { label: 'Profit/Cash Balance', value: fmt(financeSummary.totalReceived - financeSummary.totalExpenses), icon: Wallet, color: (financeSummary.totalReceived - financeSummary.totalExpenses) >= 0 ? '#10B981' : '#EF4444', bg: (financeSummary.totalReceived - financeSummary.totalExpenses) >= 0 ? '#ECFDF5' : '#FEF2F2' },
+                                    { label: 'Warehouse Items', value: warehouseSummary.totalItems || 0, icon: Warehouse, color: '#8B5CF6', bg: '#F5F3FF' },
+                                    { label: 'Warehouse Value', value: fmt(warehouseSummary.totalValue), icon: Package, color: '#6366F1', bg: '#EEF2FF' },
+                                    { label: 'Low Stock Alerts', value: warehouseSummary.lowStock || 0, icon: AlertTriangle, color: warehouseSummary.lowStock > 0 ? '#EF4444' : '#10B981', bg: warehouseSummary.lowStock > 0 ? '#FEF2F2' : '#ECFDF5' },
+                                    { label: "Today's Labour", value: labourSummary.todayCount || 0, icon: HardHat, color: '#F59E0B', bg: '#FEF3C7' },
+                                ].map((kpi, i) => (
+                                    <div key={i} className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: kpi.bg, color: kpi.color, flexShrink: 0 }}>
+                                            <kpi.icon size={20} />
+                                        </div>
+                                        <div>
+                                            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', fontWeight: '600', textTransform: 'uppercase' }}>{kpi.label}</p>
+                                            <h3 style={{ fontSize: '20px', fontWeight: '700', lineHeight: 1, color: kpi.color }}>{kpi.value}</h3>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* ── Recent Activities Feed ─────────────────── */}
+                        {isSuperAdmin && recentActivities.length > 0 && (
+                            <div className="card" style={{ padding: '24px', marginBottom: '32px' }}>
+                                <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Activity size={18} color="var(--primary)" /> Recent Activities
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {recentActivities.map((log, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px', borderRadius: '8px', backgroundColor: i % 2 === 0 ? '#F8FAFC' : 'white' }}>
+                                            <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: log.type === 'success' ? '#10B981' : log.type === 'warning' ? '#F59E0B' : '#3B82F6', marginTop: 6, flexShrink: 0 }} />
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text-main)' }}>
+                                                    {log.action} {log.details && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— {log.details.substring(0, 80)}</span>}
+                                                </div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>
+                                                    {log.username} · {log.timestamp ? new Date(log.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

@@ -767,7 +767,7 @@ const Materials = () => {
                                     <tbody>
                                         {fleet.map((item, i) => (
                                             <tr key={i}>
-                                                <td style={{ fontWeight: '700' }}>{item.id}</td>
+                                                <td style={{ fontWeight: '700' }}>{item.vehicleNumber || item.id?.slice(-6).toUpperCase()}</td>
                                                 <td>{item.name}</td>
                                                 <td>{item.category}</td>
                                                 <td>{item.site}</td>
@@ -842,7 +842,15 @@ const Materials = () => {
             <TransferModal isOpen={isTransferModalOpen} onClose={() => setIsTransferModalOpen(false)} onTransferAdded={handleTransferAdded} projects={projects} />
             <AddAssetModal isOpen={isAddAssetModalOpen} onClose={() => setIsAddAssetModalOpen(false)} onAssetAdded={handleAssetAdded} />
             <FuelInventoryModal isOpen={isFuelModalOpen} onClose={() => setIsFuelModalOpen(false)} projectName={currentProjectName} />
-            <AssetDetailsModal isOpen={isDetailsModalOpen} onClose={() => setIsDetailsModalOpen(false)} asset={selectedAsset} />
+            <AssetDetailsModal
+                isOpen={isDetailsModalOpen}
+                onClose={() => setIsDetailsModalOpen(false)}
+                asset={selectedAsset}
+                onEdit={(asset) => { alert('Edit feature coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
+                onDownloadLog={(asset) => { alert('Download log coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
+                onTransferHistory={(asset) => { alert('Transfer history coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
+                onScheduleService={(asset) => { alert('Schedule service coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
+            />
 
             <CreateMaterialModal isOpen={isCreateMaterialOpen} onClose={() => setIsCreateMaterialOpen(false)} onSuccess={() => { fetchWarehouseStock(); setIsCreateMaterialOpen(false); }} />
             <StockRequestModal isOpen={isStockRequestOpen} onClose={() => setIsStockRequestOpen(false)} onSuccess={() => { fetchStockRequests(); setIsStockRequestOpen(false); }} />
