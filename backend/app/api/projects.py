@@ -505,6 +505,7 @@ class DPRCreate(BaseModel):
     notes: Optional[str] = ""
     photos: Optional[list] = []
     submitted_by: Optional[str] = ""
+    checklist: Optional[dict] = None
 
 
 @router.post("/{project_id}/dprs")

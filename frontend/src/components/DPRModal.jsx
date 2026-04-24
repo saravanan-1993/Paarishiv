@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle } from 'lucide-react';
+import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle, CheckSquare } from 'lucide-react';
 import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import CustomSelect from './CustomSelect';
@@ -7,6 +7,159 @@ import CustomSelect from './CustomSelect';
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('work');
+
+    // Checklist data from 6 PDFs — all optional
+    const CHECKLIST_DATA = {
+        'Concrete Pouring (CPA)': [
+            'Shuttering checked for line, level, plumb, dimensions, and stability',
+            'Formwork surface cleaned and coated with release agent',
+            'Adequate supports, bracing, and safety platforms provided',
+            'Bar bending verified with approved BBS and drawings',
+            'Cover blocks placed correctly and of approved quality',
+            'Reinforcement free from rust, mud, and oil',
+            'Proper spacing, laps, hooks, bends, and ties provided',
+            'Electrical conduits, sleeves, inserts fixed as per drawing',
+            'Opening, embedment, and sleeves verified',
+            'Safety check (Scaffolding, Working Platform, PPE)',
+            'Shoe Marking casted properly and Height of column as per plan',
+            'Lintel, Sunshade casted as per drawings',
+        ],
+        'Brickwork (BWC)': [
+            'Bricks: uniform size, no cracks, approved quality',
+            'Bricks soaked 10-12 hrs, moist before use',
+            'Cement & sand mix ratio as per drawing/spec',
+            'Sand is clean, silt-free, medium grade',
+            'Water is clean/potable',
+            'Layout marked as per approved drawings',
+            'Mortar mixed fresh, used within 30-45 mins',
+            'First course laid true to line, level, and plumb',
+            'Joint thickness 10 mm or less (horizontal & vertical)',
+            'Proper bond maintained, no continuous vertical joints',
+            'Queen closers at corners, no bats used',
+            'Wall raised max 1 m height per day',
+            'Joints raked 10-15 mm for plaster grip',
+            'Verticality & alignment checked every 3-5 courses',
+            'Cross walls properly toothed/bonded',
+            'Lintel levels, door & window openings checked',
+            'Service openings provided as per drawing',
+            'Holes left for scaffolding filled with CC',
+            'Stable scaffolding in place - tied and braced',
+            'Wall surface cleaned of loose mortar',
+            'Curing started after 24 hrs, continued 7 days',
+            'No chasing/grooving before curing complete',
+            'Final check: line, level, plumb, dimensions verified',
+            'Wastage of Mortar controlled / Half Brick used properly',
+        ],
+        'Plastering': [
+            'Surface cleaned of dust, loose mortar, and debris before plastering',
+            'All holes, joints, and chases filled and cured before plastering',
+            'Brick/block joints properly raked to receive plaster',
+            'Masonry cured at least 7 days before plastering',
+            'Scaffolding is stable and does not touch the wall surface',
+            'Plaster mix prepared in correct ratio as per drawing/spec',
+            'Sand used is clean, well-graded, and silt-free',
+            'Water used is clean/potable',
+            'Plaster thickness as per specification (12mm/15mm/20mm)',
+            'Single coat thickness does not exceed 12 mm',
+            'For double coat, second coat applied after proper curing of first coat',
+            'Mortar used within 30 minutes of mixing',
+            'Plaster surface kept rough for receiving second/finishing coat',
+            'Levels, line, and plumb checked with straight edge & spirit level (Button Mark)',
+            'Corners, edges, and junctions kept straight, neat, and true',
+            'Curing of plaster started after 24 hours, continued for 7 days minimum',
+            'No cracks, honeycombs, or hollow patches visible on plaster surface',
+            'Electrical/Plumbing chase work completed before plastering',
+            'Final surface smooth, even, and ready for painting/finishing',
+            'Before ceiling and column plastering the surface should be Hacked',
+            'Fiber mesh used among concrete, brick work and electrical point chasing areas',
+        ],
+        'Painting (PWC)': [
+            'Surface cleaned of dust, grease, loose particles, and laitance',
+            'All plastered surfaces cured and dried completely before painting',
+            'Moisture content of wall checked - no dampness or leakage present',
+            'Cracks and holes filled with approved filler/putty before primer',
+            'Primer applied as per manufacturer specification',
+            'Putty applied in required coats for smooth finish',
+            'Surface rubbed down with sandpaper between coats',
+            'Paint material approved make/brand as per project specification',
+            'Shade, color, and texture of paint verified with approved sample',
+            'Paint mixed/stirred properly before application',
+            'Correct dilution of paint maintained as per manufacturer instructions',
+            'Number of coats as specified in drawings/BOQ (min. 2 coats)',
+            'Each coat allowed to dry completely before next coat applied',
+            'Uniform shade, finish, and coverage checked across surface',
+            'No brush marks, roller marks, or patchiness visible',
+            'Edges, corners, and junctions neat and sharp',
+            'Protection provided to floors, doors, and fixtures before painting',
+            'Scaffolding stable and does not touch painted surface',
+            'Final surface smooth, even, and as per approved finish',
+            'Touch-ups done wherever required and surface cleaned after work',
+            'Adjacent areas protected by Masking tape wherever needed',
+        ],
+        'Shuttering & Bar Bending (SBC)': [
+            'Formwork material of approved quality (plywood/steel) used',
+            'Formwork surface clean, free of rust, oil, and debris',
+            'Formwork joints tight, no leakage of slurry',
+            'Formwork aligned to line, level, plumb, and dimensions as per drawing',
+            'Adequate bracing and supports provided to prevent bulging/displacement',
+            'Shuttering coated with approved form oil/release agent before concreting',
+            'Provision made for working platforms and safe access',
+            'Formwork checked for embedded items (sleeves, inserts, pipes, conduits)',
+            'Stability of shuttering checked before concreting',
+            'Steel reinforcement of approved make and grade received with test certificate',
+            'Bars free from rust, oil, mud, and dirt before use',
+            'Cutting and bending of bars as per approved bar bending schedule',
+            'Bar bends, hooks, and cranks as per IS specifications/drawings',
+            'Correct bar diameter, spacing, and quantity verified with drawings',
+            'Lapping length maintained as per IS codes/specifications',
+            'Stirrups, ties, and spacers provided at correct intervals',
+            'Cover blocks of correct thickness and grade provided',
+            'Reinforcement placed as per drawing and fixed firmly to prevent displacement',
+            'Chairs/spacers used for maintaining cover in slabs and beams',
+            'No tack welding done unless approved in design',
+            'Congestion of reinforcement avoided at beam-column junctions',
+            'Embedded items and openings kept in position before concreting',
+            'Wastage of nails and binding wire properly used',
+        ],
+        'End of Day (EDC)': [
+            'Cement bags properly stacked on wooden planks',
+            'Cement bags covered with tarpaulin',
+            'Steel bars arranged size-wise',
+            'Steel stored above ground level',
+            'Sand protected from contamination',
+            'Aggregates stored separately',
+            'Area arranged for next day material dumping',
+            'Paint buckets closed and stored safely',
+            'Putty/chemical bags sealed',
+            'Tiles stacked properly',
+            'Electrical items stored in dry area',
+            'Tools collected and stored',
+            'Power tools switched off',
+            'Mixer machine cleaned',
+            'Equipment stored properly',
+            'Scaffolding arranged',
+            'Debris cleared',
+            'No sharp objects on floor',
+            'Pathways clear',
+            'Excess mortar removed',
+            'Site cleaned',
+            'Electrical supply switched off',
+            'Wiring safe',
+            'Open pits covered',
+            'Safety boards placed',
+            'Fire extinguisher accessible',
+            'Curing arranged',
+            'Hoses stored properly',
+            'No water leakage',
+            'Gates closed',
+            'Watchman deployed',
+            'Materials secured',
+            'Daily status recorded',
+            'Overall site ready for next day',
+        ],
+    };
+
+    const [checklist, setChecklist] = useState({});
     const [loading, setLoading] = useState(false);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [summary, setSummary] = useState('');
@@ -215,6 +368,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                 issues,
                 notes,
                 photos: uploadedPhotoUrls,
+                checklist: Object.keys(checklist).length > 0 ? checklist : undefined,
                 submitted_by: user?.fullName || user?.username || (project?.engineer_id && typeof project.engineer_id === 'object' 
                                 ? (project.engineer_id.username || project.engineer_id.employeeCode || project.engineer_id._id) 
                                 : project?.engineer_id) || 'Site Engineer',
@@ -227,6 +381,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
             setSummary('');
             setIssues('');
             setNotes('');
+            setChecklist({});
             setWorkRows([{ task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
             setLabourRows([{ party: '', category: '', count: '', shift: '1', ot: '0' }]);
             setMaterialRows([{ name: '', opening: '', received: '', used: '' }]);
@@ -314,6 +469,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                         <TabButton id="equipment" label="Machinery" icon={Truck} />
                         <TabButton id="next_day" label="Next Day" icon={Plus} />
                         <TabButton id="contractor" label="Contractors" icon={Building2} />
+                        <TabButton id="checklist" label="Checklist" icon={CheckSquare} />
                         <TabButton id="photos" label="Photos" icon={Camera} />
                     </div>
 
@@ -656,6 +812,99 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                         )}
 
                         {/* ── Photos Tab ── */}
+                        {/* ── Checklist Tab ── */}
+                        {activeTab === 'checklist' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                <div style={{ background: 'white', padding: '20px 24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0' }}>
+                                    <h3 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '6px', color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <CheckSquare size={18} color="var(--primary)" /> Quality Checklists
+                                    </h3>
+                                    <p style={{ fontSize: '12px', color: '#64748B', margin: 0 }}>All items are optional. Check only the items applicable to today's work.</p>
+                                </div>
+
+                                {Object.entries(CHECKLIST_DATA).map(([category, items]) => {
+                                    const catKey = category;
+                                    const getStatus = (i) => { const e = checklist[`${catKey}::${i}`]; return typeof e === 'string' ? e : (e?.status || ''); };
+                                    const checked = items.filter((_, i) => getStatus(i) === 'OK').length;
+                                    const notOk = items.filter((_, i) => getStatus(i) === 'NOT_OK').length;
+                                    const total = items.length;
+                                    const hasAny = checked + notOk > 0;
+
+                                    return (
+                                        <div key={category} style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+                                            <div style={{
+                                                padding: '14px 20px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer'
+                                            }}
+                                            onClick={() => {
+                                                const el = document.getElementById(`cl-${catKey}`);
+                                                if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>{category}</span>
+                                                    <span style={{ fontSize: '11px', color: '#64748B' }}>({total} items)</span>
+                                                </div>
+                                                {hasAny && (
+                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                        {checked > 0 && <span style={{ padding: '2px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: '#DCFCE7', color: '#15803D' }}>OK: {checked}</span>}
+                                                        {notOk > 0 && <span style={{ padding: '2px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: '#FEE2E2', color: '#B91C1C' }}>Not OK: {notOk}</span>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div id={`cl-${catKey}`} style={{ display: 'none' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                                    <thead>
+                                                        <tr style={{ backgroundColor: '#F1F5F9' }}>
+                                                            <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B', width: 30 }}>#</th>
+                                                            <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Check Point</th>
+                                                            <th style={{ padding: '8px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B', width: 120 }}>Status</th>
+                                                            <th style={{ padding: '8px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B', width: 160 }}>Remarks</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {items.map((item, idx) => {
+                                                            const key = `${catKey}::${idx}`;
+                                                            const entry = checklist[key] || {};
+                                                            const val = typeof entry === 'string' ? entry : (entry.status || '');
+                                                            const rem = typeof entry === 'string' ? '' : (entry.remarks || '');
+                                                            const setStatus = (s) => setChecklist(prev => ({ ...prev, [key]: { status: val === s ? '' : s, remarks: rem } }));
+                                                            const setRemarks = (r) => setChecklist(prev => ({ ...prev, [key]: { status: val, remarks: r } }));
+                                                            return (
+                                                                <tr key={idx} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                                    <td style={{ padding: '8px 16px', color: '#94A3B8', fontSize: 12 }}>{idx + 1}</td>
+                                                                    <td style={{ padding: '8px 16px', fontSize: 13, color: '#334155' }}>{item}</td>
+                                                                    <td style={{ padding: '8px 16px', textAlign: 'center' }}>
+                                                                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                                                            <button type="button" onClick={() => setStatus('OK')}
+                                                                                style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1px solid',
+                                                                                    backgroundColor: val === 'OK' ? '#DCFCE7' : 'white',
+                                                                                    borderColor: val === 'OK' ? '#10B981' : '#E2E8F0',
+                                                                                    color: val === 'OK' ? '#15803D' : '#94A3B8',
+                                                                                }}>OK</button>
+                                                                            <button type="button" onClick={() => setStatus('NOT_OK')}
+                                                                                style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '1px solid',
+                                                                                    backgroundColor: val === 'NOT_OK' ? '#FEE2E2' : 'white',
+                                                                                    borderColor: val === 'NOT_OK' ? '#EF4444' : '#E2E8F0',
+                                                                                    color: val === 'NOT_OK' ? '#B91C1C' : '#94A3B8',
+                                                                                }}>Not OK</button>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td style={{ padding: '6px 10px' }}>
+                                                                        <input value={rem} onChange={e => setRemarks(e.target.value)}
+                                                                            placeholder="..." style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #E2E8F0', fontSize: 11, outline: 'none', color: '#475569' }} />
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {activeTab === 'photos' && (
                             <div className="animate-fade-in" style={{ background: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', minHeight: '400px' }}>
                                 <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B', marginBottom: '24px' }}>Verification Photos</h3>
@@ -772,7 +1021,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     </button>
                     {activeTab !== 'photos' ? (
                         <button onClick={() => {
-                            const tabOrder = ['work', 'labour', 'equipment', 'next_day', 'contractor', 'photos'];
+                            const tabOrder = ['work', 'labour', 'equipment', 'next_day', 'contractor', 'checklist', 'photos'];
                             const nextIdx = tabOrder.indexOf(activeTab) + 1;
                             if (nextIdx < tabOrder.length) setActiveTab(tabOrder[nextIdx]);
                         }} style={{
