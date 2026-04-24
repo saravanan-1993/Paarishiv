@@ -164,64 +164,167 @@ const Finance = () => {
         try {
             const doc = new jsPDF();
             const compName = companyInfo.companyName || 'CIVIL ERP';
+            const compAddr = companyInfo.address || '';
+            const compPhone = companyInfo.phone || '';
+            const compEmail = companyInfo.email || '';
+            const compGst = companyInfo.gst || companyInfo.gstin || '';
 
-            // Header
-            doc.setFontSize(20);
-            doc.setTextColor(59, 130, 246);
-            doc.setFont("helvetica", "bold");
-            doc.text(compName, 14, 22);
+            // ── Header ──
+            doc.setFillColor(30, 58, 138);
+            doc.rect(0, 0, 210, 32, 'F');
+            doc.setFontSize(18);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text(compName, 14, 16);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            if (compAddr) doc.text(compAddr, 14, 23);
+            if (compPhone || compEmail) doc.text([compPhone, compEmail].filter(Boolean).join(' | '), 14, 28);
 
-            doc.setFontSize(16);
-            doc.setTextColor(30, 41, 59);
-            doc.text(type.toUpperCase(), 196, 22, { align: "right" });
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(type.toUpperCase(), 196, 16, { align: 'right' });
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 196, 23, { align: 'right' });
+            if (compGst) doc.text(`GSTIN: ${compGst}`, 196, 28, { align: 'right' });
 
-            doc.setDrawColor(226, 232, 240);
-            doc.line(14, 28, 196, 28);
-
-            // Details
+            // ── Details Section ──
+            let y = 42;
             doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(100, 116, 139);
-            let y = 38;
             const addRow = (label, value) => {
-                doc.text(label, 14, y);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(30, 41, 59);
-                doc.text(String(value || '—'), 70, y);
-                doc.setFont("helvetica", "normal");
+                if (!value) return;
+                doc.setFont('helvetica', 'normal');
                 doc.setTextColor(100, 116, 139);
+                doc.text(label, 14, y);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 41, 59);
+                doc.text(String(value), 60, y);
                 y += 7;
             };
 
-            if (data.no) addRow('Voucher No:', data.no);
-            if (data.date) addRow('Date:', data.date ? new Date(data.date).toLocaleDateString('en-IN') : '—');
-            if (data.party) addRow('Party:', data.party);
-            if (data.project) addRow('Project:', data.project);
+            addRow('Voucher No:', data.no);
+            addRow('Date:', data.date ? new Date(data.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null);
+            addRow('Party/Vendor:', data.party);
+            addRow('Project:', data.project);
             if (data.category) addRow('Category:', data.category);
             if (data.description) addRow('Description:', data.description);
             if (data.mode) addRow('Payment Mode:', data.mode);
+            if (data.invoice_no) addRow('Invoice No:', data.invoice_no);
 
-            y += 5;
+            y += 3;
             doc.setDrawColor(226, 232, 240);
             doc.line(14, y, 196, y);
-            y += 10;
+            y += 8;
 
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(30, 41, 59);
-            doc.text('Amount:', 14, y);
-            doc.setTextColor(16, 185, 129);
-            doc.text(`Rs. ${(data.amount || 0).toLocaleString('en-IN')}`, 70, y);
+            // ── Items Table (if available) ──
+            const items = data.items || [];
+            if (items.length > 0) {
+                doc.setFontSize(11);
+                doc.setTextColor(30, 58, 138);
+                doc.setFont('helvetica', 'bold');
+                doc.text('Item Details', 14, y);
+                y += 3;
 
-            if (data.status) {
-                y += 10;
-                doc.setFontSize(10);
-                doc.setTextColor(100, 116, 139);
-                doc.text('Status:', 14, y);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(30, 41, 59);
-                doc.text(data.status, 70, y);
+                const hasRate = items.some(it => it.rate || it.price);
+                const tableHead = hasRate
+                    ? [['#', 'Material', 'Qty', 'Unit', 'Rate', 'Amount']]
+                    : [['#', 'Material', 'Qty', 'Unit']];
+                const tableBody = items.map((it, i) => {
+                    const qty = parseFloat(it.qty || it.quantity || it.received_qty || it.po_qty || 0);
+                    const rate = parseFloat(it.rate || it.price || 0);
+                    const amt = qty * rate;
+                    return hasRate
+                        ? [i + 1, it.name || it.material_name || '', qty, it.unit || 'Nos', `Rs. ${rate.toLocaleString('en-IN')}`, `Rs. ${amt.toLocaleString('en-IN')}`]
+                        : [i + 1, it.name || it.material_name || '', qty, it.unit || 'Nos'];
+                });
+
+                autoTable(doc, {
+                    startY: y,
+                    head: tableHead,
+                    body: tableBody,
+                    theme: 'grid',
+                    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 9, fontStyle: 'bold' },
+                    bodyStyles: { fontSize: 9 },
+                    columnStyles: hasRate ? {
+                        0: { cellWidth: 10, halign: 'center' },
+                        2: { cellWidth: 18, halign: 'center' },
+                        3: { cellWidth: 18, halign: 'center' },
+                        4: { cellWidth: 28, halign: 'right' },
+                        5: { cellWidth: 30, halign: 'right' },
+                    } : {
+                        0: { cellWidth: 10, halign: 'center' },
+                        2: { cellWidth: 20, halign: 'center' },
+                        3: { cellWidth: 20, halign: 'center' },
+                    },
+                    margin: { left: 14, right: 14 },
+                });
+                y = (doc.lastAutoTable?.finalY || y) + 8;
             }
+
+            // ── Amount Section ──
+            if (y > 250) { doc.addPage(); y = 20; }
+            doc.setDrawColor(226, 232, 240);
+            doc.line(14, y, 196, y);
+            y += 8;
+
+            // Tax breakdown if available
+            if (data.base_amount && data.base_amount !== data.amount) {
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text('Base Amount:', 120, y);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 41, 59);
+                doc.text(`Rs. ${parseFloat(data.base_amount || 0).toLocaleString('en-IN')}`, 196, y, { align: 'right' });
+                y += 6;
+                if (data.gst_amount) {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 116, 139);
+                    doc.text('GST:', 120, y);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(30, 41, 59);
+                    doc.text(`Rs. ${parseFloat(data.gst_amount || 0).toLocaleString('en-IN')}`, 196, y, { align: 'right' });
+                    y += 6;
+                }
+            }
+
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 41, 59);
+            doc.text('Total Amount:', 120, y);
+            doc.setTextColor(16, 185, 129);
+            doc.text(`Rs. ${parseFloat(data.amount || 0).toLocaleString('en-IN')}`, 196, y, { align: 'right' });
+
+            y += 8;
+            if (data.status) {
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text('Status:', 120, y);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(data.status === 'Paid' ? 16 : 239, data.status === 'Paid' ? 185 : 68, data.status === 'Paid' ? 129 : 68);
+                doc.text(data.status, 196, y, { align: 'right' });
+            }
+
+            // ── Signatory ──
+            y = Math.min((doc.lastAutoTable?.finalY || y) + 30, 270);
+            doc.setDrawColor(148, 163, 184);
+            doc.line(140, y, 196, y);
+            y += 5;
+            doc.setFontSize(9);
+            doc.setTextColor(30, 41, 59);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Authorized Signatory', 196, y, { align: 'right' });
+            y += 4;
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(100, 116, 139);
+            doc.text(compName, 196, y, { align: 'right' });
+
+            // ── Footer ──
+            doc.setFontSize(7);
+            doc.setTextColor(180, 180, 180);
+            doc.text('This is a computer-generated document and does not require a physical signature.', 105, 290, { align: 'center' });
 
             const fileName = `${type.replace(/\s+/g, '_')}_${(data.no || data.party || 'voucher').replace(/\s+/g, '_')}.pdf`;
             doc.save(fileName);
@@ -1020,7 +1123,7 @@ const Finance = () => {
                                                             <Eye size={18} color="#3B82F6" />
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, status: paymentStatus })}
+                                                            onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, base_amount: parseFloat(bill.amount || 0), gst_amount: parseFloat(bill.gst_amount || 0), status: paymentStatus })}
                                                             style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }}
                                                             title="Download"
                                                         >
@@ -1158,7 +1261,7 @@ const Finance = () => {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '4px' }}>
-                                                    <button onClick={() => handleDownloadVoucher('Purchase Bill', { no: pb.bill_no, date: pb.bill_date, party: pb.vendor_name, project: pb.project_name, amount: pb.total_amount, status: pb.status })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                    <button onClick={() => handleDownloadVoucher('Purchase Bill', { no: pb.bill_no, date: pb.bill_date, party: pb.vendor_name, project: pb.project_name, amount: pb.total_amount, base_amount: pb.total_amount - (pb.tax_amount || 0), gst_amount: pb.tax_amount, items: pb.items, status: pb.status })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                         <Download size={18} color="var(--primary)" />
                                                     </button>
                                                 </div>
@@ -1284,7 +1387,7 @@ const Finance = () => {
                                                         <button className="btn btn-outline btn-sm" onClick={() => handleViewHistory(item)} style={{ border: 'none' }} title="View">
                                                             <Eye size={18} color="var(--primary)" />
                                                         </button>
-                                                        <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                        <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, base_amount: item.base_amount, gst_amount: item.gst_amount, invoice_no: item.invoice_no, items: item.items, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                             <Download size={18} color="#10B981" />
                                                         </button>
                                                         {pStatus !== 'Paid' && (
@@ -1404,7 +1507,7 @@ const Finance = () => {
                                                 {fmt(exp.amount || 0)}
                                             </td>
                                             <td>
-                                                <button onClick={() => handleDownloadVoucher('Payment Voucher', { date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                <button onClick={() => handleDownloadVoucher('Payment Voucher', { no: exp.voucher_no || exp.invoice_no, date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount, base_amount: exp.base_amount, gst_amount: exp.gst_amount, invoice_no: exp.invoice_no, items: exp.items, status: 'Paid' })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                     <Download size={18} color="var(--primary)" />
                                                 </button>
                                             </td>
