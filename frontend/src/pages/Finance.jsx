@@ -569,7 +569,7 @@ const Finance = () => {
         { label: 'TOTAL RECEIVED', value: fmt(totalCollected), icon: IndianRupee, color: '#065F46', bgColor: '#D1FAE5' },
     ];
 
-    const projectDropdown = ['All Projects', ...projects.map(p => p.name).filter(Boolean)];
+    const projectDropdown = ['All Projects', 'Warehouse', ...projects.map(p => p.name).filter(n => n && n !== 'Warehouse')];
 
     // Derived Ledger Data
     const clientParties = useMemo(() => {
@@ -801,7 +801,7 @@ const Finance = () => {
                         <CustomSelect
                             options={[
                                 { value: 'All Projects', label: 'All Projects' },
-                                ...projects.map(p => ({ value: p.name, label: p.name }))
+                                { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                             ]}
                             value={selectedProject}
                             onChange={setSelectedProject}
@@ -919,7 +919,7 @@ const Finance = () => {
                                 <CustomSelect
                                     options={[
                                         { value: 'All Projects', label: 'All Projects' },
-                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                                     ]}
                                     value={selectedProject}
                                     onChange={setSelectedProject}
@@ -1090,7 +1090,7 @@ const Finance = () => {
                                 <CustomSelect
                                     options={[
                                         { value: 'All Projects', label: 'All Projects' },
-                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                                     ]}
                                     value={selectedProject}
                                     onChange={setSelectedProject}
@@ -1202,7 +1202,7 @@ const Finance = () => {
                                 <CustomSelect
                                     options={[
                                         { value: 'All Projects', label: 'All Projects' },
-                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                                     ]}
                                     value={selectedProject}
                                     onChange={setSelectedProject}
@@ -1335,7 +1335,7 @@ const Finance = () => {
                                 <CustomSelect
                                     options={[
                                         { value: 'All Projects', label: 'All Projects' },
-                                        ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                                     ]}
                                     value={selectedProject}
                                     onChange={setSelectedProject}
@@ -1498,7 +1498,7 @@ const Finance = () => {
                                     <CustomSelect
                                         options={[
                                             { value: 'All Projects', label: 'All Projects' },
-                                            ...projects.map(p => ({ value: p.name, label: p.name }))
+                                            { value: 'Warehouse', label: 'Warehouse' }, ...projects.filter(p => p.name !== 'Warehouse').map(p => ({ value: p.name, label: p.name }))
                                         ]}
                                         value={selectedProject}
                                         onChange={setSelectedProject}
