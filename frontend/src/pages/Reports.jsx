@@ -8,7 +8,7 @@ import {
 import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI } from '../utils/api';
+import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI, inventoryAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
 
@@ -132,7 +132,7 @@ const CATEGORIES = ['All', 'Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 // ─── Report Preview Modal ────────────────────────────────────────────────────
 const ReportPreview = ({
     report, onClose, budgetData = [], progressData = [], inventoryData = [],
-    expenseData = [], attendanceData = [], bills = [], payables = []
+    materialStockReport = [], expenseData = [], attendanceData = [], bills = [], payables = []
 }) => {
     const [companyInfo, setCompanyInfo] = useState({ companyName: 'CIVIL ERP' });
 
@@ -215,8 +215,13 @@ const ReportPreview = ({
             csv = 'Project,Progress %,Tasks,DPRs Filed\n' +
                 progressData.map(r => `${r.project},${r.progress}%,${r.tasks},${r.dpr}`).join('\n');
         } else if (report.category === 'Inventory') {
-            csv = 'Material,Stock Share %\n' +
-                inventoryData.map(r => `${r.name},${r.value}%`).join('\n');
+            csv = materialStockReport.length > 0
+                ? 'Material,Unit,Warehouse Qty,Total Site Qty,Total Qty,Last Rate,Total Value\n' +
+                    materialStockReport.filter(m => m.total_qty > 0).map(m =>
+                        `"${m.material_name}",${m.unit},${m.warehouse_qty},${m.total_site_qty},${m.total_qty},${m.last_rate},${m.total_value}`
+                    ).join('\n')
+                : 'Material,Stock Share %\n' +
+                    inventoryData.map(r => `${r.name},${r.value}%`).join('\n');
         } else if (report.id === 'R010') {
             csv = 'Date,Project,Category,Amount (₹),Payee/Paid To,Mode,Description\n' +
                 (expenseData || []).map(r => `${r.date},${r.project},${r.category},${r.amount},${r.payee},${r.paymentMode},"${(r.description || '').replace(/"/g, '""')}"`).join('\n');
@@ -402,7 +407,64 @@ const ReportPreview = ({
 
                     {report.category === 'Inventory' && (
                         <>
-                            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>Material Consumption Breakdown</h3>
+                            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>Material Stock Report</h3>
+
+                            {/* Detailed material table */}
+                            {materialStockReport.length > 0 && (
+                                <div style={{ overflowX: 'auto', marginBottom: 24, border: '1px solid #E2E8F0', borderRadius: 10 }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                        <thead>
+                                            <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                                <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Material</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Unit</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Warehouse</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Site Stock</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Total Qty</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Last Rate</th>
+                                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: 11, color: '#64748B' }}>Total Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {materialStockReport.filter(m => m.total_qty > 0).map((m, i) => (
+                                                <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                    <td style={{ padding: '10px 14px', fontWeight: 700 }}>{m.material_name}</td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'center', color: '#64748B' }}>{m.unit}</td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                                        <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700, backgroundColor: m.warehouse_qty > 0 ? '#DCFCE7' : '#F1F5F9', color: m.warehouse_qty > 0 ? '#15803D' : '#94A3B8' }}>
+                                                            {m.warehouse_qty}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                                        {Object.entries(m.site_stocks || {}).length > 0 ? (
+                                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                                                                {Object.entries(m.site_stocks).map(([site, qty]) => (
+                                                                    <span key={site} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, backgroundColor: '#EFF6FF', color: '#1D4ED8' }} title={site}>
+                                                                        {site.substring(0, 15)}: {qty}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : <span style={{ color: '#94A3B8' }}>0</span>}
+                                                    </td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800 }}>{m.total_qty}</td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'right' }}>₹{(m.last_rate || 0).toLocaleString('en-IN')}</td>
+                                                    <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0F172A' }}>₹{(m.total_value || 0).toLocaleString('en-IN')}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ backgroundColor: '#F1F5F9' }}>
+                                                <td colSpan={4} style={{ padding: '10px 14px', fontWeight: 800, textAlign: 'right' }}>Total</td>
+                                                <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 800 }}>{materialStockReport.reduce((s, m) => s + m.total_qty, 0)}</td>
+                                                <td></td>
+                                                <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: '#1D4ED8' }}>₹{materialStockReport.reduce((s, m) => s + (m.total_value || 0), 0).toLocaleString('en-IN')}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Pie chart */}
+                            <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px', color: '#475569' }}>Stock Distribution</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
                                 <div>
                                     <ResponsiveContainer width="100%" height={240}>
@@ -741,6 +803,7 @@ const Reports = () => {
     const [budgetData, setBudgetData] = useState([]);
     const [progressData, setProgressData] = useState([]);
     const [inventoryData, setInventoryData] = useState([]);
+    const [materialStockReport, setMaterialStockReport] = useState([]);
     const [expenseData, setExpenseData] = useState([]);
     const [bills, setBills] = useState([]);
     const [payables, setPayables] = useState([]);
@@ -889,6 +952,12 @@ const Reports = () => {
                 })).sort((a, b) => b.value - a.value).slice(0, 5);
                 setInventoryData(iData);
             }
+
+            // Fetch detailed material-wise report
+            try {
+                const mwRes = await inventoryAPI.getMaterialWiseReport();
+                setMaterialStockReport(mwRes.data || []);
+            } catch (e) { console.warn('Material report fetch failed', e); }
 
             if (expRes.status === 'fulfilled') {
                 const allExp = expRes.value.data || [];
@@ -1144,6 +1213,7 @@ const Reports = () => {
                 budgetData={budgetData}
                 progressData={progressData}
                 inventoryData={inventoryData}
+                materialStockReport={materialStockReport}
                 expenseData={expenseData}
                 attendanceData={attendanceData}
                 bills={bills}

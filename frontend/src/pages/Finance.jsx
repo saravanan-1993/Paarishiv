@@ -334,16 +334,36 @@ const Finance = () => {
             return;
         }
 
-        const headers = ['Date', 'Particulars', 'Party', 'Debit (Dr)', 'Credit (Cr)', 'Balance'];
+        // Calculate summary values for CSV header
+        const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
+        const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
+        const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
+        const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+        const expTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+        const labourT = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+        const filtProj = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
+        const projVal = filtProj.reduce((s, p) => s + (parseFloat(p.budget || p.projectValue || p.value || 0)), 0);
+        const totalDr = entries.reduce((s, e) => s + (e.debit || 0), 0);
+        const totalCr = entries.reduce((s, e) => s + (e.credit || 0), 0);
+
+        const headers = ['Date', 'Type', 'Project', 'Particulars', 'Party', 'Debit (Dr)', 'Credit (Cr)', 'Balance'];
         const csvContent = [
+            `"Ledger Statement - ${selectedProject} - ${ledgerParty}"`,
+            '',
+            `"Project Value",${projVal},"Total Received",${receiptsTotal},"Total Expenses",${paymentsTotal + expTotal},"Cash Balance",${receiptsTotal - paymentsTotal - expTotal}`,
+            `"Sales (Billed)",${salesTotal},"Purchase",${purchaseTotal},"Project Balance",${Math.max(0, projVal - receiptsTotal)}`,
+            `"Total Debit",${totalDr},"Total Credit",${totalCr},"Net Balance",${totalDr - totalCr}`,
+            '',
             headers.join(','),
             ...entries.map(e => [
                 new Date(e.date).toLocaleDateString('en-IN'),
+                e.type || '',
+                `"${(e.project || 'General').replace(/"/g, '""')}"`,
                 `"${e.particulars.replace(/"/g, '""')}"`,
-                `"${e.party.replace(/"/g, '""')}"`,
+                `"${(e.party || '').replace(/"/g, '""')}"`,
                 e.debit || 0,
                 e.credit || 0,
-                `${e.balance} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
+                `${Math.abs(e.balance)} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
             ].join(','))
         ].join('\n');
 
@@ -367,105 +387,122 @@ const Finance = () => {
                 return;
             }
 
-            // Fallback for Rupee symbol in PDF (to avoid crashes)
             const pdfFmt = (v) => {
                 if (!v && v !== 0) return 'Rs. 0';
-                if (v >= 10000000) return `Rs. ${(v / 10000000).toFixed(2)} Cr`;
-                if (v >= 100000) return `Rs. ${(v / 100000).toFixed(2)} L`;
+                const abs = Math.abs(v);
+                if (abs >= 10000000) return `Rs. ${(v / 10000000).toFixed(2)} Cr`;
+                if (abs >= 100000) return `Rs. ${(v / 100000).toFixed(2)} L`;
                 return `Rs. ${Number(v).toLocaleString('en-IN')}`;
             };
 
-            const doc = new jsPDF();
-            const partyName = ledgerParty === 'All Parties' ? 'ALL PARTIES STATEMENT' : `PARTY LEDGER: ${ledgerParty.toUpperCase()}`;
-            const reportDate = `Generated on: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}`;
-
-            // Header Style
-            doc.setFillColor(59, 130, 246);
-            doc.rect(0, 0, 210, 40, 'F');
-
-            doc.setFontSize(22);
-            doc.setTextColor(255, 255, 255);
-            doc.setFont('helvetica', 'bold');
-            doc.text(companyInfo.companyName || "CIVIL ERP", 14, 20);
-
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.text("Professional Construction Site Management Statement", 14, 28);
-
-            doc.text(reportDate, 150, 20);
-
-            // Body Content
-            doc.setTextColor(31, 41, 55);
-            doc.setFontSize(14);
-            doc.setFont('helvetica', 'bold');
-            // Body Content
-            doc.setTextColor(31, 41, 55);
-            doc.setFontSize(13);
-            doc.setFont('helvetica', 'bold');
-            doc.text(partyName, 14, 52);
-
-            // Summary Cards
+            // Calculate all summary values (same as UI)
             const totalDebit = entries.reduce((s, e) => s + (e.debit || 0), 0);
             const totalCredit = entries.reduce((s, e) => s + (e.credit || 0), 0);
-            const balance = totalDebit - totalCredit;
+            const netBalance = totalDebit - totalCredit;
+            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
+            const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
+            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
+            const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+            const expensesTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+            const labourTotal = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+            const filteredProjects = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
+            const projectValue = filteredProjects.reduce((s, p) => s + (parseFloat(p.budget || p.projectValue || p.value || 0)), 0);
+            const projectBalance = projectValue - receiptsTotal;
+            const cashBalance = receiptsTotal - (paymentsTotal + expensesTotal);
 
-            doc.setFillColor(248, 250, 252);
-            doc.setDrawColor(226, 232, 240);
-            doc.rect(14, 58, 182, 20, 'FD');
+            const doc = new jsPDF('l', 'mm', 'a4'); // Landscape for more columns
+            const pageW = doc.internal.pageSize.getWidth();
+            const partyName = ledgerParty === 'All Parties' ? 'ALL PARTIES STATEMENT' : `PARTY LEDGER: ${ledgerParty.toUpperCase()}`;
+            const reportDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+            const projectLabel = selectedProject === 'All Projects' ? 'All Projects' : selectedProject;
 
+            // ── Header ──
+            doc.setFillColor(30, 58, 138);
+            doc.rect(0, 0, pageW, 28, 'F');
+            doc.setFontSize(18);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.text(companyInfo.companyName || 'CIVIL ERP', 14, 14);
             doc.setFontSize(9);
-            doc.setTextColor(107, 114, 128);
-            doc.text("TOTAL DEBIT (Dr)", 25, 65);
-            doc.text("TOTAL CREDIT (Cr)", 85, 65);
-            doc.text("NET BALANCE", 145, 65);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Financial Ledger Statement', 14, 22);
+            doc.text(`Generated: ${reportDate}`, pageW - 14, 14, { align: 'right' });
+            doc.text(`Project: ${projectLabel}`, pageW - 14, 22, { align: 'right' });
 
-            doc.setFontSize(11);
-            doc.setTextColor(239, 68, 68);
-            doc.text(pdfFmt(totalDebit), 25, 73);
-            doc.setTextColor(16, 185, 129);
-            doc.text(pdfFmt(totalCredit), 85, 73);
-            doc.setTextColor(59, 130, 246);
-            doc.text(`${pdfFmt(Math.abs(balance))} ${balance >= 0 ? 'Dr' : 'Cr'}`, 145, 73);
+            // ── Title ──
+            doc.setTextColor(30, 41, 55);
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text(partyName, 14, 38);
 
-            const tableData = entries.map(e => [
-                new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-                e.particulars,
-                e.party,
-                e.debit ? e.debit.toLocaleString('en-IN') : '-',
-                e.credit ? e.credit.toLocaleString('en-IN') : '-',
-                `${Math.abs(e.balance).toLocaleString('en-IN')} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
-            ]);
-
+            // ── Summary Table ──
             autoTable(doc, {
-                startY: 85,
-                head: [['Date', 'Particulars', 'Party', 'Debit (Dr)', 'Credit (Cr)', 'Balance']],
-                body: tableData,
-                headStyles: {
-                    fillColor: [59, 130, 246],
-                    textColor: [255, 255, 255],
-                    fontSize: 10,
-                    fontStyle: 'bold',
-                    halign: 'center'
-                },
-                bodyStyles: { fontSize: 9, cellPadding: 4 },
-                columnStyles: {
-                    0: { cellWidth: 25 },
-                    1: { cellWidth: 'auto' },
-                    3: { halign: 'right', textColor: [220, 38, 38] },
-                    4: { halign: 'right', textColor: [5, 150, 105] },
-                    5: { halign: 'right', fontStyle: 'bold' }
-                },
-                alternateRowStyles: { fillColor: [249, 250, 251] },
-                margin: { top: 20 }
+                startY: 42,
+                head: [['Project Value', 'Total Received', 'Total Expenses', 'Sales (Billed)', 'Purchase', 'Project Balance', 'Cash Balance']],
+                body: [[
+                    pdfFmt(projectValue),
+                    pdfFmt(receiptsTotal),
+                    pdfFmt(paymentsTotal + expensesTotal),
+                    pdfFmt(salesTotal),
+                    pdfFmt(purchaseTotal),
+                    pdfFmt(Math.max(0, projectBalance)),
+                    pdfFmt(cashBalance),
+                ]],
+                theme: 'grid',
+                headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7, fontStyle: 'bold', halign: 'center' },
+                bodyStyles: { fontSize: 8, fontStyle: 'bold', halign: 'center' },
+                margin: { left: 14, right: 14 },
             });
 
-            // Footer
-            const finalY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY + 15 : 250;
-            doc.setFontSize(9);
-            doc.setTextColor(156, 163, 175);
-            doc.text("This is an electronically generated statement and does not require a physical signature.", 14, Math.min(finalY, 285));
+            // ── Debit / Credit / Net ──
+            const sumY = (doc.lastAutoTable?.finalY || 60) + 4;
+            autoTable(doc, {
+                startY: sumY,
+                head: [['Total Debit (Dr)', 'Total Credit (Cr)', 'Net Balance']],
+                body: [[pdfFmt(totalDebit), pdfFmt(totalCredit), `${pdfFmt(Math.abs(netBalance))} ${netBalance >= 0 ? 'Dr' : 'Cr'}`]],
+                theme: 'grid',
+                headStyles: { fillColor: [241, 245, 249], textColor: [100, 116, 139], fontSize: 8, fontStyle: 'bold', halign: 'center' },
+                bodyStyles: { fontSize: 9, fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { textColor: [239, 68, 68] }, 1: { textColor: [16, 185, 129] }, 2: { textColor: [59, 130, 246] } },
+                margin: { left: 14, right: 14 },
+            });
 
-            doc.save(`Statement_${ledgerParty}_${new Date().toISOString().split('T')[0]}.pdf`);
+            // ── Ledger Table ──
+            const tableY = (doc.lastAutoTable?.finalY || 80) + 6;
+            autoTable(doc, {
+                startY: tableY,
+                head: [['Date', 'Type', 'Project', 'Particulars', 'Party', 'Debit (Dr)', 'Credit (Cr)', 'Balance']],
+                body: entries.map(e => [
+                    new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                    e.type || '',
+                    (e.project || 'General').substring(0, 25),
+                    e.particulars,
+                    e.party || '',
+                    e.debit ? `Rs. ${e.debit.toLocaleString('en-IN')}` : '-',
+                    e.credit ? `Rs. ${e.credit.toLocaleString('en-IN')}` : '-',
+                    `Rs. ${Math.abs(e.balance).toLocaleString('en-IN')} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
+                ]),
+                headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7, fontStyle: 'bold' },
+                bodyStyles: { fontSize: 7, cellPadding: 3 },
+                columnStyles: {
+                    0: { cellWidth: 22 },
+                    1: { cellWidth: 18 },
+                    2: { cellWidth: 30 },
+                    5: { halign: 'right', textColor: [220, 38, 38] },
+                    6: { halign: 'right', textColor: [5, 150, 105] },
+                    7: { halign: 'right', fontStyle: 'bold' },
+                },
+                alternateRowStyles: { fillColor: [249, 250, 251] },
+                margin: { left: 14, right: 14 },
+            });
+
+            // ── Footer ──
+            const finalY = Math.min((doc.lastAutoTable?.finalY || 180) + 12, 195);
+            doc.setFontSize(8);
+            doc.setTextColor(156, 163, 175);
+            doc.text('This is an electronically generated statement and does not require a physical signature.', 14, finalY);
+
+            doc.save(`Ledger_${projectLabel.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
             setIsDownloadDropdownOpen(false);
         } catch (err) {
             console.error('PDF Generation failed:', err);
@@ -548,9 +585,13 @@ const Finance = () => {
 
     const vendorParties = useMemo(() => {
         const set = new Set();
-        payables.forEach(p => p.vendor && p.vendor.toLowerCase() !== 'internal' && set.add(p.vendor));
-        purchaseBills.forEach(pb => pb.vendor_name && set.add(pb.vendor_name));
-        expenses.forEach(e => e.payee && set.add(e.payee));
+        payables.forEach(p => p.vendor && p.vendor.toLowerCase() !== 'internal' && set.add(p.vendor.trim()));
+        purchaseBills.forEach(pb => pb.vendor_name && set.add(pb.vendor_name.trim()));
+        // Only add expense payees that match a known vendor from payables/purchase bills
+        const knownVendors = new Set([...set]);
+        expenses.forEach(e => {
+            if (e.payee && knownVendors.has(e.payee.trim())) set.add(e.payee.trim());
+        });
         return [...set].sort();
     }, [payables, purchaseBills, expenses]);
 
@@ -562,152 +603,154 @@ const Finance = () => {
 
     const getLedgerEntries = () => {
         let entries = [];
-        const baseBillsForLedger = selectedProject === 'All Projects' ? bills : bills.filter(b => b.project === selectedProject);
-        const basePayablesForLedger = selectedProject === 'All Projects' ? payables : payables.filter(p => p.project === selectedProject);
-        const baseExpensesForLedger = selectedProject === 'All Projects' ? expenses : expenses.filter(e => e.project === selectedProject);
+        const matchesProject = (pName) => selectedProject === 'All Projects' || (pName || '').trim() === selectedProject.trim();
+        const matchesParty = (party) => ledgerParty === 'All Parties' || (party || '').trim() === ledgerParty.trim();
+        const showClient = ledgerType === 'All' || ledgerType === 'Client';
+        const showVendor = ledgerType === 'All' || ledgerType === 'Vendor' || ledgerType === 'Expenses';
 
-        const matchesProject = (pName) => selectedProject === 'All Projects' || pName === selectedProject;
+        // Track GRN IDs that have purchase bills to avoid duplicates
+        const billedGrnIds = new Set(purchaseBills.map(pb => pb.grn_id).filter(Boolean));
 
-        // Sales entries (Debit)
-        baseBillsForLedger.forEach(b => {
-            if (ledgerParty !== 'All Parties' && b.project !== ledgerParty) return;
+        // ── 1. SALES INVOICES (Client Bills) — Debit: amount billed to client ──
+        if (showClient) bills.filter(b => matchesProject(b.project)).forEach(b => {
+            const party = b.project || 'Client';
+            if (!matchesParty(party)) return;
             entries.push({
                 date: b.date || b.created_at || new Date().toISOString(),
+                type: 'Sales',
                 particulars: `Sales Invoice - ${b.bill_no}`,
-                debit: b.total_amount || 0,
+                debit: parseFloat(b.total_amount) || 0,
                 credit: 0,
-                party: b.project,
+                party,
                 project: b.project
             });
-            if (b.collection_amount > 0) {
-                entries.push({
-                    date: b.date || b.created_at || new Date().toISOString(),
-                    particulars: `Payment Received - ${b.bill_no}`,
-                    debit: 0,
-                    credit: b.collection_amount,
-                    party: b.project,
-                    project: b.project
-                });
-            }
         });
 
-        // Purchase entries from Payables (Credit)
-        basePayablesForLedger.filter(p => p.vendor && p.vendor.toLowerCase() !== 'internal').forEach(p => {
-            if (ledgerParty !== 'All Parties' && p.vendor !== ledgerParty) return;
+        // ── 2. RECEIPTS (Money received from clients) — Credit: cash in ──
+        // Source A: receipts collection
+        if (showClient) receipts.filter(r => matchesProject(r.project)).forEach(r => {
+            const party = r.received_from || r.project || 'Client';
+            if (!matchesParty(party) && !matchesParty(r.project)) return;
             entries.push({
-                date: p.date || p.created_at || new Date().toISOString(),
-                particulars: `Purchase - ${p.voucher_no}`,
+                date: r.date || r.created_at || new Date().toISOString(),
+                type: 'Receipt',
+                particulars: `Receipt${r.bill_no ? ` (Bill: ${r.bill_no})` : ''} - ${r.payment_mode || 'Bank'}`,
                 debit: 0,
-                credit: p.total_amount || 0,
-                party: p.vendor,
-                project: p.project
+                credit: parseFloat(r.amount) || 0,
+                party: r.project || party,
+                project: r.project
+            });
+        });
+        // Source B: bill collection_amount (most systems store received money here)
+        if (showClient) bills.filter(b => matchesProject(b.project) && parseFloat(b.collection_amount || 0) > 0).forEach(b => {
+            const party = b.project || 'Client';
+            if (!matchesParty(party)) return;
+            entries.push({
+                date: b.date || b.created_at || new Date().toISOString(),
+                type: 'Receipt',
+                particulars: `Payment Received - Bill ${b.bill_no}`,
+                debit: 0,
+                credit: parseFloat(b.collection_amount) || 0,
+                party,
+                project: b.project
             });
         });
 
-        // Purchase entries from Purchase Bills (Credit)
-        const basePurchaseBillsForLedger = selectedProject === 'All Projects' ? purchaseBills : purchaseBills.filter(pb => pb.project_name === selectedProject);
-        basePurchaseBillsForLedger.forEach(pb => {
-            if (ledgerParty !== 'All Parties' && pb.vendor_name !== ledgerParty) return;
+        // ── 3. PURCHASE BILLS (Vendor invoices) — Credit: amount owed to vendor ──
+        if (showVendor) purchaseBills.filter(pb => matchesProject((pb.project_name || '').trim())).forEach(pb => {
+            if (!matchesParty((pb.vendor_name || '').trim())) return;
             entries.push({
                 date: pb.bill_date || pb.created_at || new Date().toISOString(),
-                particulars: `Purchase Bill - ${pb.bill_no}`,
+                type: 'Purchase',
+                particulars: `Purchase Bill - ${pb.bill_no} (${pb.vendor_name})`,
                 debit: 0,
-                credit: pb.total_amount || parseFloat(pb.amount) || 0,
+                credit: parseFloat(pb.total_amount) || 0,
                 party: pb.vendor_name,
                 project: pb.project_name
             });
         });
 
-        // ── Fleet Trips (Sale/Income) ───────────────────────────────
-        trips.forEach(t => {
-            const isProjectTrip = t.tripType === 'Project Trip';
-            const partyName = isProjectTrip ? t.projectName : t.customerName;
+        // ── 4. VENDOR PAYABLES (GRN-based, only if NOT already in purchase bills) ──
+        if (showVendor) payables.filter(p => matchesProject(p.project) && !billedGrnIds.has(p.id)).forEach(p => {
+            if (!p.vendor || p.vendor.toLowerCase() === 'internal') return;
+            if (!matchesParty(p.vendor)) return;
+            entries.push({
+                date: p.date || p.created_at || new Date().toISOString(),
+                type: 'Purchase',
+                particulars: `Purchase (GRN) - ${p.voucher_no}`,
+                debit: 0,
+                credit: parseFloat(p.total_amount) || 0,
+                party: p.vendor,
+                project: p.project
+            });
+        });
+
+        // ── 5. EXPENSES / PAYMENTS (Money paid out) — Debit: cash out ──
+        if (showVendor) expenses.filter(e => matchesProject(e.project)).forEach(e => {
+            const entryParty = e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense');
+            if (!matchesParty(entryParty)) return;
+            const amount = parseFloat(e.amount) || 0;
+            if (amount <= 0) return; // Skip ₹0 pending entries
+
+            const desc = e.grn_id
+                ? `Payment to ${entryParty} - ${payables.find(p => p.id === e.grn_id)?.voucher_no || 'Purchase'}`
+                : `${e.category || 'Expense'}: ${e.description || 'Payment'}`;
+
+            entries.push({
+                date: e.date || e.created_at || new Date().toISOString(),
+                type: e.source === 'labour_salary' ? 'Labour' : (e.grn_id ? 'Payment' : 'Expense'),
+                particulars: desc,
+                debit: amount,
+                credit: 0,
+                party: entryParty,
+                project: e.project
+            });
+        });
+
+        // ── 6. FLEET TRIPS (Income) — Debit: revenue earned ──
+        if (showClient) trips.forEach(t => {
+            const partyName = t.tripType === 'Project Trip' ? t.projectName : t.customerName;
             if (!partyName) return;
-
-            // Global Project Filter
-            if (selectedProject !== 'All Projects') {
-                if (isProjectTrip && t.projectName !== selectedProject) return;
-                // Private trips might not be linked to a project site, usually exclude from project filter
-                if (!isProjectTrip) return;
-            }
-
-            const tParty = partyName.trim().toLowerCase();
-            const lParty = ledgerParty.trim().toLowerCase();
-            
-            if (ledgerParty !== 'All Parties' && tParty !== lParty) return;
-            
+            if (!matchesProject(t.projectName)) return;
+            if (!matchesParty(partyName)) return;
             const revenue = parseFloat(t.totalRevenue || 0);
             if (revenue === 0) return;
 
-            // The Revenue is like a bill (Debit)
             entries.push({
                 date: t.date || t.created_at || new Date().toISOString(),
-                particulars: `Trip Revenue: ${t.loadType || 'Material'} - ${t.vehicleNumber} (${t.tripId})`,
+                type: 'Fleet',
+                particulars: `Trip Revenue - ${t.vehicleNumber} (${t.tripId})`,
                 debit: revenue,
                 credit: 0,
-                party: partyName
+                party: partyName,
+                project: t.projectName
             });
-
-            // If Paid, it's a Credit (payment received)
             if (t.paymentStatus === 'Paid') {
                 entries.push({
                     date: t.date || t.created_at || new Date().toISOString(),
+                    type: 'Fleet Receipt',
                     particulars: `Trip Payment Received - ${t.tripId}`,
                     debit: 0,
                     credit: revenue,
-                    party: partyName
+                    party: partyName,
+                    project: t.projectName
                 });
             }
         });
 
-        // Combined Payments & General Expenses
-        expenses.forEach(e => {
-            if (!matchesProject(e.project)) return;
-
-            let entryParty = 'General Expense';
-            let voucher = null;
-            if (e.grn_id) {
-                voucher = payables.find(p => p.id === e.grn_id);
-                entryParty = e.payee || voucher?.vendor || 'Vendor';
-            } else {
-                entryParty = e.payee || 'General Expense';
-            }
-
-            // Logic for party filtering: strictly matches the payee/vendor
-            const isRelevantParty = ledgerParty === 'All Parties' || entryParty === ledgerParty;
-
-            if (!isRelevantParty) return;
-
-            if (e.grn_id) {
-                entries.push({
-                    date: e.date || e.created_at || new Date().toISOString(),
-                    particulars: `Payment Made - ${voucher?.voucher_no || 'Purchase'}`,
-                    debit: e.amount || 0,
-                    credit: 0,
-                    party: entryParty,
-                    project: e.project
-                });
-            } else {
-                // General expense (Labor, Fuel, etc.)
-                entries.push({
-                    date: e.date || e.created_at || new Date().toISOString(),
-                    particulars: `Expense: ${e.category} - ${e.description || 'Direct Payment'}`,
-                    debit: e.amount || 0,
-                    credit: 0,
-                    party: entryParty,
-                    project: e.project
-                });
-            }
-        });
-
-        // Bug 6.4 - Latest entries should appear on top
+        // Sort by date (latest first)
         entries.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+        // Running balance (oldest first for correct accumulation, then reverse)
+        entries.reverse();
         let runningBalance = 0;
-        return entries.map(e => {
+        entries.forEach(e => {
             runningBalance += (e.debit - e.credit);
-            return { ...e, balance: runningBalance };
+            e.balance = runningBalance;
         });
+        entries.reverse();
+
+        return entries;
     };
 
 
@@ -1432,7 +1475,7 @@ const Finance = () => {
                             </div>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 <div style={{ display: 'flex', background: '#F8FAFC', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                    {['All', 'Client', 'Vendor'].map(type => (
+                                    {['All', 'Client', 'Vendor', 'Expenses'].map(type => (
                                         <button
                                             key={type}
                                             onClick={() => {
@@ -1464,16 +1507,30 @@ const Finance = () => {
                                         icon={Briefcase}
                                     />
                                 </div>
-                                <div style={{ width: '220px' }}>
-                                    <CustomSelect
-                                        options={ledgerParties.map(t => ({ value: t, label: t }))}
-                                        value={ledgerParty}
-                                        onChange={setLedgerParty}
-                                        placeholder={`Select ${ledgerType === 'All' ? 'Party' : ledgerType}`}
-                                        width="full"
-                                        searchable={true}
-                                    />
-                                </div>
+                                {(ledgerType === 'Vendor') && (
+                                    <div style={{ width: '220px' }}>
+                                        <CustomSelect
+                                            options={[{ value: 'All Parties', label: 'All Vendors' }, ...vendorParties.map(t => ({ value: t, label: t }))]}
+                                            value={ledgerParty}
+                                            onChange={setLedgerParty}
+                                            placeholder="Select Vendor"
+                                            width="full"
+                                            searchable={true}
+                                        />
+                                    </div>
+                                )}
+                                {ledgerType !== 'Vendor' && ledgerType !== 'Expenses' && (
+                                    <div style={{ width: '220px' }}>
+                                        <CustomSelect
+                                            options={ledgerParties.map(t => ({ value: t, label: t }))}
+                                            value={ledgerParty}
+                                            onChange={setLedgerParty}
+                                            placeholder={`Select ${ledgerType === 'All' ? 'Party' : ledgerType}`}
+                                            width="full"
+                                            searchable={true}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -1484,34 +1541,248 @@ const Finance = () => {
                             const totalCredit = entries.reduce((s, e) => s + (e.credit || 0), 0);
                             const netBalance = totalDebit - totalCredit;
 
+                            // Project value from project data
+                            const filteredProjects = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
+                            const projectValue = filteredProjects.reduce((s, p) => s + (parseFloat(p.budget || p.projectValue || p.value || 0)), 0);
+                            const projectSpent = filteredProjects.reduce((s, p) => s + (parseFloat(p.spent || 0)), 0);
+
+                            // Category-wise breakdown
+                            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
+                            const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
+                            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
+                            const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+                            const expensesTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+                            const labourTotal = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+                            const pendingReceivable = salesTotal - receiptsTotal;
+                            const pendingPayable = purchaseTotal - paymentsTotal;
+
                             return (
                                 <>
-                                    <div style={{
-                                        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px',
-                                        marginBottom: '24px', backgroundColor: '#F8FAFC', padding: '20px',
-                                        borderRadius: '12px', border: '1px solid var(--border)'
-                                    }}>
-                                        <div style={{ textAlign: 'center' }}>
-                                            <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Debit (Dr)</p>
-                                            <h4 style={{ fontSize: '20px', fontWeight: '900', color: '#EF4444' }}>{fmt(totalDebit)}</h4>
-                                        </div>
-                                        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
-                                            <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Total Credit (Cr)</p>
-                                            <h4 style={{ fontSize: '20px', fontWeight: '900', color: '#10B981' }}>{fmt(totalCredit)}</h4>
-                                        </div>
-                                        <div style={{ textAlign: 'center' }}>
-                                            <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Net Balance</p>
-                                            <h4 style={{ fontSize: '20px', fontWeight: '900', color: 'var(--primary)' }}>
-                                                {fmt(Math.abs(netBalance))} {netBalance >= 0 ? 'Dr' : 'Cr'}
-                                            </h4>
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        const totalExpAll = paymentsTotal + expensesTotal;
+                                        const projBal = projectValue - receiptsTotal;
+                                        const cashBal = receiptsTotal - totalExpAll;
 
+                                        // Build cards based on tab
+                                        // Expense category breakdown for Expenses tab
+                                        const expByCategory = {};
+                                        entries.filter(e => e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour').forEach(e => {
+                                            const cat = (e.particulars || '').includes('Labour') || e.type === 'Labour' ? 'Labour Wages'
+                                                : (e.particulars || '').includes('Payment to') ? 'Material Purchase'
+                                                : (e.particulars || '').match(/Expense:\s*([^-]+)/)?.[1]?.trim() || 'Other';
+                                            if (!expByCategory[cat]) expByCategory[cat] = 0;
+                                            expByCategory[cat] += e.debit;
+                                        });
+
+                                        const allCards = [
+                                            { label: 'Project Value', value: projectValue, border: '#DBEAFE', bg: '#EFF6FF', color: '#1E3A8A', lc: '#1D4ED8', show: ['All', 'Client'] },
+                                            { label: 'Total Received', value: receiptsTotal, border: '#DCFCE7', bg: '#F0FDF4', color: '#166534', lc: '#15803D', show: ['All', 'Client'] },
+                                            { label: 'Total Expenses', value: totalExpAll, border: '#FEE2E2', bg: '#FEF2F2', color: '#991B1B', lc: '#B91C1C', show: ['All', 'Vendor', 'Expenses'] },
+                                            { label: 'Pending Receivable', value: Math.max(0, pendingReceivable), border: '#FEF3C7', bg: '#FFFBEB', color: '#78350F', lc: '#92400E', show: ['All', 'Client'] },
+                                            { label: 'Pending Payable', value: Math.max(0, pendingPayable), border: '#E0E7FF', bg: '#EEF2FF', color: '#3730A3', lc: '#4338CA', show: ['All', 'Vendor'] },
+                                            { label: 'Project Balance (Due)', value: Math.max(0, projBal), border: projBal > 0 ? '#FEF3C7' : '#DCFCE7', bg: projBal > 0 ? '#FFFBEB' : '#F0FDF4', color: projBal > 0 ? '#78350F' : '#166534', lc: projBal > 0 ? '#92400E' : '#15803D', show: ['All', 'Client'] },
+                                            { label: 'Cash Balance', value: cashBal, border: cashBal >= 0 ? '#DCFCE7' : '#FEE2E2', bg: cashBal >= 0 ? '#F0FDF4' : '#FEF2F2', color: cashBal >= 0 ? '#166534' : '#991B1B', lc: cashBal >= 0 ? '#15803D' : '#B91C1C', show: ['All'] },
+                                            { label: 'Total Purchased', value: purchaseTotal, border: '#E0E7FF', bg: '#EEF2FF', color: '#3730A3', lc: '#4338CA', show: ['Vendor'] },
+                                            { label: 'Paid to Vendors', value: paymentsTotal, border: '#DCFCE7', bg: '#F0FDF4', color: '#166534', lc: '#15803D', show: ['Vendor'] },
+                                            { label: 'Material Purchase', value: expByCategory['Material Purchase'] || 0, border: '#E0E7FF', bg: '#EEF2FF', color: '#3730A3', lc: '#4338CA', show: ['Expenses'] },
+                                            { label: 'Labour Wages', value: expByCategory['Labour Wages'] || 0, border: '#FCE7F3', bg: '#FDF2F8', color: '#9D174D', lc: '#EC4899', show: ['Expenses'] },
+                                            ...Object.entries(expByCategory).filter(([k]) => k !== 'Material Purchase' && k !== 'Labour Wages' && k !== 'Other').map(([k, v]) => (
+                                                { label: k, value: v, border: '#FEF3C7', bg: '#FFFBEB', color: '#78350F', lc: '#92400E', show: ['Expenses'] }
+                                            )),
+                                            { label: 'Other Expenses', value: expByCategory['Other'] || 0, border: '#F1F5F9', bg: '#F8FAFC', color: '#475569', lc: '#64748B', show: ['Expenses'] },
+                                        ].filter(c => !(c.show.includes('Expenses') && !c.show.includes('All') && c.value === 0));
+                                        const visibleCards = allCards.filter(c => c.show.includes(ledgerType));
+
+                                        return (
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                                                {visibleCards.map((c, i) => (
+                                                    <div key={i} style={{ padding: '14px 16px', borderRadius: 10, border: `1px solid ${c.border}`, backgroundColor: c.bg }}>
+                                                        <div style={{ fontSize: 11, color: c.lc, fontWeight: 600, marginBottom: 2 }}>{c.label}</div>
+                                                        <div style={{ fontSize: 20, fontWeight: 900, color: c.color }}>{fmt(c.value)}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Debit / Credit / Net — show on All and Client */}
+                                    {(ledgerType === 'All' || ledgerType === 'Client') && (
+                                        <div style={{
+                                            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16,
+                                            marginBottom: 16, backgroundColor: '#F8FAFC', padding: 20,
+                                            borderRadius: 12, border: '1px solid var(--border)'
+                                        }}>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Total Debit (Dr)</p>
+                                                <h4 style={{ fontSize: 20, fontWeight: 900, color: '#EF4444' }}>{fmt(totalDebit)}</h4>
+                                            </div>
+                                            <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
+                                                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Total Credit (Cr)</p>
+                                                <h4 style={{ fontSize: 20, fontWeight: 900, color: '#10B981' }}>{fmt(totalCredit)}</h4>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Net Balance</p>
+                                                <h4 style={{ fontSize: 20, fontWeight: 900, color: 'var(--primary)' }}>{fmt(Math.abs(netBalance))} {netBalance >= 0 ? 'Dr' : 'Cr'}</h4>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Expenses Tab: grouped by category */}
+                                    {ledgerType === 'Expenses' ? (
+                                        <div>
+                                            {(() => {
+                                                const expEntries = entries.filter(e => e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour');
+                                                if (expEntries.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>No expense entries found.</div>;
+
+                                                // Group by category
+                                                const catMap = {};
+                                                expEntries.forEach(e => {
+                                                    const cat = (e.particulars || '').includes('Labour') || e.type === 'Labour' ? 'Labour Wages'
+                                                        : (e.particulars || '').includes('Payment to') ? 'Material Purchase'
+                                                        : (e.particulars || '').match(/Expense:\s*([^-]+)/)?.[1]?.trim() || 'Other';
+                                                    if (!catMap[cat]) catMap[cat] = { entries: [], total: 0 };
+                                                    catMap[cat].entries.push(e);
+                                                    catMap[cat].total += e.debit;
+                                                });
+
+                                                return Object.entries(catMap).sort((a, b) => b[1].total - a[1].total).map(([catName, data]) => {
+                                                    const catColors = { 'Material Purchase': '#3B82F6', 'Labour Wages': '#EC4899', 'Site Office': '#F59E0B', 'Fuel/Diesel': '#EF4444', 'Other': '#64748B' };
+                                                    const accent = catColors[catName] || '#8B5CF6';
+                                                    return (
+                                                        <div key={catName} style={{ marginBottom: 16, border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
+                                                            <div style={{ padding: '14px 20px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                                    <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: accent }} />
+                                                                    <span style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>{catName}</span>
+                                                                    <span style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>({data.entries.length} entries)</span>
+                                                                </div>
+                                                                <span style={{ fontSize: 18, fontWeight: 900, color: accent }}>{fmt(data.total)}</span>
+                                                            </div>
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                                <thead>
+                                                                    <tr style={{ backgroundColor: '#F1F5F9' }}>
+                                                                        <th style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Date</th>
+                                                                        <th style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Project</th>
+                                                                        <th style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Description</th>
+                                                                        <th style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Party</th>
+                                                                        <th style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'right' }}>Amount</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {data.entries.map((e, i) => (
+                                                                        <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                                            <td style={{ padding: '10px 16px', fontSize: 13, whiteSpace: 'nowrap' }}>{new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                                                            <td style={{ padding: '10px 16px', fontSize: 12, fontWeight: 700, color: 'var(--primary)' }}>{e.project || 'General'}</td>
+                                                                            <td style={{ padding: '10px 16px', fontSize: 12 }}>{e.particulars}</td>
+                                                                            <td style={{ padding: '10px 16px', fontSize: 12, color: '#64748B' }}>{e.party}</td>
+                                                                            <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: '#EF4444' }}>{fmt(e.debit)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    ) :
+
+                                    /* Vendor Tab: grouped by vendor */
+                                    ledgerType === 'Vendor' ? (
+                                        <div>
+                                            {(() => {
+                                                // Known vendor names from payables + purchase bills
+                                                const knownVendors = new Set();
+                                                payables.forEach(p => { if (p.vendor) knownVendors.add(p.vendor.trim()); });
+                                                purchaseBills.forEach(pb => { if (pb.vendor_name) knownVendors.add(pb.vendor_name.trim()); });
+
+                                                // Group entries by vendor — only actual vendors
+                                                const vendorMap = {};
+                                                entries.forEach(e => {
+                                                    const rawParty = (e.party || '').trim();
+                                                    // Only group under vendor if party is a known vendor
+                                                    const isVendor = knownVendors.has(rawParty);
+                                                    if (!isVendor && e.type !== 'Purchase') return; // Skip non-vendor expenses
+                                                    const v = isVendor ? rawParty : (rawParty || 'Unknown Vendor');
+                                                    if (!vendorMap[v]) vendorMap[v] = { entries: [], purchased: 0, paid: 0 };
+                                                    vendorMap[v].entries.push(e);
+                                                    if (e.type === 'Purchase') vendorMap[v].purchased += e.credit;
+                                                    if (e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour') vendorMap[v].paid += e.debit;
+                                                });
+                                                const vendorList = Object.entries(vendorMap)
+                                                    .filter(([name]) => ledgerParty === 'All Parties' || name === ledgerParty)
+                                                    .sort((a, b) => b[1].purchased - a[1].purchased);
+                                                if (vendorList.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>No vendor entries found.</div>;
+                                                return vendorList.map(([vendorName, data]) => {
+                                                    const balance = data.purchased - data.paid;
+                                                    return (
+                                                        <div key={vendorName} style={{ marginBottom: 20, border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
+                                                            {/* Vendor Header */}
+                                                            <div style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+                                                                <div style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>{vendorName}</div>
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                                                                    <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: 'white', border: '1px solid #E2E8F0' }}>
+                                                                        <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>TOTAL PURCHASED</div>
+                                                                        <div style={{ fontSize: 16, fontWeight: 900, color: '#8B5CF6' }}>{fmt(data.purchased)}</div>
+                                                                    </div>
+                                                                    <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: 'white', border: '1px solid #E2E8F0' }}>
+                                                                        <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>TOTAL PAID</div>
+                                                                        <div style={{ fontSize: 16, fontWeight: 900, color: '#10B981' }}>{fmt(data.paid)}</div>
+                                                                    </div>
+                                                                    <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: 'white', border: '1px solid #E2E8F0' }}>
+                                                                        <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>BALANCE</div>
+                                                                        <div style={{ fontSize: 16, fontWeight: 900, color: balance > 0 ? '#EF4444' : '#10B981' }}>{fmt(Math.abs(balance))}</div>
+                                                                    </div>
+                                                                    <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: 'white', border: '1px solid #E2E8F0' }}>
+                                                                        <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>STATUS</div>
+                                                                        <div style={{ fontSize: 13, fontWeight: 700, color: balance <= 0 ? '#10B981' : '#F59E0B' }}>{balance <= 0 ? 'Settled' : 'Outstanding'}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            {/* Transaction Table */}
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                                                <thead>
+                                                                    <tr style={{ backgroundColor: '#F1F5F9' }}>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Date</th>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Activity Type</th>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Reference</th>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Project</th>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'right' }}>Amount</th>
+                                                                        <th style={{ padding: '10px 16px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'center' }}>Status</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {data.entries.map((e, i) => {
+                                                                        const statusColors = { Purchase: { bg: '#FEF3C7', color: '#92400E', label: 'INVOICED' }, Payment: { bg: '#DCFCE7', color: '#15803D', label: 'PAID' }, Expense: { bg: '#DCFCE7', color: '#15803D', label: 'PAID' }, Labour: { bg: '#DCFCE7', color: '#15803D', label: 'PAID' } };
+                                                                        const st = statusColors[e.type] || { bg: '#F1F5F9', color: '#475569', label: e.type };
+                                                                        return (
+                                                                            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                                                <td style={{ padding: '10px 16px', fontSize: 13 }}>{new Date(e.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                                                                <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 600 }}>{e.type}</td>
+                                                                                <td style={{ padding: '10px 16px', fontSize: 12, color: '#3B82F6', fontWeight: 600 }}>{e.particulars}</td>
+                                                                                <td style={{ padding: '10px 16px', fontSize: 12 }}>{e.project || 'General'}</td>
+                                                                                <td style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700, textAlign: 'right', color: e.debit > 0 ? '#EF4444' : '#10B981' }}>{fmt(e.debit || e.credit)}</td>
+                                                                                <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+                                                                                    <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700, backgroundColor: st.bg, color: st.color }}>{st.label}</span>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    );
+                                                });
+                                            })()}
+                                        </div>
+                                    ) : (
+                                    /* All / Client Tab: standard ledger table */
                                     <div style={{ overflowX: 'auto' }}>
                                         <table className="data-table">
                                             <thead>
                                                 <tr>
                                                     <th>Date</th>
+                                                    <th>Type</th>
                                                     <th>Project</th>
                                                     <th>Particulars</th>
                                                     <th>Party</th>
@@ -1521,26 +1792,31 @@ const Finance = () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {entries.slice((ledgerPage - 1) * FIN_PAGE_SIZE, ledgerPage * FIN_PAGE_SIZE).map((entry, i) => (
+                                                {entries.slice((ledgerPage - 1) * FIN_PAGE_SIZE, ledgerPage * FIN_PAGE_SIZE).map((entry, i) => {
+                                                    const typeColors = { Sales: '#3B82F6', Receipt: '#10B981', Purchase: '#8B5CF6', Payment: '#EF4444', Expense: '#64748B', Labour: '#EC4899', Fleet: '#F59E0B', 'Fleet Receipt': '#10B981' };
+                                                    return (
                                                     <tr key={i}>
-                                                        <td style={{ fontSize: '13px' }}>{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                                        <td style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                                                        <td><span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, backgroundColor: `${typeColors[entry.type] || '#64748B'}15`, color: typeColors[entry.type] || '#64748B' }}>{entry.type}</span></td>
                                                         <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '11px' }}>{entry.project || 'General'}</td>
-                                                        <td style={{ fontWeight: '600' }}>{entry.particulars}</td>
-                                                        <td>{entry.party}</td>
+                                                        <td style={{ fontWeight: '600', fontSize: '12px' }}>{entry.particulars}</td>
+                                                        <td style={{ fontSize: '12px' }}>{entry.party}</td>
                                                         <td style={{ textAlign: 'right', color: '#EF4444', fontWeight: '600' }}>{entry.debit > 0 ? fmt(entry.debit) : '—'}</td>
                                                         <td style={{ textAlign: 'right', color: '#10B981', fontWeight: '600' }}>{entry.credit > 0 ? fmt(entry.credit) : '—'}</td>
-                                                        <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(entry.balance)} {entry.balance >= 0 ? 'Dr' : 'Cr'}</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(Math.abs(entry.balance))} {entry.balance >= 0 ? 'Dr' : 'Cr'}</td>
                                                     </tr>
-                                                ))}
+                                                    );
+                                                })}
                                                 {entries.length === 0 && (
                                                     <tr>
-                                                        <td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No ledger entries found.</td>
+                                                        <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No ledger entries found.</td>
                                                     </tr>
                                                 )}
                                             </tbody>
                                         </table>
                                         <Pagination currentPage={ledgerPage} totalItems={entries.length} pageSize={FIN_PAGE_SIZE} onPageChange={setLedgerPage} />
                                     </div>
+                                    )}
                                 </>
                             );
                         })()}

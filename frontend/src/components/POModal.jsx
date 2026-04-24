@@ -26,6 +26,30 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
     const [isVendorDropdownOpen, setIsVendorDropdownOpen] = useState(false);
     const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
 
+    // Warehouse stock info (read-only)
+    const [warehouseStock, setWarehouseStock] = useState({});
+
+    const checkWarehouseForItems = async (itemsList) => {
+        try {
+            const names = itemsList.map(it => it.name).filter(Boolean);
+            if (!names.length) return;
+            const res = await inventoryAPI.checkWarehouseAvailability({ material_names: names });
+            const whData = res.data || {};
+            setWarehouseStock(whData);
+            // Auto-fill rate from last purchase if item has no rate
+            const updatedItems = itemsList.map(it => {
+                const wh = whData[it.name];
+                if (wh?.last_rate > 0 && (!it.rate || it.rate === '' || parseFloat(it.rate) === 0)) {
+                    return { ...it, rate: wh.last_rate };
+                }
+                return it;
+            });
+            setItems(updatedItems);
+        } catch (err) {
+            console.warn('Warehouse check failed:', err);
+        }
+    };
+
     useEffect(() => {
         if (isOpen) {
             projectAPI.getAll().then(res => setProjects(res.data || [])).catch(() => { });
@@ -68,13 +92,15 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 is_consolidated: false,
                 is_direct: false
             });
-            setItems(req.requested_items.map(it => ({
+            const newItems = req.requested_items.map(it => ({
                 id: Date.now() + Math.random(),
                 name: it.name,
                 qty: it.quantity,
                 unit: it.unit,
                 rate: ''
-            })));
+            }));
+            setItems(newItems);
+            checkWarehouseForItems(newItems);
         }
     };
 
@@ -89,14 +115,16 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 is_direct: false,
                 notes: `Consolidated from: ${con.sites.join(', ')}`
             });
-            setItems(con.items.map(it => ({
+            const newItems = con.items.map(it => ({
                 id: Date.now() + Math.random(),
                 name: it.name,
                 qty: it.quantity,
                 unit: it.unit,
                 site_quantities: it.site_quantities || null,
                 rate: ''
-            })));
+            }));
+            setItems(newItems);
+            checkWarehouseForItems(newItems);
         }
     };
 
@@ -147,11 +175,12 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 total_amount: total_amount || 0,
                 status: 'Pending'
             });
+            alert('Purchase order created successfully.');
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
             console.error('Failed to create PO:', err);
-            alert('Failed to save purchase order.');
+            alert(err.response?.data?.detail || 'Failed to save purchase order.');
         } finally {
             setIsSaving(false);
         }
@@ -355,9 +384,10 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                         <table className="data-table" style={{ border: '1px solid var(--border)' }}>
                             <thead style={{ backgroundColor: '#f8fafc' }}>
                                 <tr>
-                                    <th style={{ width: '40%' }}>Material Name</th>
-                                    <th>Quantity</th>
+                                    <th style={{ width: '30%' }}>Material Name</th>
+                                    <th>Qty</th>
                                     <th>Unit</th>
+                                    <th>Warehouse</th>
                                     <th>Rate (₹)</th>
                                     <th>Subtotal (₹)</th>
                                     <th style={{ width: '50px' }}></th>
@@ -410,6 +440,24 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                         </td>
                                         <td style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
                                             {item.unit}
+                                        </td>
+                                        <td>
+                                            {(() => {
+                                                const wh = warehouseStock[item.name];
+                                                const whQty = wh?.stock || 0;
+                                                const reqQty = parseFloat(item.qty || 0);
+                                                const sufficient = whQty >= reqQty && reqQty > 0;
+                                                if (!item.name || !wh) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
+                                                return (
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                                        backgroundColor: sufficient ? '#DCFCE7' : whQty > 0 ? '#FEF3C7' : '#FEE2E2',
+                                                        color: sufficient ? '#15803D' : whQty > 0 ? '#92400E' : '#B91C1C',
+                                                    }} title={sufficient ? 'Available in warehouse — use Inventory → Send to Site' : ''}>
+                                                        {whQty}
+                                                    </span>
+                                                );
+                                            })()}
                                         </td>
                                         <td>
                                             <input
