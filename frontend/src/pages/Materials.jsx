@@ -13,6 +13,7 @@ import CreateMaterialModal from '../components/CreateMaterialModal';
 import StockRequestModal from '../components/StockRequestModal';
 import StockIssueModal from '../components/StockIssueModal';
 import StockReturnModal from '../components/StockReturnModal';
+import DirectIssueModal from '../components/DirectIssueModal';
 import MaterialTransferModal from '../components/MaterialTransferModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
@@ -77,6 +78,7 @@ const Materials = () => {
     const [isStockRequestOpen, setIsStockRequestOpen] = useState(false);
     const [isStockIssueOpen, setIsStockIssueOpen] = useState(false);
     const [isStockReturnOpen, setIsStockReturnOpen] = useState(false);
+    const [isDirectIssueOpen, setIsDirectIssueOpen] = useState(false);
     const MAT_PAGE_SIZE = 20;
     const [invPage, setInvPage] = useState(1);
     const [whPage, setWhPage] = useState(1);
@@ -437,6 +439,9 @@ const Materials = () => {
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '0 0 auto', justifyContent: 'flex-end' }}>
                                 <button className="btn btn-outline" onClick={() => setIsCreateMaterialOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                     <Plus size={18} /> ADD MASTER MATERIAL
+                                </button>
+                                <button className="btn btn-outline" onClick={() => setIsDirectIssueOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px', backgroundColor: '#EFF6FF', borderColor: '#3B82F6', color: '#1D4ED8' }}>
+                                    <Truck size={18} /> SEND TO SITE
                                 </button>
                                 <button className="btn btn-outline" onClick={() => setIsStockReturnOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                     <ArrowDownLeft size={18} /> RECORD RETURN
@@ -843,6 +848,7 @@ const Materials = () => {
             <StockRequestModal isOpen={isStockRequestOpen} onClose={() => setIsStockRequestOpen(false)} onSuccess={() => { fetchStockRequests(); setIsStockRequestOpen(false); }} />
             {selectedRequest && <StockIssueModal isOpen={isStockIssueOpen} onClose={() => setIsStockIssueOpen(false)} request={selectedRequest} onSuccess={() => { fetchStockRequests(); fetchWarehouseStock(); setIsStockIssueOpen(false); }} />}
             <StockReturnModal isOpen={isStockReturnOpen} onClose={() => setIsStockReturnOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsStockReturnOpen(false); }} />
+            <DirectIssueModal isOpen={isDirectIssueOpen} onClose={() => setIsDirectIssueOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsDirectIssueOpen(false); }} />
             <MaterialTransferModal isOpen={isMaterialTransferOpen} onClose={() => setIsMaterialTransferOpen(false)} onSuccess={() => { fetchInventory(currentProjectName); setIsMaterialTransferOpen(false); }} />
         </div>
     );

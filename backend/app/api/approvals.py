@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Dict, Any
 import re
+from datetime import datetime
 from database import get_database
 from app.utils.auth import get_current_user, validate_object_id
 from app.utils.rbac import RBACPermission
@@ -171,6 +172,75 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             await db.purchase_orders.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "materials":
             await db.material_requests.update_one({"_id": oid}, {"$set": update_fields})
+            # If approved AND this is a warehouse_issue request → auto-issue from warehouse
+            if status == "Approved":
+                mat_req = await db.material_requests.find_one({"_id": oid})
+                if mat_req and mat_req.get("warehouse_issue") and mat_req.get("status") != "Issued":
+                    project_name = mat_req.get("project_name", "")
+                    total_value = 0
+                    issued = []
+                    for item in mat_req.get("requested_items", []):
+                        qty = float(item.get("quantity", 0))
+                        if qty <= 0:
+                            continue
+                        # Atomic warehouse decrement
+                        res = await db.warehouse_inventory.update_one(
+                            {"material_name": item["name"], "stock": {"$gte": qty}},
+                            {"$inc": {"stock": -qty}},
+                        )
+                        if res.matched_count == 0:
+                            continue  # Skip if insufficient stock
+                        # Increment site inventory
+                        await db.inventory.update_one(
+                            {"project_name": project_name, "material_name": item["name"]},
+                            {"$inc": {"stock": qty}, "$set": {"unit": item.get("unit", "Nos")}},
+                            upsert=True,
+                        )
+                        # Rate for value calc
+                        rate = float(item.get("rate", 0) or 0)
+                        if not rate:
+                            last_bill = await db.purchase_bills.find_one({"items.name": item["name"]}, sort=[("bill_date", -1)])
+                            if last_bill:
+                                for bi in last_bill.get("items", []):
+                                    if bi["name"] == item["name"] and bi.get("rate"):
+                                        rate = float(bi["rate"])
+                                        break
+                        total_value += qty * rate
+                        # Stock ledger
+                        await db.stock_ledger.insert_one({
+                            "date": datetime.now(),
+                            "material_name": item["name"],
+                            "project_name": project_name,
+                            "type": "Warehouse Issue (Approved)",
+                            "ref": f"WH-APR-{str(oid)[-6:].upper()}",
+                            "in_qty": qty,
+                            "out_qty": qty,
+                            "created_at": datetime.now(),
+                        })
+                        issued.append({"name": item["name"], "quantity": qty, "unit": item.get("unit", "Nos")})
+                    # Update project spending
+                    if total_value > 0:
+                        await db.projects.update_one({"name": project_name}, {"$inc": {"spent": total_value}})
+                    # Create expense record so it shows in Finance Ledger
+                    if total_value > 0:
+                        await db.expenses.insert_one({
+                            "category": "Material (Warehouse)",
+                            "amount": total_value,
+                            "project": project_name,
+                            "payee": "Warehouse",
+                            "paymentMode": "Internal Transfer",
+                            "description": f"Warehouse issue: {', '.join(i['name'] + ' x' + str(i['quantity']) for i in issued)}",
+                            "date": datetime.now().strftime("%Y-%m-%d"),
+                            "base_amount": total_value,
+                            "gst_amount": 0,
+                            "source": "warehouse_issue",
+                        })
+
+                    # Update request as issued
+                    await db.material_requests.update_one(
+                        {"_id": oid},
+                        {"$set": {"status": "Issued", "issued_items": issued, "issued_at": datetime.now()}}
+                    )
         elif type == "expenses":
             await db.expenses.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "manpower":
@@ -183,7 +253,6 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             if len(parts) != 2:
                 raise HTTPException(status_code=400, detail="DPR ID must be in format project_id:dpr_id")
             project_id, dpr_id = parts
-            from datetime import datetime
 
             user_role = (current_user.get("role") or "").strip()
             approver_name = update_fields["approvedBy"]
@@ -231,4 +300,6 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
         
         return {"message": "Success", "status": status}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

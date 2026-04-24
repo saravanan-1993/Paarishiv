@@ -11,13 +11,16 @@ from app.utils.rbac import RBACPermission
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 class MaterialRequestCreate(BaseModel):
-    project_id: str
+    project_id: str = ""
     project_name: str
-    engineer_id: str
+    engineer_id: str = ""
     requested_items: List[dict] # [{"name": "Switch", "quantity": 50, "unit": "Nos"}]
     priority: str = "Medium"
     required_by_date: Optional[str] = ""
     coordinator_remarks: Optional[str] = ""
+    source: Optional[str] = ""
+    warehouse_issue: Optional[bool] = False
+    parent_request_id: Optional[str] = ""
 
 class StockIssue(BaseModel):
     issued_items: List[dict] # [{"name": "Switch", "quantity": 50, "unit": "Nos"}]
@@ -645,4 +648,202 @@ async def reject_transfer(transfer_id: str, db = Depends(get_database), current_
         }}
     )
     return {"success": True}
+
+
+# ── Warehouse-Aware PO Flow ──────────────────────────────────────────────────
+
+class WarehouseCheckRequest(BaseModel):
+    material_names: List[str]
+
+class WarehouseBulkIssueItem(BaseModel):
+    name: str
+    quantity: float
+    unit: str = "Nos"
+
+class WarehouseBulkIssue(BaseModel):
+    request_id: Optional[str] = ""
+    project_name: str
+    items: List[WarehouseBulkIssueItem]
+
+
+@router.post("/warehouse/check-availability")
+async def check_warehouse_availability(
+    payload: WarehouseCheckRequest,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Check warehouse stock + last purchase rate for a list of materials."""
+    # Get last known rates from purchase bills
+    bills = await db.purchase_bills.find().sort("bill_date", -1).to_list(500)
+    rate_map = {}
+    for b in bills:
+        for bi in b.get("items", []):
+            name = bi.get("name", "")
+            rate = float(bi.get("rate", 0) or 0)
+            if name and rate > 0 and name not in rate_map:
+                rate_map[name] = rate
+    # Also check PO rates as fallback
+    pos = await db.purchase_orders.find().sort("created_at", -1).to_list(500)
+    for po in pos:
+        for pi in po.get("items", []):
+            name = pi.get("name", "")
+            rate = float(pi.get("rate", 0) or 0)
+            if name and rate > 0 and name not in rate_map:
+                rate_map[name] = rate
+
+    result = {}
+    for name in payload.material_names:
+        wh = await db.warehouse_inventory.find_one({"material_name": name})
+        result[name] = {
+            "stock": float(wh.get("stock", 0)) if wh else 0,
+            "unit": wh.get("unit", "Nos") if wh else "Nos",
+            "last_rate": rate_map.get(name, 0),
+        }
+    return result
+
+
+@router.post("/warehouse/bulk-issue")
+async def bulk_warehouse_issue(
+    payload: WarehouseBulkIssue,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Issue materials from warehouse to a project site during PO creation.
+    Items available in warehouse are issued directly; remaining go to PO."""
+    issued = []
+    total_value = 0
+
+    for item in payload.items:
+        qty = float(item.quantity)
+        if qty <= 0:
+            continue
+
+        # Atomic check-and-decrement (same pattern as issue_stock)
+        res = await db.warehouse_inventory.update_one(
+            {"material_name": item.name, "stock": {"$gte": qty}},
+            {"$inc": {"stock": -qty}},
+        )
+        if res.matched_count == 0:
+            wh = await db.warehouse_inventory.find_one({"material_name": item.name})
+            available = float(wh.get("stock", 0)) if wh else 0
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient warehouse stock for '{item.name}'. Available: {available}, Requested: {qty}",
+            )
+
+        # Increment site inventory
+        await db.inventory.update_one(
+            {"project_name": payload.project_name, "material_name": item.name},
+            {"$inc": {"stock": qty}, "$set": {"unit": item.unit}},
+            upsert=True,
+        )
+
+        # Find last known rate for value calculation
+        rate = 0
+        last_bill = await db.purchase_bills.find_one(
+            {"items.name": item.name}, sort=[("bill_date", -1)]
+        )
+        if last_bill:
+            for bi in last_bill.get("items", []):
+                if bi["name"] == item.name and bi.get("rate"):
+                    rate = float(bi["rate"])
+                    break
+        item_value = qty * rate
+        total_value += item_value
+
+        # Stock ledger entry
+        await db.stock_ledger.insert_one({
+            "date": datetime.now(),
+            "material_name": item.name,
+            "project_name": payload.project_name,
+            "type": "Warehouse Issue",
+            "ref": f"WH-{payload.request_id[-6:].upper()}" if payload.request_id else f"WH-DIRECT-{datetime.now().strftime('%H%M%S')}",
+            "in_qty": qty,
+            "out_qty": qty,
+            "created_at": datetime.now(),
+        })
+
+        issued.append({"name": item.name, "quantity": qty, "unit": item.unit, "value": item_value})
+
+    # Update project spending
+    if total_value > 0:
+        await db.projects.update_one(
+            {"name": payload.project_name},
+            {"$inc": {"spent": total_value}},
+        )
+
+    # Mark warehouse-issued items on the material request
+    if payload.request_id and ObjectId.is_valid(payload.request_id):
+        await db.material_requests.update_one(
+            {"_id": ObjectId(payload.request_id)},
+            {"$set": {"warehouse_issued_items": issued, "warehouse_issued_at": datetime.now()}},
+        )
+
+    return {"success": True, "issued_count": len(issued), "issued_items": issued, "total_value": total_value}
+
+
+@router.get("/report/material-wise")
+async def material_wise_report(
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Comprehensive material stock report: warehouse + site-wise qty + last rate + value."""
+    materials = await db.materials.find().to_list(500)
+    wh_items = await db.warehouse_inventory.find().to_list(500)
+    site_items = await db.inventory.find().to_list(2000)
+    bills = await db.purchase_bills.find().sort("bill_date", -1).to_list(500)
+
+    # Build lookups
+    wh_map = {w["material_name"]: float(w.get("stock", 0)) for w in wh_items}
+    site_map = {}  # material → {project: qty}
+    for s in site_items:
+        mat = s.get("material_name", "")
+        proj = s.get("project_name", "")
+        qty = float(s.get("stock", 0))
+        if qty <= 0:
+            continue
+        if mat not in site_map:
+            site_map[mat] = {}
+        site_map[mat][proj] = site_map[mat].get(proj, 0) + qty
+
+    # Rate from latest purchase bill
+    rate_map = {}
+    for b in bills:
+        for bi in b.get("items", []):
+            name = bi.get("name", "")
+            rate = float(bi.get("rate", 0) or 0)
+            if name and rate > 0 and name not in rate_map:
+                rate_map[name] = rate
+
+    report = []
+    seen = set()
+    # Include all materials from master + any with stock
+    all_names = set(m.get("name", "") for m in materials)
+    all_names.update(wh_map.keys())
+    all_names.update(site_map.keys())
+
+    for name in sorted(all_names):
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        mat = next((m for m in materials if m.get("name") == name), {})
+        wh_qty = wh_map.get(name, 0)
+        sites = site_map.get(name, {})
+        total_site = sum(sites.values())
+        total_qty = wh_qty + total_site
+        rate = rate_map.get(name, 0)
+
+        report.append({
+            "material_name": name,
+            "category": mat.get("category", ""),
+            "unit": mat.get("unit", "Nos"),
+            "warehouse_qty": wh_qty,
+            "site_stocks": sites,
+            "total_site_qty": total_site,
+            "total_qty": total_qty,
+            "last_rate": rate,
+            "total_value": round(total_qty * rate, 2),
+        })
+
+    return report
 

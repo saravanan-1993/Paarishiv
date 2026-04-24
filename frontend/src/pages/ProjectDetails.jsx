@@ -22,7 +22,8 @@ import {
     Eye,
     Bell,
     Settings,
-    Activity
+    Activity,
+    Package
 } from 'lucide-react';
 import WorkflowTracking from '../components/WorkflowTracking';
 import AddTaskModal from '../components/AddTaskModal';
@@ -32,7 +33,7 @@ import DPRModal from '../components/DPRModal';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import EditProjectModal from '../components/EditProjectModal';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI } from '../utils/api';
+import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, materialAPI } from '../utils/api';
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
@@ -404,6 +405,8 @@ const ProjectDetails = () => {
     const [editingLabourRecord, setEditingLabourRecord] = useState(null);
     const [labourSummary, setLabourSummary] = useState(null);
     const [isUrgentMaterialOpen, setIsUrgentMaterialOpen] = useState(false);
+    const [siteMaterials, setSiteMaterials] = useState([]);
+    const [siteMaterialsLoading, setSiteMaterialsLoading] = useState(false);
 
     const reloadProject = async () => {
         try {
@@ -500,17 +503,35 @@ const ProjectDetails = () => {
             { name: `DPR (${dprCount})`, icon: FileText },
             { name: 'Financials', icon: Wallet },
             { name: `Documents (${docCount})`, icon: Briefcase },
+            { name: 'Site Materials', icon: Package },
             { name: 'Labour Attendance', icon: Users },
             { name: 'Workflow Tracking', icon: Activity },
         ];
 
         return allTabs.filter(t => {
             const tabName = t.name.split(' (')[0];
-            // Labour Attendance is available to all users who can view the project
+            if (tabName === 'Site Materials') return hasPermission(user, 'Projects', 'view');
             if (tabName === 'Labour Attendance') return hasPermission(user, 'Projects', 'view');
             return hasSubTabAccess(user, 'Projects', tabName);
         });
     }, [user, taskCount, dprCount, docCount]);
+
+    // Load site materials when Site Materials tab is active
+    const loadSiteMaterials = async () => {
+        if (!project) return;
+        setSiteMaterialsLoading(true);
+        try {
+            const res = await materialAPI.getInventoryByProject(project.name);
+            setSiteMaterials((res.data || []).filter(m => (m.stock || 0) > 0));
+        } catch (err) {
+            console.error('Failed to load site materials:', err);
+        }
+        setSiteMaterialsLoading(false);
+    };
+
+    useEffect(() => {
+        if (activeTab === 'Site Materials' && project) loadSiteMaterials();
+    }, [activeTab, project?.name]);
 
     // Load labour data when Labour Attendance tab is active
     const loadLabourData = async () => {
@@ -1179,6 +1200,53 @@ const ProjectDetails = () => {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Site Materials Tab */}
+                {activeTab === 'Site Materials' && (
+                    <div className="card animate-fade-in">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center' }}>
+                            <div>
+                                <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Site Materials</h2>
+                                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Materials currently at this project site</p>
+                            </div>
+                        </div>
+                        {siteMaterialsLoading ? (
+                            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
+                                <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+                                <div style={{ marginTop: 8 }}>Loading site materials...</div>
+                            </div>
+                        ) : siteMaterials.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+                                <Package size={64} style={{ margin: '0 auto 24px', opacity: 0.4 }} />
+                                <h4 style={{ fontWeight: 700, marginBottom: 8, color: 'var(--text-main)' }}>No Materials at Site</h4>
+                                <p style={{ fontSize: 14, marginBottom: 24 }}>Materials will appear here when issued from warehouse or received via GRN.</p>
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                            <th style={{ padding: '12px 14px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'left' }}>Material Name</th>
+                                            <th style={{ padding: '12px 14px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'center' }}>Stock</th>
+                                            <th style={{ padding: '12px 14px', fontSize: 11, fontWeight: 700, color: '#64748B', textAlign: 'center' }}>Unit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {siteMaterials.map((m, i) => (
+                                            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                <td style={{ padding: '12px 14px', fontSize: 14, fontWeight: 700 }}>{m.material_name}</td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                    <span style={{ padding: '4px 12px', borderRadius: 8, fontSize: 14, fontWeight: 800, backgroundColor: '#DCFCE7', color: '#15803D' }}>{m.stock}</span>
+                                                </td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'center', color: '#64748B' }}>{m.unit || 'Nos'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
