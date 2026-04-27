@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { ChevronDown, Search, Check, Plus } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const CustomSelect = ({
     options = [],
@@ -20,7 +20,10 @@ const CustomSelect = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
     const dropdownRef = useRef(null);
+    const buttonRef = useRef(null);
+    const portalRef = useRef(null);
 
     // Normalize options to { value, label }
     const normalizedOptions = options.map(opt => {
@@ -41,19 +44,46 @@ const CustomSelect = ({
         return labelText.includes(searchQuery.toLowerCase());
     });
 
+    // Calculate dropdown position relative to viewport
+    const updatePosition = useCallback(() => {
+        if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const dropdownHeight = 320; // max-height of dropdown
+            const openAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+
+            setDropdownPos({
+                top: openAbove ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
+                left: rect.left,
+                width: rect.width,
+                openAbove
+            });
+        }
+    }, []);
+
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+                portalRef.current && !portalRef.current.contains(event.target)) {
                 setIsOpen(false);
             }
         };
         if (isOpen) {
+            updatePosition();
             document.addEventListener('mousedown', handleClickOutside);
+            window.addEventListener('scroll', updatePosition, true);
+            window.addEventListener('resize', updatePosition);
         } else {
             document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', updatePosition, true);
+            window.removeEventListener('resize', updatePosition);
         }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen]);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('scroll', updatePosition, true);
+            window.removeEventListener('resize', updatePosition);
+        };
+    }, [isOpen, updatePosition]);
 
     return (
         <div
@@ -80,9 +110,10 @@ const CustomSelect = ({
             )}
 
             <button
+                ref={buttonRef}
                 type="button"
                 disabled={disabled}
-                onClick={() => !disabled && setIsOpen(!isOpen)}
+                onClick={() => { if (!disabled) { updatePosition(); setIsOpen(!isOpen); } }}
                 style={{
                     width: '100%',
                     display: 'flex',
@@ -142,20 +173,20 @@ const CustomSelect = ({
                 />
             </button>
 
-            {isOpen && (
+            {isOpen && ReactDOM.createPortal(
                 <div
+                    ref={portalRef}
                     style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        zIndex: 1000,
+                        position: 'fixed',
+                        top: `${dropdownPos.top}px`,
+                        left: `${dropdownPos.left}px`,
+                        width: `${dropdownPos.width}px`,
+                        zIndex: 9999,
                         backgroundColor: 'white',
                         border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-lg)',
-                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                        borderRadius: 'var(--radius-lg, 12px)',
+                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.06)',
                         overflow: 'hidden',
-                        marginTop: '4px'
                     }}
                 >
                     {searchable && (
@@ -319,7 +350,8 @@ const CustomSelect = ({
                             </button>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

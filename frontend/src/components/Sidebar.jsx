@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
-import { chatAPI, approvalsAPI, projectAPI, settingsAPI } from '../utils/api';
+import { chatAPI, approvalsAPI, projectAPI, settingsAPI, notificationAPI } from '../utils/api';
 import {
     LayoutDashboard,
     Briefcase,
@@ -23,7 +23,8 @@ import {
     CheckCircle2,
     ListTodo,
     LayoutList,
-    ChevronDown
+    ChevronDown,
+    BellRing
 } from 'lucide-react';
 
 const menuItems = [
@@ -121,6 +122,7 @@ const menuItems = [
             { label: 'Transfer Requests', tabId: 'Transfer Requests' },
         ]
     },
+    { icon: BellRing, label: 'Notifications', path: '/notifications', alwaysShow: true },
     { icon: MessageSquare, label: 'Team Chat', path: '/chat' },
     {
         icon: CheckCircle2,
@@ -154,6 +156,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
     const [collapsed, setCollapsed] = useState(false);
     const [expandedMenus, setExpandedMenus] = useState({ 'Procurement': true });
     const [unreadCount, setUnreadCount] = useState(0);
+    const [notifUnreadCount, setNotifUnreadCount] = useState(0);
     const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
     const [pendingTasksCount, setPendingTasksCount] = useState(0);
     const [rolesVersion, setRolesVersion] = useState(0);
@@ -244,13 +247,22 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
             }
         };
 
+        const fetchNotifCount = async () => {
+            try {
+                const res = await notificationAPI.getUnreadCount();
+                setNotifUnreadCount(res.data.unread_count || 0);
+            } catch (err) {}
+        };
+
         fetchUnread();
         fetchApprovals();
         fetchTasks();
+        fetchNotifCount();
         const interval = setInterval(() => {
             fetchUnread();
             fetchApprovals();
             fetchTasks();
+            fetchNotifCount();
         }, 15000);
         return () => clearInterval(interval);
     }, [user]);
@@ -261,6 +273,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
     };
 
     const filteredItems = menuItems.filter(item => {
+        if (item.alwaysShow) return true;
         return hasPermission(user, item.label, 'view');
     }).map(item => {
         if (item.subItems) {
@@ -416,6 +429,26 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                                             />
                                         )}
                                     </>
+                                )}
+                                {item.label === 'Notifications' && notifUnreadCount > 0 && (
+                                    <div style={{
+                                        backgroundColor: '#EF4444',
+                                        color: 'white',
+                                        borderRadius: '50%',
+                                        minWidth: '18px',
+                                        height: '18px',
+                                        fontSize: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontWeight: '700',
+                                        position: collapsed ? 'absolute' : 'static',
+                                        top: collapsed ? '4px' : 'auto',
+                                        right: collapsed ? '4px' : 'auto',
+                                        boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)'
+                                    }}>
+                                        {notifUnreadCount > 9 ? '9+' : notifUnreadCount}
+                                    </div>
                                 )}
                                 {item.label === 'Team Chat' && unreadCount > 0 && (
                                     <div style={{

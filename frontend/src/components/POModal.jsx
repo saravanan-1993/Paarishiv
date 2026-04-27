@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShoppingCart, Calendar, Building2, IndianRupee, Loader2, ChevronDown, Check } from 'lucide-react';
 import { projectAPI, vendorAPI, purchaseOrderAPI, materialAPI, inventoryAPI } from '../utils/api';
 import CreateMaterialModal from './CreateMaterialModal';
+import CustomSelect from './CustomSelect';
 
 const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
     const [isSaving, setIsSaving] = useState(false);
@@ -161,6 +162,12 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
             alert('Please fill all required fields');
             return;
         }
+        // Validate items have name and qty
+        const validItems = items.filter(i => i.name && parseFloat(i.qty) > 0);
+        if (validItems.length === 0) {
+            alert('Please add at least one item with name and quantity');
+            return;
+        }
 
         setIsSaving(true);
         try {
@@ -259,118 +266,31 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                     )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '32px' }}>
-                        <div style={{ position: 'relative' }}>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Select Vendor*</label>
-                            <Building2 size={16} style={{ position: 'absolute', left: '12px', top: '40px', color: 'var(--text-muted)' }} />
-                            <div
-                                onClick={() => { setIsVendorDropdownOpen(!isVendorDropdownOpen); setIsProjectDropdownOpen(false); }}
-                                style={{
-                                    width: '100%', padding: '10px 12px 10px 36px', borderRadius: '8px',
-                                    border: '1px solid ' + (isVendorDropdownOpen ? 'var(--primary)' : 'var(--border)'),
-                                    backgroundColor: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    color: formData.vendor_name ? 'var(--text-main)' : 'var(--text-muted)',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                <span style={{ fontWeight: formData.vendor_name ? '600' : '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {formData.vendor_name || 'Choose a vendor...'}
-                                </span>
-                                <ChevronDown size={16} />
-                            </div>
-
-                            {isVendorDropdownOpen && (
-                                <>
-                                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setIsVendorDropdownOpen(false)}></div>
-                                    <div className="animate-fade-in" style={{
-                                        position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px',
-                                        backgroundColor: 'white', border: '1px solid var(--border)', borderRadius: '12px',
-                                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: '220px', overflowY: 'auto'
-                                    }}>
-                                        {vendors.length === 0 && <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No vendors found</div>}
-                                        {vendors.map((v, idx) => (
-                                            <div
-                                                key={v.id}
-                                                onClick={() => { setFormData({ ...formData, vendor_name: v.name }); setIsVendorDropdownOpen(false); }}
-                                                style={{
-                                                    padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    borderBottom: idx === vendors.length - 1 ? 'none' : '1px solid #f1f5f9',
-                                                    backgroundColor: formData.vendor_name === v.name ? '#f8fafc' : 'white',
-                                                    transition: 'all 0.1s'
-                                                }}
-                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.vendor_name === v.name ? '#f8fafc' : 'white'}
-                                            >
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                    <span style={{ fontWeight: formData.vendor_name === v.name ? '700' : '600', color: formData.vendor_name === v.name ? 'var(--primary)' : 'var(--text-main)', fontSize: '14px' }}>{v.name}</span>
-                                                </div>
-                                                {formData.vendor_name === v.name && <Check size={16} color="var(--primary)" />}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                        <div>
+                            <CustomSelect
+                                label="Select Vendor*"
+                                options={vendors.map(v => ({ value: v.name, label: v.name }))}
+                                value={formData.vendor_name}
+                                onChange={val => setFormData({ ...formData, vendor_name: val })}
+                                placeholder="Choose a vendor..."
+                                icon={Building2}
+                                width="full"
+                                searchable={true}
+                            />
                         </div>
-                        <div style={{ position: 'relative' }}>
-                            <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Project Site / Selection*</label>
-                            <div
-                                onClick={() => { setIsProjectDropdownOpen(!isProjectDropdownOpen); setIsVendorDropdownOpen(false); }}
-                                style={{
-                                    width: '100%', padding: '10px 12px', borderRadius: '8px',
-                                    border: '1px solid ' + (isProjectDropdownOpen ? 'var(--primary)' : 'var(--border)'),
-                                    backgroundColor: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    color: formData.project_name ? 'var(--text-main)' : 'var(--text-muted)',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                <span style={{ fontWeight: formData.project_name ? '600' : '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {formData.project_name || 'Select a project...'}
-                                </span>
-                                <ChevronDown size={16} />
-                            </div>
-
-                            {isProjectDropdownOpen && (
-                                <>
-                                    <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setIsProjectDropdownOpen(false)}></div>
-                                    <div className="animate-fade-in" style={{
-                                        position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px',
-                                        backgroundColor: 'white', border: '1px solid var(--border)', borderRadius: '12px',
-                                        boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: '220px', overflowY: 'auto'
-                                    }}>
-                                        {/* Warehouse option — always first */}
-                                        <div
-                                            onClick={() => { setFormData({ ...formData, project_name: 'Warehouse' }); setIsProjectDropdownOpen(false); }}
-                                            style={{
-                                                padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                borderBottom: '1px solid #EEF2FF',
-                                                backgroundColor: formData.project_name === 'Warehouse' ? '#EEF2FF' : 'white',
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#EEF2FF'}
-                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.project_name === 'Warehouse' ? '#EEF2FF' : 'white'}
-                                        >
-                                            <span style={{ fontWeight: '700', color: '#6366F1', fontSize: '14px' }}>Warehouse</span>
-                                            {formData.project_name === 'Warehouse' && <Check size={16} color="#6366F1" />}
-                                        </div>
-                                        {projects.length === 0 && <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No projects found</div>}
-                                        {projects.map((p, idx) => (
-                                            <div
-                                                key={p._id || p.id}
-                                                onClick={() => { setFormData({ ...formData, project_name: p.name }); setIsProjectDropdownOpen(false); }}
-                                                style={{
-                                                    padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                    borderBottom: idx === projects.length - 1 ? 'none' : '1px solid #f1f5f9',
-                                                    backgroundColor: formData.project_name === p.name ? '#f8fafc' : 'white',
-                                                    transition: 'all 0.1s'
-                                                }}
-                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = formData.project_name === p.name ? '#f8fafc' : 'white'}
-                                            >
-                                                <span style={{ fontWeight: formData.project_name === p.name ? '700' : '600', color: formData.project_name === p.name ? 'var(--primary)' : 'var(--text-main)', fontSize: '14px' }}>{p.name}</span>
-                                                {formData.project_name === p.name && <Check size={16} color="var(--primary)" />}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
+                        <div>
+                            <CustomSelect
+                                label="Project Site*"
+                                options={[
+                                    { value: 'Warehouse', label: 'Warehouse' },
+                                    ...projects.map(p => ({ value: p.name, label: p.name }))
+                                ]}
+                                value={formData.project_name}
+                                onChange={val => setFormData({ ...formData, project_name: val })}
+                                placeholder="Select a project..."
+                                width="full"
+                                searchable={true}
+                            />
                         </div>
                         <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Expected Delivery*</label>

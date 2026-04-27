@@ -51,8 +51,12 @@ async def get_trips(db = Depends(get_database)):
 @router.post("/trips", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def create_trip(trip: TripBase, db = Depends(get_database)):
     trip_data = trip.dict()
-    # Auto-calc if possible, though initially it might be 0
-    trip_data["netProfit"] = trip_data["totalRevenue"] - trip_data["totalExpense"]
+    # Validate non-negative amounts
+    if float(trip_data.get("totalRevenue", 0) or 0) < 0:
+        raise HTTPException(status_code=400, detail="Revenue cannot be negative")
+    if float(trip_data.get("totalExpense", 0) or 0) < 0:
+        raise HTTPException(status_code=400, detail="Expense cannot be negative")
+    trip_data["netProfit"] = float(trip_data.get("totalRevenue", 0) or 0) - float(trip_data.get("totalExpense", 0) or 0)
     result = await db.trips.insert_one(trip_data)
     if "_id" in trip_data: del trip_data["_id"]
     return {"id": str(result.inserted_id), **trip_data}

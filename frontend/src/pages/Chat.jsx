@@ -42,35 +42,59 @@ const Chat = () => {
     }, [selectedUser]);
 
     useEffect(() => {
-        if (user) {
-            const ws = new WebSocket(`${WS_BASE}/chat/ws/${user.username}`);
+        if (!user) return;
+        let reconnectTimer = null;
+        let isUnmounted = false;
+
+        const connectWS = () => {
+            if (isUnmounted) return;
+            const token = (() => { try { const s = localStorage.getItem('erp_user'); return s ? JSON.parse(s).token : ''; } catch { return ''; } })();
+            const ws = new WebSocket(`${WS_BASE}/chat/ws/${user.username}${token ? `?token=${token}` : ''}`);
             socketRef.current = ws;
 
             ws.onmessage = (event) => {
-                const message = JSON.parse(event.data);
-                const currentSelected = selectedUserRef.current;
+                try {
+                    const message = JSON.parse(event.data);
+                    // Skip notification-type messages (handled by NotificationContext)
+                    if (message.message_type?.startsWith('notif_')) return;
 
-                // Handle group message vs direct message
-                const isFromSelected = currentSelected && (
-                    (message.group_id && message.group_id === currentSelected._id) ||
-                    (!message.group_id && (message.sender === currentSelected.username || message.receiver === currentSelected.username))
-                );
+                    const currentSelected = selectedUserRef.current;
+                    const isFromSelected = currentSelected && (
+                        (message.group_id && message.group_id === currentSelected._id) ||
+                        (!message.group_id && (message.sender === currentSelected.username || message.receiver === currentSelected.username))
+                    );
 
-                if (isFromSelected) {
-                    setMessages(prev => [...prev, message]);
-                    // Auto-mark as read if active
-                    chatAPI.markAsRead(user.username, message.sender, message.group_id);
+                    if (isFromSelected) {
+                        setMessages(prev => {
+                            // Deduplicate: skip if message with same _id already exists
+                            if (message._id && prev.some(m => m._id === message._id)) return prev;
+                            return [...prev, message];
+                        });
+                        chatAPI.markAsRead(user.username, message.sender, message.group_id);
+                    }
+
+                    fetchUsers();
+                    fetchGroups();
+                } catch {}
+            };
+
+            ws.onclose = () => {
+                socketRef.current = null;
+                if (!isUnmounted) {
+                    reconnectTimer = setTimeout(connectWS, 3000);
                 }
-
-                // Refresh users to update online status & unread counts
-                fetchUsers();
-                fetchGroups();
             };
 
-            return () => {
-                ws.close();
-            };
-        }
+            ws.onerror = () => { ws.close(); };
+        };
+
+        connectWS();
+
+        return () => {
+            isUnmounted = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            if (socketRef.current) socketRef.current.close();
+        };
     }, [user]); // Only reconnect if the logged-in user changes
 
     useEffect(() => {
@@ -98,7 +122,7 @@ const Chat = () => {
             }
             fetchUsers();
             fetchGroups();
-        }, 10000); // Sync every 10 seconds
+        }, 30000); // Sync every 30 seconds (WebSocket handles real-time)
         return () => clearInterval(interval);
     }, [user]);
 

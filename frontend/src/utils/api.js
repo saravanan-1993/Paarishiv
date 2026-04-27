@@ -105,8 +105,11 @@ export const financeAPI = {
 
 // ── Labour ────────────────────────────────────────────────────────────────────
 export const labourAPI = {
-    getAll: () => api.get('/labour/'),
+    getAll: (params) => api.get('/labour/', { params }),
+    getOne: (id) => api.get(`/labour/${id}`),
     create: (data) => api.post('/labour/', data),
+    update: (id, data) => api.put(`/labour/${id}`, data),
+    delete: (id) => api.delete(`/labour/${id}`),
 };
 
 // ── Vendors ───────────────────────────────────────────────────────────────────
@@ -131,6 +134,8 @@ export const purchaseOrderAPI = {
 export const grnAPI = {
     getAll: () => api.get('/grns/'),
     create: (data) => api.post('/grns/', data),
+    update: (id, data) => api.put(`/grns/${id}`, data),
+    delete: (id) => api.delete(`/grns/${id}`),
 };
 
 // ── Client Billing ────────────────────────────────────────────────────────────
@@ -141,6 +146,7 @@ export const billingAPI = {
     delete: (id) => api.delete(`/finance/bills/${id}`),
     getPurchaseBills: () => api.get('/finance/purchase-bills'),
     createPurchaseBill: (data) => api.post('/finance/purchase-bills', data),
+    deletePurchaseBill: (id) => api.delete(`/finance/purchase-bills/${id}`),
 };
 
 // ── Employees ─────────────────────────────────────────────────────────────────
@@ -229,6 +235,7 @@ export const inventoryAPI = {
     getWarehouse: () => api.get('/inventory/warehouse'),
     getRequests: (params) => api.get('/inventory/requests', { params }),
     createRequest: (data) => api.post('/inventory/requests', data),
+    deleteRequest: (id) => api.delete(`/inventory/requests/${id}`),
     issueStock: (requestId, data) => api.post(`/inventory/requests/${requestId}/issue`, data),
     updateRequestStatus: (requestId, data) => api.put(`/inventory/requests/${requestId}/status`, data),
     returnStock: (data) => api.post('/inventory/return', data),
@@ -328,6 +335,15 @@ export const labourAttendanceAPI = {
     getWagesSummary: (params) => api.get('/labour-attendance/wages-summary', { params }),
     getSalaryPayments: (params) => api.get('/labour-attendance/salary-payments', { params }),
     processSalary: (data) => api.post('/labour-attendance/process-salary', data),
+};
+
+// ── Notifications ────────────────────────────────────────────────────────────
+export const notificationAPI = {
+    getAll: (params) => api.get('/notifications/', { params }),
+    getUnreadCount: () => api.get('/notifications/unread-count'),
+    markAsRead: (id) => api.put(`/notifications/${id}/read`),
+    markAllAsRead: () => api.put('/notifications/read-all'),
+    delete: (id) => api.delete(`/notifications/${id}`),
 };
 
 export default api;

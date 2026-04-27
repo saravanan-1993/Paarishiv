@@ -178,8 +178,24 @@ const Assets = () => {
     };
 
     const handleDownloadLog = (asset) => {
-        console.log('Downloading log for:', asset.id);
-        alert(`Preparing data for ${asset.name} (${asset.id})...\nLog download started successfully.`);
+        const logData = {
+            asset_id: asset.id,
+            name: asset.name,
+            category: asset.category,
+            site: asset.site,
+            status: asset.status,
+            hours: asset.hours,
+            diesel: asset.diesel,
+            exported_at: new Date().toISOString(),
+            ...asset
+        };
+        const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(asset.name || asset.id || 'asset').replace(/\s+/g, '_')}_log.json`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     const handleEditClickFromDetails = (asset) => {
@@ -423,7 +439,7 @@ const Assets = () => {
                                         </td>
                                         <td>{log.engineer}</td>
                                         <td>
-                                            <button style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '700' }}>Edit</button>
+                                            <button onClick={() => { setSelectedAsset(fleet.find(f => f.name === log.asset) || null); setIsUsageModalOpen(true); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '700' }}>Edit</button>
                                         </td>
                                     </tr>
                                 ))}

@@ -22,6 +22,7 @@ const SiteReports = () => {
     const [reqPage, setReqPage] = useState(1);
     const [xfPage, setXfPage] = useState(1);
     const [viewingRequest, setViewingRequest] = useState(null);
+    const [viewingTransfer, setViewingTransfer] = useState(null);
 
     const tabMapping = useMemo(() => ({
         'Site Reports (DPR)': 'DPR',
@@ -498,38 +499,6 @@ const SiteReports = () => {
                                         }
                                     </tbody>
                                 </table>
-                                {/* Request detail view panel */}
-                                {viewingRequest && (() => {
-                                    const req = filteredRequests.find(r => (r.id || r._id) === viewingRequest);
-                                    if (!req) return null;
-                                    return (
-                                        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', backgroundColor: '#f8fafc' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                                                <h4 style={{ fontSize: '15px', fontWeight: '700' }}>Request Details</h4>
-                                                <button onClick={() => setViewingRequest(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: 'var(--text-muted)' }}>&times;</button>
-                                            </div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Project</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{req.project_name}</p></div>
-                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Requested By</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{req.engineer_id}</p></div>
-                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Date</span><p style={{ fontWeight: '700', fontSize: '14px' }}>{new Date(req.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p></div>
-                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Priority</span><p><span className={`badge ${req.priority === 'High' ? 'badge-danger' : 'badge-info'}`}>{req.priority || 'Normal'}</span></p></div>
-                                                <div><span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Status</span><p><span className={`badge ${req.status === 'Approved' ? 'badge-success' : req.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{req.status}</span></p></div>
-                                            </div>
-                                            <div>
-                                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase' }}>Items Requested</span>
-                                                <table className="data-table" style={{ marginTop: '8px' }}>
-                                                    <thead><tr><th>Material</th><th>Quantity</th><th>Unit</th></tr></thead>
-                                                    <tbody>
-                                                        {(req.requested_items || []).map((it, idx) => (
-                                                            <tr key={idx}><td style={{ fontWeight: '600' }}>{it.name}</td><td>{it.quantity}</td><td>{it.unit}</td></tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                            {req.remarks && <div style={{ marginTop: '12px', padding: '10px', backgroundColor: '#eff6ff', borderRadius: '8px', fontSize: '13px', color: '#1e40af' }}><strong>Remarks:</strong> {req.remarks}</div>}
-                                        </div>
-                                    );
-                                })()}
                                 <Pagination currentPage={reqPage} totalItems={filteredRequests.length} pageSize={PAGE_SIZE} onPageChange={setReqPage} />
                                 </>
                             )}
@@ -547,12 +516,16 @@ const SiteReports = () => {
                                                     <td><div style={{ fontSize: '12px' }}>{xf.items?.map((it, idx) => (<div key={idx}>• {it.name} ({it.quantity})</div>))}</div></td>
                                                     <td>{xf.engineer_id}</td>
                                                     <td style={{ textAlign: 'right' }}>
-                                                        {xf.status === 'Pending' ? (
-                                                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                                                <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)}>APPROVE</button>
-                                                                <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleRejectTransfer(xf.id)}>REJECT</button>
-                                                            </div>
-                                                        ) : <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>{xf.status}</span>}
+                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                                            <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
+                                                            {xf.status === 'Pending' && (
+                                                                <>
+                                                                    <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)} disabled={processingId === xf.id}>{processingId === xf.id ? <Loader2 size={14} className="animate-spin" /> : 'APPROVE'}</button>
+                                                                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleRejectTransfer(xf.id)} disabled={processingId === xf.id}>REJECT</button>
+                                                                </>
+                                                            )}
+                                                            {xf.status !== 'Pending' && <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>{xf.status}</span>}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))
@@ -570,6 +543,169 @@ const SiteReports = () => {
             {isViewModalOpen && selectedDPR && (
                 <DPRViewModal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} dpr={selectedDPR} projectName={selectedDPR.project_name} />
             )}
+
+            {/* Material Request Detail Modal */}
+            {viewingRequest && (() => {
+                const req = filteredRequests.find(r => (r.id || r._id) === viewingRequest);
+                if (!req) return null;
+                return (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                        backdropFilter: 'blur(4px)'
+                    }} onClick={() => setViewingRequest(null)}>
+                        <div className="card animate-fade-in" style={{
+                            width: '600px', maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto',
+                            padding: '28px', position: 'relative'
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)' }}>Material Request Details</h3>
+                                <button onClick={() => setViewingRequest(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--text-muted)', lineHeight: 1 }}>&times;</button>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Project</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px', color: 'var(--primary)' }}>{req.project_name}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Requested By</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px' }}>{req.engineer_id}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Date</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px' }}>{new Date(req.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Priority</span>
+                                    <span className={`badge ${req.priority === 'High' ? 'badge-danger' : req.priority === 'Low' ? 'badge-info' : 'badge-warning'}`}>{req.priority || 'Normal'}</span>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Status</span>
+                                    <span className={`badge ${req.status === 'Approved' ? 'badge-success' : req.status === 'Issued' ? 'badge-info' : req.status === 'Rejected' ? 'badge-danger' : req.status === 'Consolidated' ? 'badge-info' : 'badge-warning'}`}>{req.status}</span>
+                                </div>
+                                {req.source && (
+                                    <div>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Source</span>
+                                        <p style={{ fontWeight: '600', fontSize: '13px' }}>{req.source}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>Items Requested ({req.requested_items?.length || 0})</span>
+                                <table className="data-table" style={{ fontSize: '13px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ padding: '10px 12px' }}>#</th>
+                                            <th style={{ padding: '10px 12px' }}>Material</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Quantity</th>
+                                            <th style={{ padding: '10px 12px' }}>Unit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(req.requested_items || []).map((it, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                                <td style={{ padding: '10px 12px', fontWeight: '600' }}>{it.name}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '700' }}>{it.quantity}</td>
+                                                <td style={{ padding: '10px 12px' }}>{it.unit}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {req.coordinator_remarks && (
+                                <div style={{ marginTop: '16px', padding: '12px 14px', backgroundColor: '#eff6ff', borderRadius: '10px', fontSize: '13px', color: '#1e40af', borderLeft: '4px solid #3b82f6' }}>
+                                    <strong>Coordinator Remarks:</strong> {req.coordinator_remarks}
+                                </div>
+                            )}
+                            {req.remarks && (
+                                <div style={{ marginTop: '10px', padding: '12px 14px', backgroundColor: '#f0fdf4', borderRadius: '10px', fontSize: '13px', color: '#15803d', borderLeft: '4px solid #22c55e' }}>
+                                    <strong>Remarks:</strong> {req.remarks}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+                                {req.status === 'Pending' && (
+                                    <>
+                                        <button className="btn btn-success" onClick={() => { handleUpdateReqStatus(req, 'Approved'); setViewingRequest(null); }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px' }}>
+                                            <CheckCircle size={16} /> Approve
+                                        </button>
+                                        <button className="btn btn-outline" onClick={() => { handleUpdateReqStatus(req, 'Rejected'); setViewingRequest(null); }}
+                                            style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px' }}>
+                                            <XCircle size={16} /> Reject
+                                        </button>
+                                    </>
+                                )}
+                                <button className="btn btn-outline" onClick={() => setViewingRequest(null)} style={{ padding: '10px 20px' }}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Transfer Request Detail Modal */}
+            {viewingTransfer && (() => {
+                const xf = filteredTransfers.find(t => t.id === viewingTransfer);
+                if (!xf) return null;
+                return (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)' }} onClick={() => setViewingTransfer(null)}>
+                        <div className="card animate-fade-in" style={{ width: '560px', maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', padding: '28px' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Material Transfer Details</h3>
+                                <button onClick={() => setViewingTransfer(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--text-muted)' }}>&times;</button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>From Project</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px', color: '#EF4444' }}>{xf.from_project}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>To Project</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px', color: '#22C55E' }}>{xf.to_project}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Requested By</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px' }}>{xf.engineer_id || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Date</span>
+                                    <p style={{ fontWeight: '700', fontSize: '14px' }}>{new Date(xf.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                                </div>
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Status</span>
+                                    <span className={`badge ${xf.status === 'Approved' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{xf.status}</span>
+                                </div>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>Items ({xf.items?.length || 0})</span>
+                                <table className="data-table" style={{ fontSize: '13px' }}>
+                                    <thead><tr><th style={{ padding: '10px 12px' }}>#</th><th style={{ padding: '10px 12px' }}>Material</th><th style={{ padding: '10px 12px', textAlign: 'center' }}>Quantity</th><th style={{ padding: '10px 12px' }}>Unit</th></tr></thead>
+                                    <tbody>
+                                        {(xf.items || []).map((it, idx) => (
+                                            <tr key={idx}><td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td><td style={{ padding: '10px 12px', fontWeight: '600' }}>{it.name}</td><td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: '700' }}>{it.quantity}</td><td style={{ padding: '10px 12px' }}>{it.unit || 'Nos'}</td></tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {xf.notes && <div style={{ marginTop: '16px', padding: '12px 14px', backgroundColor: '#eff6ff', borderRadius: '10px', fontSize: '13px', color: '#1e40af', borderLeft: '4px solid #3b82f6' }}><strong>Notes:</strong> {xf.notes}</div>}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
+                                {xf.status === 'Pending' && (
+                                    <>
+                                        <button className="btn btn-success" onClick={() => { handleApproveTransfer(xf.id); setViewingTransfer(null); }} style={{ padding: '10px 20px' }}>Approve</button>
+                                        <button className="btn btn-outline" onClick={() => { handleRejectTransfer(xf.id); setViewingTransfer(null); }} style={{ color: '#ef4444', padding: '10px 20px' }}>Reject</button>
+                                    </>
+                                )}
+                                <button className="btn btn-outline" onClick={() => setViewingTransfer(null)} style={{ padding: '10px 20px' }}>Close</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };

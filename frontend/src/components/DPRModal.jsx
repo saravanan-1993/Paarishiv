@@ -172,7 +172,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const [workRows, setWorkRows] = useState([{ task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
     const [labourRows, setLabourRows] = useState([{ party: '', category: '', count: '', shift: '1', ot: '0' }]);
     const [materialRows, setMaterialRows] = useState([{ name: '', opening: '', received: '', used: '' }]);
-    const [equipmentRows, setEquipmentRows] = useState([{ name: '', no: '', hours: '', fuel: '' }]);
+    const [equipmentRows, setEquipmentRows] = useState([{ name: '', no: '', hours: '', fuel: '', rate: '' }]);
     const [nextDayMaterials, setNextDayMaterials] = useState([{ material: '', unit: '', qty: '' }]);
     const [nextDayEquipment, setNextDayEquipment] = useState([{ equipment: '', note: '' }]);
     const [nextDayLabour, setNextDayLabour] = useState([{ category: '', count: '' }]);
@@ -251,7 +251,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         if (type === 'work') setWorkRows([...workRows, { task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
         if (type === 'labour') setLabourRows([...labourRows, { party: '', category: '', count: '', shift: '1', ot: '0' }]);
         if (type === 'material') setMaterialRows([...materialRows, { name: '', opening: '', received: '', used: '' }]);
-        if (type === 'equipment') setEquipmentRows([...equipmentRows, { name: '', no: '', hours: '', fuel: '' }]);
+        if (type === 'equipment') setEquipmentRows([...equipmentRows, { name: '', no: '', hours: '', fuel: '', rate: '' }]);
         if (type === 'nd_material') setNextDayMaterials([...nextDayMaterials, { material: '', unit: '', qty: '' }]);
         if (type === 'nd_equipment') setNextDayEquipment([...nextDayEquipment, { equipment: '', note: '' }]);
         if (type === 'nd_labour') setNextDayLabour([...nextDayLabour, { category: '', count: '' }]);
@@ -332,6 +332,16 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         const projectId = project?._id || project?.id;
         if (!projectId) {
             alert('Project not found. Please close and try again.');
+            return;
+        }
+        // Validate: at least some data entered
+        const hasWork = workRows.some(r => r.task && r.task.trim());
+        const hasLabour = labourRows.some(r => r.party && r.party.trim() && parseFloat(r.count) > 0);
+        const hasMaterial = materialRows.some(r => r.name && r.name.trim());
+        const hasEquipment = equipmentRows.some(r => r.name && r.name.trim());
+        const hasChecklist = Object.keys(checklist).length > 0;
+        if (!hasWork && !hasLabour && !hasMaterial && !hasEquipment && !hasChecklist) {
+            alert('Please fill in at least one section (Work, Labour, Materials, Machinery, or Checklist) before submitting.');
             return;
         }
         setLoading(true);
@@ -442,6 +452,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <Calendar size={14} color="#64748B" />
                                 <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
                                     style={{ border: 'none', background: 'transparent', fontSize: '13px', cursor: 'pointer', outline: 'none', fontWeight: '600', color: '#334155', padding: '0' }} />
                             </div>
                         </div>
@@ -466,6 +477,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     }}>
                         <TabButton id="work" label="Work" icon={ClipboardList} />
                         <TabButton id="labour" label="Labour" icon={HardHat} />
+                        <TabButton id="material" label="Materials" icon={Package} />
                         <TabButton id="equipment" label="Machinery" icon={Truck} />
                         <TabButton id="next_day" label="Next Day" icon={Plus} />
                         <TabButton id="contractor" label="Contractors" icon={Building2} />
@@ -940,6 +952,56 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                             </div>
                         )}
 
+                        {/* ── Materials Consumption Tab ── */}
+                        {activeTab === 'material' && (
+                            <div className="animate-fade-in" style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Material Consumption Log</h3>
+                                        <p style={{ fontSize: '13px', color: '#64748B', marginTop: '4px' }}>Track daily material usage: opening stock, received, and consumed.</p>
+                                    </div>
+                                    <button className="btn-modern outline" onClick={() => addRow('material')}><Plus size={16} /> Add Material</button>
+                                </div>
+                                <div className="mobile-table-scroll">
+                                    <table className="modern-table">
+                                        <thead><tr>
+                                            <th>Material</th>
+                                            <th style={{ width: '120px' }}>Opening Stock</th>
+                                            <th style={{ width: '120px' }}>Received</th>
+                                            <th style={{ width: '120px' }}>Used / Consumed</th>
+                                            <th style={{ width: '120px' }}>Closing</th>
+                                            <th style={{ width: '40px' }}></th>
+                                        </tr></thead>
+                                        <tbody>{materialRows.map((row, i) => (
+                                            <tr key={i}>
+                                                <td data-label="Material">
+                                                    <CustomSelect
+                                                        options={[
+                                                            { value: '', label: 'Select Material' },
+                                                            ...masterMaterials.map(m => ({ value: m.name, label: m.name }))
+                                                        ]}
+                                                        value={row.name}
+                                                        onChange={val => updateRow('material', i, 'name', val)}
+                                                        placeholder="Select Material"
+                                                        width="full"
+                                                        searchable={true}
+                                                        style={{ border: 'none', background: 'transparent' }}
+                                                    />
+                                                </td>
+                                                <td data-label="Opening"><input type="number" min="0" value={row.opening} onChange={e => updateRow('material', i, 'opening', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Received"><input type="number" min="0" value={row.received} onChange={e => updateRow('material', i, 'received', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Used"><input type="number" min="0" value={row.used} onChange={e => updateRow('material', i, 'used', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Closing" style={{ fontWeight: '700', color: '#1E293B', textAlign: 'center' }}>
+                                                    {Math.max(0, (parseFloat(row.opening || 0) + parseFloat(row.received || 0)) - parseFloat(row.used || 0))}
+                                                </td>
+                                                <td className="action-cell"><button onClick={() => removeRow('material', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
+                                            </tr>
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Equipment Tab ── */}
                         {activeTab === 'equipment' && (
                             <div className="animate-fade-in" style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
@@ -955,8 +1017,9 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                         <thead><tr>
                                             <th>Equipment Name</th>
                                             <th>Machine No.</th>
-                                            <th style={{ width: '150px' }}>Hours Used</th>
-                                            <th style={{ width: '150px' }}>Fuel Added (Ltr)</th>
+                                            <th style={{ width: '120px' }}>Hours Used</th>
+                                            <th style={{ width: '120px' }}>Rate/Hr</th>
+                                            <th style={{ width: '120px' }}>Fuel (Ltr)</th>
                                             <th style={{ width: '40px' }}></th>
                                         </tr></thead>
                                         <tbody>{equipmentRows.map((row, i) => (
@@ -998,8 +1061,9 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                         style={{ backgroundColor: '#F1F5F9', color: '#64748B' }}
                                                     />
                                                 </td>
-                                                <td data-label="Hours Used"><input type="number" value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0" className="table-input-clean" /></td>
-                                                <td data-label="Fuel (Ltr)"><input type="number" value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Hours Used"><input type="number" min="0" value={row.hours} onChange={e => updateRow('equipment', i, 'hours', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Rate/Hr"><input type="number" min="0" value={row.rate} onChange={e => updateRow('equipment', i, 'rate', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Fuel (Ltr)"><input type="number" min="0" value={row.fuel} onChange={e => updateRow('equipment', i, 'fuel', e.target.value)} placeholder="0" className="table-input-clean" /></td>
                                                 <td className="action-cell"><button onClick={() => removeRow('equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                             </tr>
                                         ))}</tbody>
@@ -1021,7 +1085,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     </button>
                     {activeTab !== 'photos' ? (
                         <button onClick={() => {
-                            const tabOrder = ['work', 'labour', 'equipment', 'next_day', 'contractor', 'checklist', 'photos'];
+                            const tabOrder = ['work', 'labour', 'material', 'equipment', 'next_day', 'contractor', 'checklist', 'photos'];
                             const nextIdx = tabOrder.indexOf(activeTab) + 1;
                             if (nextIdx < tabOrder.length) setActiveTab(tabOrder[nextIdx]);
                         }} style={{

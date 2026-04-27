@@ -128,6 +128,10 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
             alert('Due time is required.');
             return;
         }
+        if (form.startDate && form.dueDate && form.dueDate < form.startDate) {
+            alert('Due date cannot be before start date.');
+            return;
+        }
         setLoading(true);
         try {
             const targetProjectId = getStringId(project?._id || project?.id || selectedProjectId);

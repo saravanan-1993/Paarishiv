@@ -22,6 +22,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import Login from './pages/Login';
 import Approvals from './pages/Approvals';
+import Notifications from './pages/Notifications';
 import SiteReports from './pages/SiteReports';
 import Quotations from './pages/Quotations';
 import LabourWages from './pages/LabourWages';
@@ -128,6 +129,7 @@ const MainLayout = () => {
                         <Route path="/users" element={<Navigate to="/hr?tab=Authorized+Users" replace />} />
                         <Route path="/logs" element={<ProtectedRoute module="System Logs"><Logs /></ProtectedRoute>} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/notifications" element={<Notifications />} />
                         <Route path="/approvals" element={<ProtectedRoute module="Approvals"><Approvals /></ProtectedRoute>} />
                         <Route path="/site-reports" element={<ProtectedRoute module="Site Reports"><SiteReports /></ProtectedRoute>} />
                         <Route path="/profile" element={<Navigate to="/settings?tab=Profile" replace />} />

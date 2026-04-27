@@ -8,7 +8,7 @@ import {
 import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI, inventoryAPI } from '../utils/api';
+import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI, inventoryAPI, grnAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
 
@@ -159,14 +159,15 @@ const ReportPreview = ({
     const totalPurchases = payables.reduce((s, p) => s + (p.total_amount || 0), 0);
     const totalPayableAmt = payables.reduce((s, p) => s + (p.amount || 0), 0);
     const totalExp = expenseData.reduce((s, e) => s + (e.amount || 0), 0);
-    const cashBalance = totalCollected - totalExp;
     const totalReceivable = totalBilled - totalCollected;
+    const totalPaid = totalPurchases - totalPayableAmt;
+    const cashBalance = totalCollected - totalPaid - totalExp;
 
     const trialBalanceRows = [
         { account: 'Sales (Revenue)', debit: 0, credit: totalBilled },
-        { account: 'Accounts Receivable (Asset)', debit: totalReceivable, credit: 0 },
-        { account: 'Purchases (Expenses)', debit: totalPurchases, credit: 0 },
-        { account: 'Accounts Payable (Liability)', debit: 0, credit: totalPayableAmt },
+        { account: 'Accounts Receivable', debit: totalReceivable > 0 ? totalReceivable : 0, credit: 0 },
+        { account: 'Purchases', debit: totalPurchases, credit: 0 },
+        { account: 'Accounts Payable', debit: 0, credit: totalPayableAmt > 0 ? totalPayableAmt : 0 },
         { account: 'Operating Expenses', debit: totalExp, credit: 0 },
         { account: 'Cash & Bank Balance', debit: cashBalance > 0 ? cashBalance : 0, credit: cashBalance < 0 ? Math.abs(cashBalance) : 0 }
     ];
@@ -208,35 +209,43 @@ const ReportPreview = ({
 
     const handleCSV = () => {
         let csv = '';
-        if (report.category === 'Financial' && report.id === 'R001') {
+        if (report.id === 'R001') {
             csv = 'Project,Budget (L),Spent (L),Variance (L),Utilisation %\n' +
-                budgetData.map(r => `${r.name},${r.budget},${r.spent},${r.budget - r.spent},${r.budget > 0 ? Math.round((r.spent / r.budget) * 100) : 0}%`).join('\n');
-        } else if (report.category === 'Project') {
+                budgetData.map(r => `"${r.name}",${r.budget},${r.spent},${(r.budget - r.spent).toFixed(2)},${r.budget > 0 ? Math.round((r.spent / r.budget) * 100) : 0}%`).join('\n');
+        } else if (report.id === 'R002') {
+            csv = 'Vendor,Payable,Paid,Balance\n' +
+                (payables || []).map(p => `"${p.vendor_name || ''}",${p.total_amount || 0},${p.paid_amount || 0},${p.amount || 0}`).join('\n');
+        } else if (report.id === 'R003' || report.id === 'R004') {
             csv = 'Project,Progress %,Tasks,DPRs Filed\n' +
-                progressData.map(r => `${r.project},${r.progress}%,${r.tasks},${r.dpr}`).join('\n');
-        } else if (report.category === 'Inventory') {
+                progressData.map(r => `"${r.project}",${r.progress}%,${r.tasks},${r.dpr}`).join('\n');
+        } else if (report.id === 'R005') {
+            csv = 'Date,Employee ID,Employee Name,Status,Remarks\n' +
+                (attendanceData || []).map(r => `${r.date},"${r.employeeName || r.employeeId}",${r.employeeId},${r.status},"${r.remarks || ''}"`).join('\n');
+        } else if (report.id === 'R006') {
+            csv = 'Employee,Present Days,Leave Days,LOP Days,Net Salary\n' +
+                (payrollData || []).map(p => `"${p.employeeName || p.employeeId}",${p.presentDays || 0},${p.leaveDays || 0},${p.lopDays || 0},${p.netSalary || 0}`).join('\n');
+        } else if (report.id === 'R007' || report.id === 'R008') {
             csv = materialStockReport.length > 0
-                ? 'Material,Unit,Warehouse Qty,Total Site Qty,Total Qty,Last Rate,Total Value\n' +
+                ? 'Material,Unit,Warehouse Qty,Site Qty,Total Qty,Last Rate,Total Value\n' +
                     materialStockReport.filter(m => m.total_qty > 0).map(m =>
                         `"${m.material_name}",${m.unit},${m.warehouse_qty},${m.total_site_qty},${m.total_qty},${m.last_rate},${m.total_value}`
                     ).join('\n')
-                : 'Material,Stock Share %\n' +
-                    inventoryData.map(r => `${r.name},${r.value}%`).join('\n');
+                : 'Material,Stock %\n' + inventoryData.map(r => `"${r.name}",${r.value}%`).join('\n');
+        } else if (report.id === 'R009') {
+            csv = 'No,GRN Ref,Vendor,Project,Items,Status,Amount\n' +
+                (grnData || []).map((g, i) => `${i + 1},GRN-${(g.id || '').slice(-6).toUpperCase()},"${g.vendor_name || ''}","${g.project_name || ''}",${g.items?.length || 0},${g.status || 'Received'},${g.total_amount || 0}`).join('\n');
         } else if (report.id === 'R010') {
-            csv = 'Date,Project,Category,Amount (₹),Payee/Paid To,Mode,Description\n' +
-                (expenseData || []).map(r => `${r.date},${r.project},${r.category},${r.amount},${r.payee},${r.paymentMode},"${(r.description || '').replace(/"/g, '""')}"`).join('\n');
-        } else if (report.id === 'R005') {
-            csv = 'Date,Employee ID,Employee Name,Status,Remarks\n' +
-                (attendanceData || []).map(r => `${r.date},${r.employeeId},${r.employeeName},${r.status},${r.remarks || ''}`).join('\n');
+            csv = 'Date,Project,Category,Amount,Payee,Mode,Description\n' +
+                (expenseData || []).map(r => `${r.date},"${r.project}","${r.category}",${r.amount},"${r.payee}",${r.paymentMode},"${(r.description || '').replace(/"/g, '""')}"`).join('\n');
         } else if (report.id === 'R011') {
-            csv = 'Account Type,Debit (Dr),Credit (Cr)\n' +
-                trialBalanceRows.map(r => `${r.account},${r.debit},${r.credit}`).join('\n');
+            csv = 'Account,Debit,Credit\n' +
+                trialBalanceRows.map(r => `"${r.account}",${r.debit},${r.credit}`).join('\n');
         } else if (report.id === 'R012') {
             csv = 'Party,Receivable,Payable,Net Outstanding\n' +
-                preparePartyOutstanding().map(r => `${r.party},${r.receivable},${r.payable},${r.receivable - r.payable}`).join('\n');
+                preparePartyOutstanding().map(r => `"${r.party}",${r.receivable},${r.payable},${r.receivable - r.payable}`).join('\n');
         } else if (report.id === 'R013') {
             csv = 'Project,Sales,Received,Out. Sales,Purchases,Paid,Out. Purchase\n' +
-                prepareProjectSummary().map(r => `${r.project},${r.sales},${r.received},${r.sales - r.received},${r.purchases},${r.paid},${r.purchases - r.paid}`).join('\n');
+                prepareProjectSummary().map(r => `"${r.project}",${r.sales},${r.received},${r.sales - r.received},${r.purchases},${r.paid},${r.purchases - r.paid}`).join('\n');
         } else {
             csv = `Report,${report.title}\nCategory,${report.category}\nGenerated,${new Date().toLocaleDateString()}\n`;
         }
@@ -729,18 +738,76 @@ const ReportPreview = ({
                         </>
                     )}
 
-                    {(report.category === 'HRMS' || report.category === 'Plant') && report.id !== 'R005' && (
+                    {/* R006 - Payroll Summary */}
+                    {report.id === 'R006' && (
+                        <>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                <thead><tr style={{ backgroundColor: '#F8FAFC' }}>
+                                    <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Employee</th>
+                                    <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Present</th>
+                                    <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Leave</th>
+                                    <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>LOP</th>
+                                    <th style={{ padding: '10px', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>Net Salary</th>
+                                </tr></thead>
+                                <tbody>
+                                    {payrollData.length === 0
+                                        ? <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No payroll data. Generate payroll from HR module first.</td></tr>
+                                        : payrollData.map((p, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                <td style={{ padding: '10px', fontWeight: '600' }}>{p.employeeName || p.employeeId}</td>
+                                                <td style={{ padding: '10px', textAlign: 'center' }}>{p.presentDays || 0}</td>
+                                                <td style={{ padding: '10px', textAlign: 'center' }}>{p.leaveDays || 0}</td>
+                                                <td style={{ padding: '10px', textAlign: 'center', color: p.lopDays > 0 ? '#EF4444' : 'inherit' }}>{p.lopDays || 0}</td>
+                                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: '700' }}>{fmt(p.netSalary || 0)}</td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                                {payrollData.length > 0 && <tfoot><tr style={{ backgroundColor: '#F0FDF4', fontWeight: '800' }}>
+                                    <td style={{ padding: '10px' }}>Total ({payrollData.length} employees)</td>
+                                    <td colSpan="3"></td>
+                                    <td style={{ padding: '10px', textAlign: 'right' }}>{fmt(payrollData.reduce((s, p) => s + (p.netSalary || 0), 0))}</td>
+                                </tr></tfoot>}
+                            </table>
+                        </>
+                    )}
+
+                    {/* R008 - GRN Analytics */}
+                    {report.id === 'R008' && (
+                        <>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                <thead><tr style={{ backgroundColor: '#F8FAFC' }}>
+                                    <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>GRN Ref</th>
+                                    <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Vendor</th>
+                                    <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Project</th>
+                                    <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Items</th>
+                                    <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid var(--border)' }}>Status</th>
+                                    <th style={{ padding: '10px', textAlign: 'right', borderBottom: '2px solid var(--border)' }}>Amount</th>
+                                </tr></thead>
+                                <tbody>
+                                    {grnData.length === 0
+                                        ? <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No GRN data available.</td></tr>
+                                        : grnData.map((g, i) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                                <td style={{ padding: '10px', fontWeight: '600' }}>GRN-{(g.id || '').slice(-6).toUpperCase()}</td>
+                                                <td style={{ padding: '10px' }}>{g.vendor_name || '—'}</td>
+                                                <td style={{ padding: '10px' }}>{g.project_name || '—'}</td>
+                                                <td style={{ padding: '10px', textAlign: 'center' }}>{g.items?.length || 0}</td>
+                                                <td style={{ padding: '10px', textAlign: 'center' }}><span className={`badge ${g.status === 'Paid' ? 'badge-success' : g.is_billed ? 'badge-info' : 'badge-warning'}`}>{g.status || 'Received'}</span></td>
+                                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>{fmt(g.total_amount || 0)}</td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                        </>
+                    )}
+
+                    {/* R009 - Equipment Utilisation (from fleet data) */}
+                    {report.id === 'R009' && (
                         <div style={{ padding: '40px', textAlign: 'center', background: '#F8FAFC', borderRadius: '12px', border: '2px dashed var(--border)' }}>
-                            <report.icon size={48} style={{ color: report.color, margin: '0 auto 16px' }} />
-                            <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>{report.title} Preview</h4>
-                            <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-                                This report will fetch live data from the database. Connect the backend to see real-time figures.
-                            </p>
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                {['Period: Feb 2026', 'Format: PDF & Excel', 'Status: Ready'].map(tag => (
-                                    <span key={tag} style={{ padding: '6px 14px', backgroundColor: report.bg, color: report.color, borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{tag}</span>
-                                ))}
-                            </div>
+                            <HardHat size={48} style={{ color: '#F59E0B', margin: '0 auto 16px' }} />
+                            <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>Equipment Utilisation Report</h4>
+                            <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>View detailed equipment data in Fleet Management &gt; Reports tab.</p>
+                            <button className="btn btn-primary" onClick={() => { setPreviewReport(null); window.location.href = '/fleet?tab=Reports'; }} style={{ padding: '10px 24px' }}>Go to Fleet Reports</button>
                         </div>
                     )}
                 </div>
@@ -789,6 +856,7 @@ const Reports = () => {
     const handleCategoryChange = (cat) => {
         setActiveCategory(cat);
         setSearchParams({ tab: cat });
+        setSearchTerm(''); // Reset search when changing category
     };
     const [searchTerm, setSearchTerm] = useState('');
     const [previewReport, setPreviewReport] = useState(null);
@@ -798,6 +866,8 @@ const Reports = () => {
     const [attendanceData, setAttendanceData] = useState([]);
 
     const [loading, setLoading] = useState(true);
+    const [payrollData, setPayrollData] = useState([]);
+    const [grnData, setGrnData] = useState([]);
     const [rawProjects, setRawProjects] = useState([]);
     const [rawExpenses, setRawExpenses] = useState([]);
     const [budgetData, setBudgetData] = useState([]);
@@ -896,13 +966,16 @@ const Reports = () => {
             };
             const [attFrom, attTo] = getAttendanceRange();
 
-            const [projRes, invRes, expRes, attRes, billRes, payRes] = await Promise.allSettled([
+            const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+            const [projRes, invRes, expRes, attRes, billRes, payRes, payrollRes, grnRes] = await Promise.allSettled([
                 projectAPI.getAll(),
                 materialAPI.getInventoryByProject('all'),
                 financeAPI.getExpenses(),
                 hrmsAPI.getAttendanceRange(attFrom, attTo),
                 billingAPI.getAll(),
-                financeAPI.getPayables()
+                financeAPI.getPayables(),
+                hrmsAPI.getPayroll(currentMonth),
+                grnAPI.getAll()
             ]);
 
             let projects = [];
@@ -911,16 +984,11 @@ const Reports = () => {
                 setRawProjects(projects);
 
                 const bData = projects.map(p => {
-                    // Filter project expenses in range for Budget Summary
-                    const periodSpent = (expRes.status === 'fulfilled' ? (expRes.value.data || []) : [])
-                        .filter(e => e.project === p.name && isDateInRange(e.date))
-                        .reduce((sum, e) => sum + (e.amount || 0), 0);
-
                     return {
                         name: p.name,
-                        budget: (p.budget / 100000) || 0,
-                        spent: (periodSpent / 100000) || 0, // Show spent in PERIOD
-                        totalSpent: (p.spent / 100000) || 0 // Keep total spent
+                        budget: ((p.estimated_budget || p.budget) / 100000) || 0,
+                        spent: ((p.spent || 0) / 100000),  // Cumulative total spent
+                        totalSpent: ((p.spent || 0) / 100000)
                     };
                 });
                 setBudgetData(bData);
@@ -981,6 +1049,9 @@ const Reports = () => {
                 // Bug 48: Include payables even if date field is missing
                 setPayables(pays.filter(p => dateRange === 'All Time' || !p.date || isDateInRange(p.date || p.created_at || p.createdAt)));
             }
+
+            if (payrollRes.status === 'fulfilled') setPayrollData(payrollRes.value.data || []);
+            if (grnRes.status === 'fulfilled') setGrnData(grnRes.value.data || []);
 
             // Calculate range-aware KPIs
             const filteredProjectsInRange = projects.filter(p => {
@@ -1154,7 +1225,7 @@ const Reports = () => {
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0', borderTop: '1px solid #F1F5F9' }}>
                                 <div>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Last: {rpt.lastGenerated}</span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Last: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                     <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '8px' }}>• {rpt.frequency}</span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -1168,21 +1239,44 @@ const Reports = () => {
                                         onClick={() => {
                                             // Direct CSV export without opening modal
                                             let csv = '';
-                                            if (rpt.category === 'Financial') {
+                                            if (rpt.id === 'R001') {
                                                 csv = 'Project,Budget (L),Spent (L),Variance (L),Utilisation %\n' +
-                                                    budgetData.map(r => `${r.name},${r.budget},${r.spent},${r.budget - r.spent},${r.budget > 0 ? Math.round((r.spent / r.budget) * 100) : 0}%`).join('\n');
-                                            } else if (rpt.category === 'Project') {
+                                                    budgetData.map(r => `"${r.name}",${r.budget},${r.spent},${(r.budget - r.spent).toFixed(2)},${r.budget > 0 ? Math.round((r.spent / r.budget) * 100) : 0}%`).join('\n');
+                                            } else if (rpt.id === 'R002') {
+                                                csv = 'Vendor/Party,Payable Amount,Paid Amount,Balance\n' +
+                                                    (payables || []).map(p => `"${p.vendor_name || ''}",${p.total_amount || 0},${p.paid_amount || 0},${p.amount || 0}`).join('\n');
+                                            } else if (rpt.id === 'R003' || rpt.id === 'R004') {
                                                 csv = 'Project,Progress %,Tasks,DPRs Filed\n' +
-                                                    progressData.map(r => `${r.project},${r.progress}%,${r.tasks},${r.dpr}`).join('\n');
-                                            } else if (rpt.category === 'Inventory') {
-                                                csv = 'Material,Stock Share %\n' +
-                                                    inventoryData.map(r => `${r.name},${r.value}%`).join('\n');
-                                            } else if (rpt.id === 'R010') {
-                                                csv = 'Date,Project,Category,Amount (₹),Payee/Paid To,Mode,Description\n' +
-                                                    (expenseData || []).map(r => `${r.date},${r.project},${r.category},${r.amount},${r.payee},${r.paymentMode},"${(r.description || '').replace(/"/g, '""')}"`).join('\n');
+                                                    progressData.map(r => `"${r.project}",${r.progress}%,${r.tasks},${r.dpr}`).join('\n');
                                             } else if (rpt.id === 'R005') {
                                                 csv = 'Date,Employee ID,Employee Name,Status,Remarks\n' +
-                                                    (attendanceData || []).map(r => `${r.date},${r.employeeId},${r.employeeName},${r.status},${r.remarks || ''}`).join('\n');
+                                                    (attendanceData || []).map(r => `${r.date},"${r.employeeName || r.employeeId}",${r.employeeId},${r.status},"${r.remarks || ''}"`).join('\n');
+                                            } else if (rpt.id === 'R006') {
+                                                csv = 'Employee,Present Days,Leave Days,LOP Days,Net Salary\n' +
+                                                    (payrollData || []).map(p => `"${p.employeeName || p.employeeId}",${p.presentDays || 0},${p.leaveDays || 0},${p.lopDays || 0},${p.netSalary || 0}`).join('\n');
+                                            } else if (rpt.id === 'R007' || rpt.id === 'R008') {
+                                                csv = materialStockReport.length > 0
+                                                    ? 'Material,Unit,Warehouse Qty,Site Qty,Total Qty,Last Rate,Total Value\n' +
+                                                        materialStockReport.filter(m => m.total_qty > 0).map(m =>
+                                                            `"${m.material_name}",${m.unit},${m.warehouse_qty},${m.total_site_qty},${m.total_qty},${m.last_rate},${m.total_value}`
+                                                        ).join('\n')
+                                                    : 'Material,Stock %\n' + inventoryData.map(r => `"${r.name}",${r.value}%`).join('\n');
+                                            } else if (rpt.id === 'R009') {
+                                                csv = 'No,GRN Ref,Vendor,Project,Items,Status,Amount\n' +
+                                                    (grnData || []).map((g, i) => `${i + 1},GRN-${(g.id || '').slice(-6).toUpperCase()},"${g.vendor_name || ''}","${g.project_name || ''}",${g.items?.length || 0},${g.status || 'Received'},${g.total_amount || 0}`).join('\n');
+                                            } else if (rpt.id === 'R010') {
+                                                csv = 'Date,Project,Category,Amount,Payee,Mode,Description\n' +
+                                                    (expenseData || []).map(r => `${r.date},"${r.project}","${r.category}",${r.amount},"${r.payee}",${r.paymentMode},"${(r.description || '').replace(/"/g, '""')}"`).join('\n');
+                                            } else if (rpt.id === 'R011') {
+                                                csv = 'Account,Debit,Credit\n' +
+                                                    trialBalanceRows.map(r => `"${r.account}",${r.debit},${r.credit}`).join('\n');
+                                            } else if (rpt.id === 'R012') {
+                                                const partyData = preparePartyOutstanding();
+                                                csv = 'Party,Receivable,Payable,Net\n' +
+                                                    partyData.map(p => `"${p.name}",${p.receivable},${p.payable},${p.net}`).join('\n');
+                                            } else if (rpt.id === 'R013') {
+                                                csv = 'Project,Budget (L),Spent (L),Variance (L),Utilisation %\n' +
+                                                    budgetData.map(r => `"${r.name}",${r.budget},${r.spent},${(r.budget - r.spent).toFixed(2)},${r.budget > 0 ? Math.round((r.spent / r.budget) * 100) : 0}%`).join('\n');
                                             } else {
                                                 csv = `Report,${rpt.title}\nCategory,${rpt.category}\nGenerated,${new Date().toLocaleDateString()}\n`;
                                             }

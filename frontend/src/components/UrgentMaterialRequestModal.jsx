@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { materialAPI, inventoryAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import CustomSelect from './CustomSelect';
 
 const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => {
     const { user } = useAuth();
@@ -25,7 +26,6 @@ const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => 
     const updateItem = (idx, field, val) => {
         const newItems = [...items];
         newItems[idx][field] = val;
-        // Auto-fill unit from material master when name is selected
         if (field === 'name') {
             const mat = materials.find(m => m.name === val);
             if (mat && mat.unit) newItems[idx].unit = mat.unit;
@@ -33,8 +33,16 @@ const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => 
         setItems(newItems);
     };
 
-    // Get unique units from materials for manual entry fallback
-    const knownUnits = [...new Set(materials.map(m => m.unit).filter(Boolean))];
+    const materialOptions = useMemo(() => [
+        { value: '', label: 'Select material' },
+        ...materials.map(m => ({ value: m.name, label: m.name }))
+    ], [materials]);
+
+    const unitOptions = useMemo(() => {
+        const units = new Set(materials.map(m => m.unit).filter(Boolean));
+        ['Nos', 'Bags', 'Kg', 'Tons', 'Liters', 'Meters', 'Sq.ft', 'Cu.ft'].forEach(u => units.add(u));
+        return [...units].sort().map(u => ({ value: u, label: u }));
+    }, [materials]);
 
     const handleSubmit = async () => {
         const validItems = items.filter(i => i.name.trim() && parseInt(i.quantity) > 0);
@@ -86,55 +94,49 @@ const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => 
                         This request will be marked as <strong>URGENT</strong> and sent for immediate processing.
                     </div>
 
-                    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                            <thead>
-                                <tr style={{ backgroundColor: '#F8FAFC' }}>
-                                    <th style={th}>#</th>
-                                    <th style={{ ...th, minWidth: 200 }}>Material</th>
-                                    <th style={{ ...th, width: 90 }}>Quantity</th>
-                                    <th style={{ ...th, width: 100 }}>Unit</th>
-                                    <th style={{ ...th, width: 36 }}></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.map((item, idx) => (
-                                    <tr key={idx} style={{ borderTop: '1px solid #F1F5F9' }}>
-                                        <td style={td}>{idx + 1}</td>
-                                        <td style={td}>
-                                            <input list="urgent-mat-list" value={item.name} onChange={e => updateItem(idx, 'name', e.target.value)}
-                                                style={cellInput} placeholder="Select material" />
-                                            <datalist id="urgent-mat-list">
-                                                {materials.map((m, i) => <option key={i} value={m.name}>{m.name} ({m.unit || 'Nos'})</option>)}
-                                            </datalist>
-                                        </td>
-                                        <td style={td}>
-                                            <input type="number" min="1" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)}
-                                                style={{ ...cellInput, textAlign: 'center', fontWeight: 700 }} placeholder="0" />
-                                        </td>
-                                        <td style={td}>
-                                            <input list="unit-list" value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}
-                                                style={cellInput} placeholder="Unit" />
-                                            <datalist id="unit-list">
-                                                {knownUnits.map((u, i) => <option key={i} value={u} />)}
-                                            </datalist>
-                                        </td>
-                                        <td style={td}>
-                                            <button onClick={() => removeItem(idx)} disabled={items.length <= 1}
-                                                style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 4 }}>
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    {items.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
+                            <div style={{ flex: 3 }}>
+                                {idx === 0 && <label style={labelStyle}>Material</label>}
+                                <CustomSelect
+                                    options={materialOptions}
+                                    value={item.name}
+                                    onChange={val => updateItem(idx, 'name', val)}
+                                    placeholder="Select material"
+                                    width="full"
+                                    searchable={true}
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                {idx === 0 && <label style={labelStyle}>Qty</label>}
+                                <input type="number" min="1" value={item.quantity}
+                                    onChange={e => updateItem(idx, 'quantity', e.target.value)}
+                                    style={inputStyle} placeholder="0" />
+                            </div>
+                            <div style={{ flex: 1.5 }}>
+                                {idx === 0 && <label style={labelStyle}>Unit</label>}
+                                <CustomSelect
+                                    options={unitOptions}
+                                    value={item.unit}
+                                    onChange={val => updateItem(idx, 'unit', val)}
+                                    placeholder="Unit"
+                                    width="full"
+                                    searchable={false}
+                                />
+                            </div>
+                            <div style={{ paddingBottom: 2 }}>
+                                <button onClick={() => removeItem(idx)} disabled={items.length <= 1}
+                                    style={{ background: 'none', border: 'none', color: items.length > 1 ? '#EF4444' : '#CBD5E1', cursor: items.length > 1 ? 'pointer' : 'default', padding: 6 }}>
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
 
                     <button onClick={addItem} style={addBtn}><Plus size={14} /> Add Material</button>
 
                     <div style={{ marginTop: 14 }}>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 4, display: 'block' }}>Remarks</label>
+                        <label style={{ ...labelStyle, marginBottom: 4 }}>Remarks</label>
                         <textarea rows={2} value={remarks} onChange={e => setRemarks(e.target.value)}
                             style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
                             placeholder="Reason for urgency..." />
@@ -160,9 +162,8 @@ const header = { padding: '18px 22px', borderBottom: '1px solid #E2E8F0', displa
 const body = { padding: '18px 22px', overflowY: 'auto', flex: 1 };
 const footer = { padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 };
 const iconBtn = { background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 4 };
-const th = { padding: '10px 12px', textAlign: 'left', fontSize: 11, color: '#64748B', fontWeight: 700, textTransform: 'uppercase' };
-const td = { padding: '8px 10px', verticalAlign: 'middle' };
-const cellInput = { width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid #E2E8F0', fontSize: 13, outline: 'none' };
+const labelStyle = { fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', display: 'block', marginBottom: 4 };
+const inputStyle = { width: '100%', padding: '10px 12px', borderRadius: 12, border: '1.5px solid #E2E8F0', fontSize: 14, outline: 'none', fontWeight: 600, textAlign: 'center' };
 const addBtn = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px dashed #3B82F6', backgroundColor: '#EFF6FF', color: '#1D4ED8', fontSize: 12, fontWeight: 600, cursor: 'pointer' };
 const cancelBtn = { padding: '9px 18px', borderRadius: 8, border: '1px solid #E2E8F0', backgroundColor: 'white', cursor: 'pointer', fontWeight: 600, color: '#475569' };
 const urgentBtn = { padding: '9px 18px', borderRadius: 8, border: 'none', backgroundColor: '#EF4444', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 };

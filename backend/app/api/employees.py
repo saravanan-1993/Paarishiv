@@ -158,15 +158,36 @@ async def delete_employee(emp_id: str, db = Depends(get_database), current_user:
     if any(r in ["Super Admin", "Administrator"] for r in emp_roles):
         if current_user.get("role") not in ["Super Admin"]:
             raise HTTPException(status_code=403, detail="Only Super Admin can delete admin accounts")
+    # Check if employee is assigned as engineer/coordinator on active projects
+    emp_code = emp.get("employeeCode") or emp.get("username", "")
+    active_assignments = await db.projects.count_documents({
+        "status": {"$in": ["Ongoing", "Planning"]},
+        "$or": [{"engineer_id": emp_code}, {"coordinator_id": emp_code}, {"engineer_id": emp_id}, {"coordinator_id": emp_id}]
+    })
+    if active_assignments > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete: Employee is assigned to {active_assignments} active project(s). Reassign them first.")
+
     result = await db.employees.delete_one({"_id": ObjectId(emp_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Cleanup linked data
+    try:
+        # Unassign from tasks (set to empty instead of deleting)
+        await db.projects.update_many(
+            {"tasks.assignedTo": emp_code},
+            {"$set": {"tasks.$[t].assignedTo": ""}},
+            array_filters=[{"t.assignedTo": emp_code}]
+        )
+    except Exception:
+        pass
+
     await log_activity(
-        db, 
-        str(current_user.get("_id", current_user["username"])), 
-        current_user["username"], 
-        "Delete Employee", 
-        f"Employee {emp.get('fullName', emp_id)} removed from system", 
+        db,
+        str(current_user.get("_id", current_user["username"])),
+        current_user["username"],
+        "Delete Employee",
+        f"Employee {emp.get('fullName', emp_id)} removed from system",
         "danger"
     )
     return {"message": "Employee deleted successfully"}

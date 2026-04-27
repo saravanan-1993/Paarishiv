@@ -846,10 +846,37 @@ const Materials = () => {
                 isOpen={isDetailsModalOpen}
                 onClose={() => setIsDetailsModalOpen(false)}
                 asset={selectedAsset}
-                onEdit={(asset) => { alert('Edit feature coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
-                onDownloadLog={(asset) => { alert('Download log coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
-                onTransferHistory={(asset) => { alert('Transfer history coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
-                onScheduleService={(asset) => { alert('Schedule service coming soon for ' + (asset?.vehicleNumber || asset?.name)); }}
+                onEdit={(asset) => {
+                    const assetId = asset?.id || asset?._id;
+                    if (!assetId) return;
+                    const updateData = window.prompt('Edit status (Working / Idle / Maintenance):', asset?.status || 'Working');
+                    if (updateData && updateData.trim()) {
+                        fleetAPI.updateVehicle(assetId, { ...asset, status: updateData.trim() })
+                            .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); })
+                            .catch(err => alert('Update failed: ' + err.message));
+                    }
+                }}
+                onDownloadLog={(asset) => {
+                    const name = asset?.vehicleNumber || asset?.name || 'Asset';
+                    const data = JSON.stringify(asset, null, 2);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `${name}_log.json`; a.click();
+                    URL.revokeObjectURL(url);
+                }}
+                onTransferHistory={(asset) => {
+                    setSelectedAsset(null);
+                    setIsDetailsModalOpen(false);
+                    setSearchTerm(asset?.vehicleNumber || asset?.name || '');
+                }}
+                onScheduleService={(asset) => {
+                    const assetId = asset?.id || asset?._id;
+                    if (!assetId) return;
+                    fleetAPI.updateVehicle(assetId, { ...asset, status: 'Maintenance' })
+                        .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); alert('Status set to Maintenance'); })
+                        .catch(err => alert('Failed: ' + err.message));
+                }}
             />
 
             <CreateMaterialModal isOpen={isCreateMaterialOpen} onClose={() => setIsCreateMaterialOpen(false)} onSuccess={() => { fetchWarehouseStock(); setIsCreateMaterialOpen(false); }} />

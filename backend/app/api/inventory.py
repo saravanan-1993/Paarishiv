@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
 from app.utils.rbac import RBACPermission
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_MATERIAL, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
@@ -64,17 +65,38 @@ async def get_warehouse_inventory(db = Depends(get_database)):
 
 @router.post("/requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def create_material_request(request: MaterialRequestCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # MEDIUM-3: Validate item quantities
+    for item in request.requested_items:
+        qty = float(item.get("quantity", 0))
+        if qty <= 0:
+            raise HTTPException(status_code=400, detail=f"Quantity for '{item.get('name', 'item')}' must be greater than 0")
+        if not item.get("name", "").strip():
+            raise HTTPException(status_code=400, detail="Item name cannot be empty")
+
     request_dict = request.dict()
     request_dict["status"] = "Pending"
     request_dict["created_at"] = datetime.now()
     request_dict["issued_items"] = []
-    
+
     result = await db.material_requests.insert_one(request_dict)
-    
+
     # Trigger workflow
     if request.project_id:
         await trigger_workflow_event(request.project_id, "material_consolidated", current_user, db, f"Material Request created for {len(request.requested_items)} items")
-        
+
+    # Notify Coordinator + Admin about new material request
+    try:
+        recipients = ["Project Coordinator", "Administrator"]
+        stakeholders = await get_project_stakeholders(db, project_id=request.project_id, project_name=request.project_name)
+        if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, sender, recipients, EVENT_MATERIAL,
+            "New Material Request",
+            f"Material request for {request.project_name} - {len(request.requested_items)} items requested by {sender}",
+            entity_type="material_request", entity_id=str(result.inserted_id), project_name=request.project_name)
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id), "success": True}
 
 @router.get("/requests")
@@ -191,7 +213,17 @@ async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_da
     }
     
     result = await db.consolidated_requests.insert_one(consolidated_record)
-    
+
+    # Notify Purchase Officer about consolidation
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, sender, ["Purchase Officer", "Administrator"], EVENT_WORKFLOW,
+            "Material Requests Consolidated",
+            f"Consolidated request ready: {len(list(combined_items.values()))} items across {len(site_names)} sites. Ready for PO creation.",
+            entity_type="material_request", entity_id=str(result.inserted_id), priority="high")
+    except Exception:
+        pass
+
     # 4. Update individual requests
     await db.material_requests.update_many(
         {"_id": {"$in": ids}},
@@ -203,6 +235,20 @@ async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_da
     )
     
     return {"id": str(result.inserted_id), "success": True}
+
+@router.delete("/requests/{request_id}", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+async def delete_material_request(request_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Cancel/delete a material request. Only Pending requests can be deleted."""
+    oid = validate_object_id(request_id, "request")
+    req = await db.material_requests.find_one({"_id": oid})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if req.get("status") not in ("Pending", "Rejected"):
+        raise HTTPException(status_code=400, detail=f"Cannot delete request with status '{req.get('status')}'. Only Pending/Rejected requests can be deleted.")
+    await db.material_requests.delete_one({"_id": oid})
+    from app.utils.logging import log_activity
+    await log_activity(db, str(current_user.get("_id", current_user["username"])), current_user["username"], "Delete Material Request", f"Material request {request_id[-6:]} for {req.get('project_name', '')} deleted", "warning")
+    return {"success": True, "message": "Material request deleted"}
 
 @router.get("/consolidated")
 async def get_consolidated_requests(db = Depends(get_database)):
@@ -309,16 +355,18 @@ async def issue_stock(request_id: str, issue: StockIssue, db = Depends(get_datab
                     break
         total_issue_value += float(item["quantity"]) * rate
 
-        # Record in Stock Ledger
+        # Record in Stock Ledger (two entries: OUT from warehouse, IN to site)
+        ref_code = f"REQ-{request_id[-6:].upper()}"
+        now = datetime.now()
         await db.stock_ledger.insert_one({
-            "date": datetime.now(),
-            "material_name": item["name"],
-            "project_name": project_name,
-            "type": "Stock Issue",
-            "ref": f"REQ-{request_id[-6:].upper()}",
-            "in_qty": item["quantity"], # In for Site
-            "out_qty": item["quantity"], # Out for Warehouse
-            "created_at": datetime.now()
+            "date": now, "material_name": item["name"], "project_name": "Warehouse",
+            "type": "Stock Issue", "ref": ref_code,
+            "in_qty": 0, "out_qty": item["quantity"], "created_at": now
+        })
+        await db.stock_ledger.insert_one({
+            "date": now, "material_name": item["name"], "project_name": project_name,
+            "type": "Stock Issue", "ref": ref_code,
+            "in_qty": item["quantity"], "out_qty": 0, "created_at": now
         })
     
     # Update Project Spending
@@ -609,10 +657,15 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
         })
 
     # 4. Accounting Entries
-    # Decrease from source project budget
-    await db.projects.update_one({"name": from_proj}, {"$inc": {"spent": -total_transfer_value}})
-    # Increase at destination project budget
-    await db.projects.update_one({"name": to_proj}, {"$inc": {"spent": total_transfer_value}})
+    # CRITICAL-4: Keep source and destination spent changes symmetric
+    source_project = await db.projects.find_one({"name": from_proj})
+    source_spent = float(source_project.get("spent", 0)) if source_project else 0
+    transfer_deduction = min(total_transfer_value, source_spent)  # Cap to avoid negative
+
+    if transfer_deduction > 0:
+        await db.projects.update_one({"name": from_proj}, {"$inc": {"spent": -transfer_deduction}})
+    # Destination gets same amount as source lost (symmetric)
+    await db.projects.update_one({"name": to_proj}, {"$inc": {"spent": transfer_deduction}})
 
     # Create Accounting Expense records for audit trail
     # Negative expense for Source (Credit)
@@ -765,16 +818,18 @@ async def bulk_warehouse_issue(
         item_value = qty * rate
         total_value += item_value
 
-        # Stock ledger entry
+        # Stock ledger entries (two: OUT from warehouse, IN to site)
+        ref_code = f"WH-{payload.request_id[-6:].upper()}" if payload.request_id else f"WH-DIRECT-{datetime.now().strftime('%H%M%S')}"
+        now = datetime.now()
         await db.stock_ledger.insert_one({
-            "date": datetime.now(),
-            "material_name": item.name,
-            "project_name": payload.project_name,
-            "type": "Warehouse Issue",
-            "ref": f"WH-{payload.request_id[-6:].upper()}" if payload.request_id else f"WH-DIRECT-{datetime.now().strftime('%H%M%S')}",
-            "in_qty": qty,
-            "out_qty": qty,
-            "created_at": datetime.now(),
+            "date": now, "material_name": item.name, "project_name": "Warehouse",
+            "type": "Warehouse Issue", "ref": ref_code,
+            "in_qty": 0, "out_qty": qty, "created_at": now
+        })
+        await db.stock_ledger.insert_one({
+            "date": now, "material_name": item.name, "project_name": payload.project_name,
+            "type": "Warehouse Issue", "ref": ref_code,
+            "in_qty": qty, "out_qty": 0, "created_at": now
         })
 
         issued.append({"name": item.name, "quantity": qty, "unit": item.unit, "value": item_value})

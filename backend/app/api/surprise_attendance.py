@@ -7,6 +7,7 @@ from app.utils.rbac import RBACPermission
 from datetime import datetime
 from bson import ObjectId
 from app.utils.cloudinary import upload_file
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_HR
 
 router = APIRouter(prefix="/surprise-attendance", tags=["surprise-attendance"])
 
@@ -76,6 +77,21 @@ async def save_surprise_attendance(
                 "verified_labour": verified_list,
             }}
         )
+
+    # Notify project stakeholders about surprise visit
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        recipients = ["Administrator"]
+        stakeholders = await get_project_stakeholders(db, project_id=project_id)
+        if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        present_count = len(record.get("present_employees", []))
+        await notify(db, sender, recipients, EVENT_HR,
+            "Surprise Visit Conducted",
+            f"Surprise visit at {project_name} ({session} session) by {sender}. {present_count} employees present.",
+            entity_type="project", entity_id=project_id, project_name=project_name)
+    except Exception:
+        pass
 
     return {"success": True, "id": str(result.inserted_id)}
 
