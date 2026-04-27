@@ -513,3 +513,26 @@ label {
 .animate-spin {
     animation: spin 1s linear infinite;
 }
+
+/* Mobile responsiveness for modals */
+@media (max-width: 768px) {
+    .modal-content {
+        max-width: 95vw !important;
+        width: 95vw !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+        margin: 16px !important;
+    }
+    .modal-overlay {
+        padding: 8px;
+    }
+    .data-table {
+        font-size: 12px;
+    }
+    .data-table th, .data-table td {
+        padding: 8px 6px !important;
+    }
+    .app-header {
+        padding: 0 12px !important;
+    }
+}

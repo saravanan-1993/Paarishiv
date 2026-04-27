@@ -124,7 +124,7 @@ const FuelInventoryModal = ({ isOpen, onClose, projectName = 'All Sites' }) => {
                                             <tr><td colSpan={4} style={{ textAlign: 'center', padding: '32px' }}>Loading...</td></tr>
                                         ) : logs.length === 0 ? (
                                             <tr><td colSpan={4} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>No fuel transactions yet</td></tr>
-                                        ) : logs.filter(l => activeTab === 'Stock' ? l.type === 'Stock In' : true).map((log, i) => (
+                                        ) : logs.filter(l => activeTab === 'Stock' ? l.type === 'Stock In' : l.type !== 'Stock In').map((log, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '13px' }}>{log.date}</td>
                                                 <td>

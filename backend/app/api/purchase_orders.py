@@ -10,6 +10,7 @@ from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
 from app.utils.logging import log_activity
 from app.utils.rbac import RBACPermission
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_WORKFLOW, EVENT_APPROVAL
 router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
 class POItem(BaseModel):
@@ -77,6 +78,13 @@ async def get_po(id: str):
 
 @router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def create_po(po: POCreate, background_tasks: BackgroundTasks):
+    # MEDIUM-6: Prevent duplicate POs from same material request
+    if po.request_id and ObjectId.is_valid(po.request_id):
+        existing_po = await db.purchase_orders.find_one({"request_id": po.request_id})
+        if existing_po:
+            raise HTTPException(status_code=400,
+                detail=f"A Purchase Order already exists for this material request (PO for {existing_po.get('vendor_name', 'N/A')}). Edit the existing PO instead.")
+
     po_dict = po.model_dump()
     po_dict["created_at"] = datetime.now()
     result = await db.purchase_orders.insert_one(po_dict)
@@ -117,6 +125,21 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
         pass
 
     await log_activity(db, "system", "Purchase Officer", "Create PO", f"PO created for {po.vendor_name} | Project: {po.project_name}", "info")
+
+    # Notify GM + stakeholders about new PO
+    try:
+        recipients = ["General Manager", "Administrator"]
+        stakeholders = await get_project_stakeholders(db, project_name=po.project_name)
+        if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        po_id_short = str(result.inserted_id)[-6:].upper()
+        await notify(db, "Purchase Officer", recipients, EVENT_WORKFLOW,
+            "New Purchase Order",
+            f"PO-{po_id_short} created for {po.vendor_name} | Project: {po.project_name} | Amount: Rs.{po.total_amount:,.0f}. Awaiting approval.",
+            entity_type="po", entity_id=str(result.inserted_id), project_name=po.project_name, priority="high")
+    except Exception:
+        pass
+
     return po_helper(new_po)
 
 @router.put("/{id}", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
@@ -165,6 +188,21 @@ async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
         f"Purchase Order for {po.get('vendor_name')} approved for {po.get('project_name')}",
         "success"
     )
+
+    # Notify PO creator + stakeholders that PO is approved
+    try:
+        approver = current_user.get("full_name") or current_user.get("username", "")
+        recipients = ["Purchase Officer"]
+        stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
+        if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        await notify(db, approver, recipients, EVENT_APPROVAL,
+            "PO Approved",
+            f"PO for {po.get('vendor_name', '')} ({po.get('project_name', '')}) has been approved by {approver}. Vendor has been notified.",
+            entity_type="po", entity_id=id, project_name=po.get("project_name"), priority="high")
+    except Exception:
+        pass
+
     return {"message": "PO Approved"}
 
 @router.post("/{id}/send-email", dependencies=[Depends(RBACPermission("Procurement", "edit"))])

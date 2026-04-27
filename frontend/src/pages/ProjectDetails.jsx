@@ -670,9 +670,10 @@ const ProjectDetails = () => {
                 {/* ── KPI Cards ─────────────────────────────────────────────────── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     {[
-                        ...(user?.role === 'Super Admin' || user?.role === 'Manager' ? [
-                            { label: 'Credit', value: fmtAmt(project.budget), icon: Wallet, color: '#3B82F6', bg: '#EFF6FF' },
-                            { label: 'Debit', value: fmtAmt(spent), icon: TrendingUp, color: '#EF4444', bg: '#FEF2F2' }
+                        ...(user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Administrator' ? [
+                            { label: 'Budget', value: fmtAmt(project.budget || project.estimated_budget), icon: Wallet, color: '#3B82F6', bg: '#EFF6FF' },
+                            { label: 'Spent', value: fmtAmt(spent), icon: TrendingUp, color: '#EF4444', bg: '#FEF2F2' },
+                            { label: 'Remaining', value: fmtAmt(Math.max(0, (project.budget || project.estimated_budget || 0) - spent)), icon: Wallet, color: '#10B981', bg: '#ECFDF5' }
                         ] : []),
                         { label: 'Progress', value: `${taskProgress}%`, icon: BarChart2, color: '#8B5CF6', bg: '#F5F3FF' },
                         { label: 'DPRs', value: dprCount, icon: FileText, color: '#F59E0B', bg: '#FFFBEB' },
@@ -885,7 +886,10 @@ const ProjectDetails = () => {
                                                     </span>
                                                 </td>
                                                 <td style={{ fontSize: '13px' }}>{task.startDate}</td>
-                                                <td style={{ fontSize: '13px' }}>{task.dueDate} {task.dueTime ? `@ ${task.dueTime}` : ''}</td>
+                                                <td style={{ fontSize: '13px', color: task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Completed' ? '#EF4444' : 'inherit', fontWeight: task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Completed' ? '700' : 'normal' }}>
+                                                    {task.dueDate} {task.dueTime ? `@ ${task.dueTime}` : ''}
+                                                    {task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Completed' && <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#FEE2E2', color: '#EF4444', fontWeight: '700' }}>OVERDUE</span>}
+                                                </td>
                                                 <td>
                                                     <TaskStatusDropdown task={task} onStatusChange={handleTaskStatusChange} />
                                                 </td>

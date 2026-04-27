@@ -96,6 +96,14 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
             setError('Please fill in all required fields.');
             return;
         }
+        if (parseFloat(form.budget) <= 0) {
+            setError('Budget must be greater than zero.');
+            return;
+        }
+        if (form.start_date > form.end_date) {
+            setError('Start date cannot be after end date.');
+            return;
+        }
 
         setLoading(true);
         setError('');

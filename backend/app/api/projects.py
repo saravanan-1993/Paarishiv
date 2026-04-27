@@ -13,6 +13,7 @@ from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
 from app.utils.rbac import RBACPermission
 from app.utils.sanitize import sanitize_string, sanitize_list
+from app.utils.notifications import notify, EVENT_PROJECT, EVENT_TASK, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -74,6 +75,21 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
         f"New project '{project_dict.get('name')}' created",
         "success"
     )
+
+    # Notify assigned engineer and coordinator
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        recipients = []
+        if project_dict.get("engineer_id"): recipients.append(project_dict["engineer_id"])
+        if project_dict.get("coordinator_id"): recipients.append(project_dict["coordinator_id"])
+        recipients.extend(["Administrator", "General Manager"])
+        await notify(db, sender, recipients, EVENT_PROJECT,
+            "New Project Created",
+            f"Project '{project_dict.get('name')}' has been created. Client: {project_dict.get('client', 'N/A')}. Budget: Rs.{project_dict.get('estimated_budget', 0):,.0f}",
+            entity_type="project", entity_id=pid, project_name=project_dict.get("name"))
+    except Exception:
+        pass
+
     return project_dict
 
 @router.get("/", response_model=List[ProjectModel])
@@ -257,7 +273,21 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
     new_status = data.get("status")
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
-        
+
+    valid_statuses = ["Planning", "Ongoing", "On Hold", "Completed", "Delayed"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
+
+    # Validate status transitions
+    project = await db.projects.find_one({"_id": ObjectId(project_id)})
+    if project:
+        current = project.get("status", "Planning")
+        # Prevent reverting Completed projects (except by Admin)
+        if current == "Completed" and new_status != "Completed":
+            user_role = (current_user.get("role") or "").strip()
+            if user_role not in ("Super Admin", "Administrator"):
+                raise HTTPException(status_code=403, detail="Only Admin can revert a Completed project")
+
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id)},
         {"$set": {"status": new_status}}
@@ -270,7 +300,22 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
         await trigger_workflow_event(project_id, "project_ongoing", current_user, db, "Project marks as Ongoing")
     elif new_status == "Completed":
         await trigger_workflow_event(project_id, "project_completed", current_user, db, "Project successfully Completed")
-        
+
+    # Notify all stakeholders about status change
+    try:
+        project = await db.projects.find_one({"_id": ObjectId(project_id)})
+        if project:
+            sender = current_user.get("full_name") or current_user.get("username", "")
+            recipients = ["Administrator", "General Manager"]
+            if project.get("engineer_id"): recipients.append(project["engineer_id"])
+            if project.get("coordinator_id"): recipients.append(project["coordinator_id"])
+            await notify(db, sender, recipients, EVENT_PROJECT,
+                f"Project {new_status}",
+                f"Project '{project.get('name', '')}' status changed to {new_status} by {sender}",
+                entity_type="project", entity_id=project_id, project_name=project.get("name"), priority="high")
+    except Exception:
+        pass
+
     return {"success": True, "new_status": new_status}
 
 @router.post("/{project_id}/tasks", dependencies=[Depends(RBACPermission("Projects", "edit"))])
@@ -596,7 +641,19 @@ async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), c
             await db.manpower_requests.insert_one(labour_request)
     
     await trigger_workflow_event(project_id, "dpr_submitted", current_user, db, f"DPR attached for {dpr_dict['date']}")
-    
+
+    # Notify Coordinator about new DPR submission
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        recipients = ["Project Coordinator", "Administrator"]
+        if project.get("coordinator_id"): recipients.append(project["coordinator_id"])
+        await notify(db, sender, recipients, EVENT_WORKFLOW,
+            "DPR Submitted",
+            f"New DPR submitted for project '{project.get('name', '')}' dated {dpr_dict.get('date', '')} by {sender}. Awaiting coordinator review.",
+            entity_type="dpr", entity_id=f"{project_id}:{dpr_dict['id']}", project_name=project.get("name"), priority="high")
+    except Exception:
+        pass
+
     return {"success": True, "dpr": dpr_dict}
 @router.put("/{project_id}/dprs/{dpr_id}/status")
 async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):

@@ -505,6 +505,8 @@ const HRMS = () => {
             });
             fetchLeaves();
             fetchInitialData();
+            // Refresh attendance since leave approval auto-marks attendance as "Leave"
+            if (status === 'Approved' && selectedDate) fetchAttendance(selectedDate);
         } catch (err) {
             console.error('Leave action failed', err);
         }

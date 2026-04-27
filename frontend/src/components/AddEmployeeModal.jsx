@@ -346,7 +346,8 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
                             <CustomSelect
                                 label="Salary Type"
                                 options={[
-                                    { value: 'monthly', label: 'Monthly Salary' }
+                                    { value: 'monthly', label: 'Monthly Salary' },
+                                    { value: 'daily', label: 'Daily Wage' }
                                 ]}
                                 value={formData.salaryType}
                                 onChange={(val) => setFormData(prev => ({ ...prev, salaryType: val }))}

@@ -8,6 +8,7 @@ import calendar
 import re
 from app.utils.auth import get_current_user
 from app.utils.rbac import RBACPermission
+from app.utils.notifications import notify, EVENT_HR
 
 router = APIRouter(prefix="/hrms", tags=["hrms"])
 
@@ -71,7 +72,9 @@ async def get_hrms_stats(db = Depends(get_database)):
     grace = (hrms_settings or {}).get("gracePeriod", 15)
     try:
         start_h, start_m = map(int, office_start.split(":"))
-        late_threshold = f"{start_h:02d}:{(start_m + grace):02d}"
+        total_min = start_h * 60 + start_m + int(grace)
+        late_h, late_m = divmod(total_min, 60)
+        late_threshold = f"{late_h:02d}:{late_m:02d}"
     except Exception:
         late_threshold = "09:15"
     today_attendance = await db.attendance.find({"date": today_str}).to_list(1000)
@@ -145,10 +148,37 @@ async def get_leaves(db = Depends(get_database)):
 
 @router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
+    # Validate date range
+    from_date = getattr(leave, 'fromDate', None) or getattr(leave, 'from_date', None)
+    to_date = getattr(leave, 'toDate', None) or getattr(leave, 'to_date', None)
+    if from_date and to_date and to_date < from_date:
+        raise HTTPException(status_code=400, detail="To Date cannot be before From Date")
+
+    # Check for overlapping approved leaves
+    emp_id = getattr(leave, 'employeeId', None) or getattr(leave, 'employee_id', None)
+    if emp_id and from_date and to_date:
+        overlap = await db.leaves.find_one({
+            "employeeId": emp_id,
+            "status": "Approved",
+            "$or": [
+                {"fromDate": {"$lte": to_date}, "toDate": {"$gte": from_date}},
+            ]
+        })
+        if overlap:
+            raise HTTPException(status_code=400, detail=f"Overlapping leave already approved from {overlap.get('fromDate')} to {overlap.get('toDate')}")
+
     result = await db.leaves.insert_one(leave.dict())
-    
-    # Logic: If leave is approved (e.g. applied by HR/Admin directly), mark attendance
-    # For now, just insert the leave request
+
+    # Notify HR Manager + Admin about new leave application
+    try:
+        emp_name = leave.employeeName if hasattr(leave, 'employeeName') else "Employee"
+        await notify(db, emp_name, ["HR Manager", "Administrator", "Project Manager"], EVENT_HR,
+            "Leave Applied",
+            f"{emp_name} applied for {leave.leaveType if hasattr(leave, 'leaveType') else 'leave'} from {leave.fromDate if hasattr(leave, 'fromDate') else ''} to {leave.toDate if hasattr(leave, 'toDate') else ''}",
+            entity_type="leave", entity_id=str(result.inserted_id))
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id)}
 
 @router.put("/leaves/{leave_id}", dependencies=[Depends(RBACPermission("HRMS", "edit", "Leave Management"))])
@@ -162,6 +192,21 @@ async def update_leave_status(leave_id: str, status_update: dict, db = Depends(g
         {"$set": {"status": status, "approvedBy": approved_by, "remarks": remarks}}
     )
     
+    # Notify employee about leave status
+    try:
+        leave_doc = await db.leaves.find_one({"_id": ObjectId(leave_id)})
+        if leave_doc:
+            emp_id = leave_doc.get("employeeId", "")
+            emp = await db.employees.find_one({"_id": ObjectId(emp_id)}) if ObjectId.is_valid(emp_id) else None
+            emp_username = emp.get("employeeCode") or emp.get("username", "") if emp else ""
+            if emp_username:
+                await notify(db, approved_by or "HR", [emp_username], EVENT_HR,
+                    f"Leave {status}",
+                    f"Your leave request ({leave_doc.get('fromDate', '')} to {leave_doc.get('toDate', '')}) has been {status.lower()} by {approved_by or 'HR'}" + (f". Remarks: {remarks}" if remarks else ""),
+                    entity_type="leave", entity_id=leave_id, priority="high")
+    except Exception:
+        pass
+
     # Logic: If Approved, auto-mark attendance as 'Leave' for those dates
     if status == "Approved":
         leave = await db.leaves.find_one({"_id": ObjectId(leave_id)})
@@ -171,18 +216,25 @@ async def update_leave_status(leave_id: str, status_update: dict, db = Depends(g
             
             curr = start_date
             while curr <= end_date:
-                curr_str = curr.strftime("%Y-%m-%d")
-                await db.attendance.update_one(
-                    {"employeeId": leave["employeeId"], "date": curr_str},
-                    {"$set": {
-                        "employeeId": leave["employeeId"],
-                        "employeeName": leave["employeeName"],
-                        "date": curr_str,
-                        "status": "Leave",
-                        "remarks": f"Leave Approved ID: {leave_id}"
-                    }},
-                    upsert=True
-                )
+                # Skip Sundays (weekday 6) - don't mark non-working days as Leave
+                if curr.weekday() != 6:
+                    curr_str = curr.strftime("%Y-%m-%d")
+                    # Only mark as Leave if not already Present (don't overwrite attendance)
+                    existing = await db.attendance.find_one(
+                        {"employeeId": leave["employeeId"], "date": curr_str, "status": "Present"}
+                    )
+                    if not existing:
+                        await db.attendance.update_one(
+                            {"employeeId": leave["employeeId"], "date": curr_str},
+                            {"$set": {
+                                "employeeId": leave["employeeId"],
+                                "employeeName": leave["employeeName"],
+                                "date": curr_str,
+                                "status": "Leave",
+                                "remarks": f"Leave Approved ID: {leave_id}"
+                            }},
+                            upsert=True
+                        )
                 curr += timedelta(days=1)
 
     return {"success": True}
@@ -204,6 +256,9 @@ async def generate_payroll(month: str, db = Depends(get_database)):
     
     year, mon = map(int, month.split('-'))
     total_days = calendar.monthrange(year, mon)[1]
+    # Calculate working days (exclude Sundays)
+    working_days = sum(1 for d in range(1, total_days + 1)
+                       if datetime(year, mon, d).weekday() != 6)  # 6 = Sunday
     
     payroll_records = []
     
@@ -229,15 +284,16 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         })
         
         # 3. Calculate salary
-        basic = emp.get("basicSalary", 0)
-        daily = emp.get("dailyWage", 0)
-        
+        basic = float(emp.get("basicSalary", 0) or 0)
+        daily = float(emp.get("dailyWage", 0) or 0)
+
         net_salary = 0
         if emp.get("salaryType") == "daily":
-            net_salary = (present_days + leave_days) * daily # Adjust if leaves are paid or unpaid
+            # Daily wage: pay for present days + paid leave days
+            net_salary = (present_days + leave_days) * daily
         else:
-            # Monthly: Deduct LOP
-            day_rate = basic / total_days
+            # Monthly: Deduct LOP based on working days (not calendar days)
+            day_rate = basic / max(working_days, 1)
             net_salary = basic - (lop_days * day_rate)
             
         record = {
@@ -259,6 +315,16 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         )
         payroll_records.append(record)
         
+    # Notify Admin about payroll generation
+    try:
+        total_payable = sum(r["netSalary"] for r in payroll_records)
+        await notify(db, "HR System", ["Administrator", "General Manager"], EVENT_HR,
+            "Payroll Generated",
+            f"Payroll generated for {month}: {len(employees)} employees, Total payable: Rs.{total_payable:,.0f}",
+            entity_type="payroll", priority="high")
+    except Exception:
+        pass
+
     return {"message": f"Payroll generated for {len(employees)} employees", "count": len(employees)}
 
 # ── Master Data (Designations & Departments) ──────────────────────────────────

@@ -5,6 +5,7 @@ from datetime import datetime
 from database import get_database
 from app.utils.auth import get_current_user, validate_object_id
 from app.utils.rbac import RBACPermission
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_APPROVAL
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -206,16 +207,18 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                                         rate = float(bi["rate"])
                                         break
                         total_value += qty * rate
-                        # Stock ledger
+                        # Stock ledger (two entries: OUT from warehouse, IN to site)
+                        now = datetime.now()
+                        ref_code = f"WH-APR-{str(oid)[-6:].upper()}"
                         await db.stock_ledger.insert_one({
-                            "date": datetime.now(),
-                            "material_name": item["name"],
-                            "project_name": project_name,
-                            "type": "Warehouse Issue (Approved)",
-                            "ref": f"WH-APR-{str(oid)[-6:].upper()}",
-                            "in_qty": qty,
-                            "out_qty": qty,
-                            "created_at": datetime.now(),
+                            "date": now, "material_name": item["name"], "project_name": "Warehouse",
+                            "type": "Warehouse Issue (Approved)", "ref": ref_code,
+                            "in_qty": 0, "out_qty": qty, "created_at": now,
+                        })
+                        await db.stock_ledger.insert_one({
+                            "date": now, "material_name": item["name"], "project_name": project_name,
+                            "type": "Warehouse Issue (Approved)", "ref": ref_code,
+                            "in_qty": qty, "out_qty": 0, "created_at": now,
                         })
                         issued.append({"name": item["name"], "quantity": qty, "unit": item.get("unit", "Nos")})
                     # Update project spending
@@ -298,6 +301,93 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 {"$set": dpr_update}
             )
         
+        # ── Send notifications for all approval actions ──
+        approver_name = current_user.get("full_name") or current_user.get("username", "Admin")
+        try:
+            if type == "leaves":
+                leave = await db.leaves.find_one({"_id": oid})
+                if leave:
+                    emp_id = leave.get("employeeId", "")
+                    emp = await db.employees.find_one({"_id": ObjectId(emp_id)}) if ObjectId.is_valid(emp_id) else None
+                    emp_username = emp.get("employeeCode") or emp.get("username", "") if emp else ""
+                    if emp_username:
+                        await notify(db, approver_name, [emp_username], EVENT_APPROVAL,
+                            f"Leave {status}",
+                            f"Your {leave.get('leaveType', 'leave')} request ({leave.get('fromDate', '')} to {leave.get('toDate', '')}) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                            entity_type="leave", entity_id=obj_id, priority="high")
+
+            elif type == "purchase_orders":
+                po = await db.purchase_orders.find_one({"_id": oid})
+                if po:
+                    # Notify PO creator + project stakeholders
+                    recipients = ["Purchase Officer"]
+                    stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
+                    if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+                    if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
+                        f"PO {status}",
+                        f"Purchase Order for {po.get('vendor_name', '')} ({po.get('project_name', '')}) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                        entity_type="po", entity_id=obj_id, project_name=po.get("project_name"), priority="high")
+
+            elif type == "materials":
+                mat_req = await db.material_requests.find_one({"_id": oid})
+                if mat_req:
+                    recipients = []
+                    req_by = mat_req.get("engineer_id", "")
+                    if req_by: recipients.append(req_by)
+                    if status == "Approved":
+                        recipients.extend(["Purchase Officer"])
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
+                        f"Material Request {status}",
+                        f"Material request for {mat_req.get('project_name', '')} ({len(mat_req.get('requested_items', []))} items) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                        entity_type="material_request", entity_id=obj_id, project_name=mat_req.get("project_name"), priority="high")
+
+            elif type == "expenses":
+                exp = await db.expenses.find_one({"_id": oid})
+                if exp:
+                    await notify(db, approver_name, ["Accountant", "Administrator"], EVENT_APPROVAL,
+                        f"Expense {status}",
+                        f"Expense of Rs.{exp.get('amount', 0):,.0f} ({exp.get('category', '')}) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                        entity_type="expense", entity_id=obj_id, project_name=exp.get("project"), priority="high")
+
+            elif type == "manpower":
+                mp = await db.manpower_requests.find_one({"_id": oid})
+                if mp:
+                    recipients = ["HR Manager"]
+                    stakeholders = await get_project_stakeholders(db, project_id=mp.get("project_id"))
+                    if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
+                        f"Manpower Request {status}",
+                        f"Manpower request for {mp.get('project_name', stakeholders.get('project_name', ''))} has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                        entity_type="manpower", entity_id=obj_id, project_name=mp.get("project_name"), priority="high")
+
+            elif type == "dprs":
+                # Notify SE about DPR approval status
+                proj = await db.projects.find_one({"_id": ObjectId(project_id)})
+                if proj:
+                    proj_name = proj.get("name", "")
+                    se = proj.get("engineer_id", "")
+                    coord = proj.get("coordinator_id", "")
+                    recipients = []
+                    if status == "Coordinator Approved":
+                        if se: recipients.append(se)
+                        recipients.extend(["Purchase Officer", "HR Manager"])
+                    elif status == "Dept Approved":
+                        if coord: recipients.append(coord)
+                        recipients.append("Administrator")
+                    elif status == "Approved":
+                        if se: recipients.append(se)
+                        if coord: recipients.append(coord)
+                    elif status == "Rejected":
+                        if se: recipients.append(se)
+                        if coord: recipients.append(coord)
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
+                        f"DPR {status}",
+                        f"DPR for project '{proj_name}' has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
+                        entity_type="dpr", entity_id=obj_id, project_name=proj_name, priority="high")
+        except Exception:
+            pass  # Don't fail approval action if notification fails
+
         return {"message": "Success", "status": status}
     except Exception as e:
         import traceback

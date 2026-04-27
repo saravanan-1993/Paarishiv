@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import {
     CheckCircle, XCircle, Clock, Package,
     ShoppingCart, User, FileText, Loader2, RefreshCw, Eye, CreditCard,
-    Search, Filter, ChevronDown
+    Search, Filter, ChevronDown, Download
 } from 'lucide-react';
 import { approvalsAPI } from '../utils/api';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import PODetailModal from '../components/PODetailModal';
 import MaterialRequestDetailModal from '../components/MaterialRequestDetailModal';
@@ -50,6 +52,8 @@ const Approvals = () => {
 
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(null);
+    const [bulkLoading, setBulkLoading] = useState(false);
+    const [selectedIds, setSelectedIds] = useState([]);
     const [selectedPO, setSelectedPO] = useState(null);
     const [selectedMaterial, setSelectedMaterial] = useState(null);
     const [data, setData] = useState({
@@ -96,6 +100,55 @@ const Approvals = () => {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    const handleExportPDF = () => {
+        if (filteredData.length === 0) return;
+        const doc = new jsPDF();
+        doc.setFontSize(18); doc.text(`Approvals - ${activeTab.replace('_', ' ')}`, 14, 20);
+        doc.setFontSize(10); doc.text(`Status: ${activeStatusTab} | Generated: ${new Date().toLocaleString()}`, 14, 28);
+
+        let headers = [['#', 'Name/Project', 'Type', 'Status', 'Date']];
+        let body = filteredData.map((item, i) => [
+            i + 1,
+            item.employee_name || item.employeeName || item.project_name || item.projectName || item.vendor_name || item.category || 'N/A',
+            activeTab.replace('_', ' '),
+            item.status || 'Pending',
+            item.created_at || item.fromDate || item.date || ''
+        ]);
+        autoTable(doc, { startY: 34, head: headers, body, theme: 'grid', headStyles: { fillColor: [59, 130, 246] }, styles: { fontSize: 9 } });
+        doc.save(`Approvals_${activeTab}_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    const handleBulkApprove = async () => {
+        if (selectedIds.length === 0) return;
+        if (!window.confirm(`Approve ${selectedIds.length} selected items?`)) return;
+        setBulkLoading(true);
+        try {
+            for (const id of selectedIds) {
+                await approvalsAPI.action(activeTab, id, 'approve', {});
+            }
+            setSelectedIds([]);
+            await fetchData();
+        } catch (err) {
+            console.error('Bulk approve error:', err);
+            alert('Some items failed to approve');
+        }
+        setBulkLoading(false);
+    };
+
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        const pendingItems = filteredData.filter(i => i.status === 'Pending' || !i.status);
+        const pendingIds = pendingItems.map(i => i._id || i.id);
+        if (selectedIds.length === pendingIds.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(pendingIds);
+        }
+    };
 
     const handleAction = async (type, id, action) => {
         let payload = {};
@@ -176,11 +229,15 @@ const Approvals = () => {
     const renderLeaveCard = (item) => (
         <div key={item._id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
-            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            border: selectedIds.includes(item._id) ? '2px solid #10b981' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
             marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {item.status === 'Pending' && activeStatusTab === 'Pending' && (
+                        <input type="checkbox" checked={selectedIds.includes(item._id)} onChange={() => toggleSelect(item._id)}
+                            style={{ width: '18px', height: '18px', accentColor: '#10b981', cursor: 'pointer' }} />
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>
                         <User size={24} />
                     </div>
@@ -247,11 +304,15 @@ const Approvals = () => {
     const renderPOCard = (item) => (
         <div key={item._id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
-            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            border: selectedIds.includes(item._id) ? '2px solid #10b981' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
             marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {item.status === 'Pending' && activeStatusTab === 'Pending' && (
+                        <input type="checkbox" checked={selectedIds.includes(item._id)} onChange={() => toggleSelect(item._id)}
+                            style={{ width: '18px', height: '18px', accentColor: '#10b981', cursor: 'pointer' }} />
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f3e8ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b5cf6' }}>
                         <ShoppingCart size={24} />
                     </div>
@@ -331,11 +392,15 @@ const Approvals = () => {
     const renderMaterialCard = (item) => (
         <div key={item._id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
-            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            border: selectedIds.includes(item._id) ? '2px solid #10b981' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
             marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {item.status === 'Pending' && activeStatusTab === 'Pending' && (
+                        <input type="checkbox" checked={selectedIds.includes(item._id)} onChange={() => toggleSelect(item._id)}
+                            style={{ width: '18px', height: '18px', accentColor: '#10b981', cursor: 'pointer' }} />
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
                         <Package size={24} />
                     </div>
@@ -416,6 +481,10 @@ const Approvals = () => {
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {item.status === 'Pending' && activeStatusTab === 'Pending' && (
+                        <input type="checkbox" checked={selectedIds.includes(item._id)} onChange={() => toggleSelect(item._id)}
+                            style={{ width: '18px', height: '18px', accentColor: '#10b981', cursor: 'pointer' }} />
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
                         <User size={24} />
                     </div>
@@ -474,11 +543,15 @@ const Approvals = () => {
     const renderExpenseCard = (item) => (
         <div key={item._id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
-            border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
+            border: selectedIds.includes(item._id) ? '2px solid #10b981' : '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
             marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '16px'
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {(!item.status || item.status === 'Pending') && activeStatusTab === 'Pending' && (
+                        <input type="checkbox" checked={selectedIds.includes(item._id)} onChange={() => toggleSelect(item._id)}
+                            style={{ width: '18px', height: '18px', accentColor: '#10b981', cursor: 'pointer' }} />
+                    )}
                     <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#fce7f3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ec4899' }}>
                         <CreditCard size={24} />
                     </div>
@@ -723,17 +796,55 @@ const Approvals = () => {
                             Review and authorize pending requests across modules
                         </p>
                     </div>
-                    <button
-                        onClick={fetchData}
-                        style={{
-                            background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
-                            borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                            fontWeight: '600', color: '#475569', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                        }}
-                    >
-                        <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-                        Refresh Data
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        {activeStatusTab === 'Pending' && selectedIds.length > 0 && activeTab !== 'dprs' && (
+                            <button
+                                onClick={handleBulkApprove}
+                                disabled={bulkLoading}
+                                style={{
+                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', padding: '10px 20px',
+                                    borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                    fontWeight: '700', color: 'white', boxShadow: '0 4px 12px rgba(16,185,129,0.2)'
+                                }}
+                            >
+                                {bulkLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                Approve Selected ({selectedIds.length})
+                            </button>
+                        )}
+                        {activeStatusTab === 'Pending' && activeTab !== 'dprs' && filteredData.filter(i => i.status === 'Pending' || !i.status).length > 0 && (
+                            <button
+                                onClick={toggleSelectAll}
+                                style={{
+                                    background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
+                                    borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                    fontWeight: '600', color: '#475569', fontSize: '13px'
+                                }}
+                            >
+                                {selectedIds.length === filteredData.filter(i => i.status === 'Pending' || !i.status).length ? 'Deselect All' : 'Select All'}
+                            </button>
+                        )}
+                        <button
+                            onClick={handleExportPDF}
+                            style={{
+                                background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
+                                borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                fontWeight: '600', color: '#475569'
+                            }}
+                        >
+                            <Download size={16} /> Export
+                        </button>
+                        <button
+                            onClick={fetchData}
+                            style={{
+                                background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
+                                borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                fontWeight: '600', color: '#475569', boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}
+                        >
+                            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                            Refresh
+                        </button>
+                    </div>
                 </div>
 
                 {/* Controls */}

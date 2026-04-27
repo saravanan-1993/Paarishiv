@@ -110,6 +110,8 @@ export const AuthProvider = ({ children }) => {
     const logout = () => {
         setUser(null);
         localStorage.removeItem('erp_user');
+        localStorage.removeItem('erp_token');
+        localStorage.removeItem('erp_login_time');
     };
 
     const updateUser = (newData) => {

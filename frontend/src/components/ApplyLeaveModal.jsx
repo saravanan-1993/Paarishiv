@@ -44,6 +44,9 @@ const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (loading) return;
+        if (!formData.fromDate || !formData.toDate) { alert('Please select both From and To dates'); return; }
+        if (formData.toDate < formData.fromDate) { alert('To Date cannot be before From Date'); return; }
+        if (!formData.leaveType) { alert('Please select leave type'); return; }
 
         setLoading(true);
         try {

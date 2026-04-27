@@ -315,7 +315,7 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
                         }}>
                             Cancel
                         </button>
-                        <button type="submit" disabled={loading || isExceeding} style={{
+                        <button type="submit" disabled={loading || isExceeding || !form.project || !form.bill_no || !form.amount} style={{
                             padding: '11px 28px', borderRadius: '8px', border: 'none',
                             background: isExceeding ? '#9CA3AF' : 'linear-gradient(135deg, #1e3a5f, #2F5D8A)',
                             color: 'white', fontWeight: '800', fontSize: '14px', cursor: isExceeding ? 'not-allowed' : 'pointer',

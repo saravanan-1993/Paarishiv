@@ -210,16 +210,18 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
                                             <input
                                                 required
                                                 type="number"
+                                                min="0"
                                                 value={item.received_qty}
-                                                onChange={(e) => handleItemChange(i, 'received_qty', e.target.value)}
+                                                onChange={(e) => handleItemChange(i, 'received_qty', Math.max(0, parseFloat(e.target.value) || 0))}
                                                 style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', fontWeight: '700' }}
                                             />
                                         </td>
                                         <td>
                                             <input
                                                 type="number"
+                                                min="0"
                                                 value={item.rejected_qty}
-                                                onChange={(e) => handleItemChange(i, 'rejected_qty', e.target.value)}
+                                                onChange={(e) => handleItemChange(i, 'rejected_qty', Math.max(0, parseFloat(e.target.value) || 0))}
                                                 style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)', color: '#ef4444' }}
                                             />
                                         </td>

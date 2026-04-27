@@ -10,6 +10,7 @@ from datetime import datetime
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
 from app.utils.rbac import RBACPermission
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_FINANCE
 
 router = APIRouter(prefix="/finance", tags=["finance"])
 
@@ -90,11 +91,16 @@ async def get_payables(db = Depends(get_database)):
             po_items = po.get("items", [])
             
             for gi in grn_items:
+                # Use net quantity (received - rejected) for payable calculation
+                net_qty = float(gi.get("received_qty", 0)) - float(gi.get("rejected_qty", 0))
+                if net_qty <= 0:
+                    continue
+
                 # Try to get price directly from GRN item (if updated during payment)
                 grn_price = gi.get("price")
                 if grn_price is not None and str(grn_price).strip() != "":
                     try:
-                        total_value += float(gi.get("received_qty", 0)) * float(grn_price)
+                        total_value += net_qty * float(grn_price)
                         continue
                     except ValueError:
                         pass
@@ -102,7 +108,7 @@ async def get_payables(db = Depends(get_database)):
                 # Fallback to PO item rate
                 matching_po_item = next((pi for pi in po_items if pi["name"] == gi["name"]), None)
                 if matching_po_item and matching_po_item.get("rate"):
-                    total_value += float(gi.get("received_qty", 0)) * float(matching_po_item.get("rate", 0))
+                    total_value += net_qty * float(matching_po_item.get("rate", 0))
         
         # If total_value is still 0, check purchase bills for the correct total
         if total_value == 0:
@@ -195,11 +201,18 @@ async def get_payables(db = Depends(get_database)):
 
 @router.post("/expenses", dependencies=[Depends(RBACPermission("Accounts", "edit", "Payments"))])
 async def create_expense(expense: ExpenseBase, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # CRITICAL-1: Prevent double payment on already-paid GRN
+    if expense.grn_id and expense.mark_as_paid:
+        existing_grn = await db.grns.find_one({"_id": ObjectId(expense.grn_id)})
+        if existing_grn and existing_grn.get("status") == "Paid":
+            raise HTTPException(status_code=400, detail="This GRN is already marked as Paid. Cannot process duplicate payment.")
+
     expense_dict = expense.dict()
     result = await db.expenses.insert_one(expense_dict)
-    
-    # Update project spent amount
-    if expense.project and expense.project != "General":
+
+    # HIGH-6 FIX: Only update project spent for NON-GRN expenses (general expenses, petty cash, etc.)
+    # For GRN-linked expenses, spent was already updated when auto-bill was created in grns.py
+    if expense.project and expense.project != "General" and not expense.grn_id:
         await db.projects.update_one(
             {"name": expense.project},
             {"$inc": {"spent": expense.amount}}
@@ -295,6 +308,27 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
         except:
             pass
             
+    # Notify stakeholders about payment
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        recipients = ["Administrator"]
+        if expense.project and expense.project != "General":
+            stakeholders = await get_project_stakeholders(db, project_name=expense.project)
+            if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+            recipients.append("Purchase Officer")
+        if expense.mark_as_paid:
+            await notify(db, sender, recipients, EVENT_FINANCE,
+                "Payment Settled",
+                f"Payment of Rs.{expense.amount:,.0f} for {expense.category or 'expense'} ({expense.project or 'General'}) fully settled by {sender}",
+                entity_type="expense", entity_id=str(result.inserted_id), project_name=expense.project, priority="high")
+        elif expense.grn_id:
+            await notify(db, sender, recipients, EVENT_FINANCE,
+                "Payment Recorded",
+                f"Partial payment of Rs.{expense.amount:,.0f} recorded for {expense.project or 'General'} by {sender}",
+                entity_type="expense", entity_id=str(result.inserted_id), project_name=expense.project)
+    except Exception:
+        pass
+
     expense_dict.pop("_id", None)
     return {"id": str(result.inserted_id), **expense_dict}
 
@@ -365,6 +399,18 @@ async def create_bill(bill: BillCreate, db = Depends(get_database)):
         doc["id"] = str(result.inserted_id)
         doc.pop("_id", None) # Remove ObjectId for JSON serialization
 
+        # Notify PM/Admin about new client bill
+        try:
+            recipients = ["Administrator", "General Manager", "Project Manager"]
+            stakeholders = await get_project_stakeholders(db, project_name=proj_clean)
+            if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+            await notify(db, "Accountant", recipients, EVENT_FINANCE,
+                "Client Bill Created",
+                f"Bill #{no_clean} created for {proj_clean}. Amount: Rs.{total_amount:,.0f} (incl. GST Rs.{gst_amount:,.0f})",
+                entity_type="bill", entity_id=str(result.inserted_id), project_name=proj_clean)
+        except Exception:
+            pass
+
         return doc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -384,14 +430,23 @@ async def mark_bill_paid(bill_id: str, data: MarkPaidRequest, db = Depends(get_d
     bill = await db.bills.find_one({"_id": oid})
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
-    
-    new_collection = float(bill.get("collection_amount", 0)) + collection_amount
+    if bill.get("status") == "Paid":
+        raise HTTPException(status_code=400, detail="This bill is already fully paid")
+
     total = float(bill.get("total_amount", 0))
+    current_collection = float(bill.get("collection_amount", 0))
+    new_collection = current_collection + collection_amount
+
+    # Prevent over-payment
+    if new_collection > total * 1.01:  # 1% tolerance for rounding
+        raise HTTPException(status_code=400, detail=f"Payment of {collection_amount} would exceed bill total. Remaining: {total - current_collection:.2f}")
+
     new_status = "Paid" if new_collection >= total else "Partially Paid"
-    
+
+    # Use atomic $inc to prevent race conditions
     await db.bills.update_one(
-        {"_id": ObjectId(bill_id)},
-        {"$set": {"collection_amount": new_collection, "status": new_status}}
+        {"_id": oid},
+        {"$inc": {"collection_amount": collection_amount}, "$set": {"status": new_status}}
     )
     return {"success": True, "collection_amount": new_collection, "status": new_status}
 
@@ -409,18 +464,19 @@ async def create_receipt(receipt: ReceiptBase, db = Depends(get_database)):
     receipt_dict = receipt.dict()
     result = await db.receipts.insert_one(receipt_dict)
 
-    # If linked to a bill, update the bill's collection amount
+    # If linked to a bill, atomically update the bill's collection amount
     if receipt.bill_id:
-        oid = validate_object_id(receipt.bill_id, "bill")
-        bill = await db.bills.find_one({"_id": oid})
+        bill_oid = validate_object_id(receipt.bill_id, "bill")
+        bill = await db.bills.find_one({"_id": bill_oid})
         if bill:
-            new_collection = float(bill.get("collection_amount", 0)) + receipt.amount
             total = float(bill.get("total_amount", 0))
+            current = float(bill.get("collection_amount", 0))
+            new_collection = current + receipt.amount
             new_status = "Paid" if new_collection >= total else "Partially Paid"
-            
+
             await db.bills.update_one(
-                {"_id": ObjectId(receipt.bill_id)},
-                {"$set": {"collection_amount": new_collection, "status": new_status}}
+                {"_id": bill_oid},
+                {"$inc": {"collection_amount": receipt.amount}, "$set": {"status": new_status}}
             )
             
     receipt_dict["id"] = str(result.inserted_id)
@@ -437,6 +493,12 @@ async def get_purchase_bills(db = Depends(get_database)):
 
 @router.post("/purchase-bills", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # HIGH-4: Prevent duplicate purchase bills for same GRN
+    if hasattr(bill, 'grn_id') and bill.grn_id:
+        existing_bill = await db.purchase_bills.find_one({"grn_id": bill.grn_id})
+        if existing_bill:
+            raise HTTPException(status_code=400, detail=f"A purchase bill ({existing_bill.get('bill_no', 'N/A')}) already exists for this GRN. Edit the existing bill instead.")
+
     bill_dict = bill.dict()
     # Ensure numeric fields are properly typed
     bill_dict["total_amount"] = float(bill_dict.get("total_amount", 0) or 0)
@@ -450,14 +512,24 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
     
     result = await db.purchase_bills.insert_one(bill_dict)
     
-    # Update Project 'Spent' amount
+    # Update Project 'Spent' amount - but ONLY if this isn't an auto-generated bill from GRN
+    # (auto-bills from GRN already update spent in grns.py)
+    already_counted = False
+    if hasattr(bill, 'grn_id') and bill.grn_id:
+        grn_doc = await db.grns.find_one({"_id": ObjectId(bill.grn_id)}) if ObjectId.is_valid(bill.grn_id) else None
+        if grn_doc:
+            # Check if GRN auto-bill already incremented spent (has rates = already counted)
+            existing_auto_bill = await db.purchase_bills.find_one({"grn_id": bill.grn_id, "auto_generated": True})
+            if existing_auto_bill:
+                already_counted = True
+
     project = await db.projects.find_one({"name": bill.project_name})
-    if project:
-        new_spent = float(project.get("spent", 0)) + float(bill.total_amount)
+    if project and not already_counted:
         await db.projects.update_one(
             {"name": bill.project_name},
-            {"$set": {"spent": new_spent}}
+            {"$inc": {"spent": float(bill.total_amount)}}
         )
+    if project:
         await trigger_workflow_event(str(project["_id"]), "accounts_entry", current_user, db, f"Purchase Bill entered: {bill.bill_no}")
         
     # Mark GRN as Billed if linked
@@ -485,6 +557,29 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
         "po_id": bill_dict.get("po_id"),
         "created_at": str(bill_dict.get("created_at", "")),
     }
+
+@router.delete("/purchase-bills/{bill_id}", dependencies=[Depends(RBACPermission("Accounts", "delete"))])
+async def delete_purchase_bill(bill_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Delete a purchase bill. Only Draft/Unpaid bills can be deleted."""
+    oid = validate_object_id(bill_id, "purchase bill")
+    bill = await db.purchase_bills.find_one({"_id": oid})
+    if not bill:
+        raise HTTPException(status_code=404, detail="Purchase bill not found")
+    if bill.get("status") == "Paid":
+        raise HTTPException(status_code=400, detail="Cannot delete a paid purchase bill")
+    # Unmark linked GRN as billed
+    if bill.get("grn_id"):
+        try:
+            await db.grns.update_one(
+                {"_id": ObjectId(bill["grn_id"])},
+                {"$set": {"is_billed": False, "status": "Received"}, "$unset": {"bill_id": ""}}
+            )
+        except Exception:
+            pass
+    await db.purchase_bills.delete_one({"_id": oid})
+    from app.utils.logging import log_activity
+    await log_activity(db, str(current_user.get("_id", current_user["username"])), current_user["username"], "Delete Purchase Bill", f"Purchase bill {bill.get('bill_no', bill_id[-6:])} deleted", "warning")
+    return {"success": True, "message": "Purchase bill deleted"}
 
 # ── Project Finance Summary ──────────────────────────────────────────────────
 
@@ -531,6 +626,10 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
     total_expenses = sum(float(e.get("amount", 0)) for e in expenses)
     total_receipts = sum(float(r.get("amount", 0)) for r in receipts)
 
+    # Use the higher of collection_amount (from bills) or receipts total
+    # to avoid double-counting (both track the same payments differently)
+    actual_received = max(total_received, total_receipts)
+
     return {
         "sales_bills": sales_bills,
         "receipts": receipts,
@@ -538,10 +637,10 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
         "expenses": expenses,
         "summary": {
             "total_sales": total_sales,
-            "total_received": max(total_received, total_receipts),
+            "total_received": actual_received,
             "total_purchase": total_purchase,
             "total_expenses": total_expenses,
             "gross_profit": total_sales - total_purchase - total_expenses,
-            "outstanding": total_sales - max(total_received, total_receipts)
+            "outstanding": total_sales - actual_received
         }
     }

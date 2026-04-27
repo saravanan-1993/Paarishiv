@@ -60,8 +60,9 @@ const Logs = () => {
 
     const exportCSV = () => {
         const header = 'Timestamp,User,Action,Details,Type\n';
+        const esc = (s) => `"${String(s || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
         const rows = filtered.map(l =>
-            `"${l.timestamp || ''}","${l.username || ''}","${l.action || ''}","${l.details || ''}","${l.type || ''}"`
+            `${esc(l.timestamp)},${esc(l.username)},${esc(l.action)},${esc(l.details)},${esc(l.type)}`
         ).join('\n');
         const blob = new Blob([header + rows], { type: 'text/csv' });
         const url  = URL.createObjectURL(blob);

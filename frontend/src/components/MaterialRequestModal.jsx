@@ -1,14 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
-import { projectAPI, materialAPI } from '../utils/api';
+import { X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import CreateMaterialModal from './CreateMaterialModal';
 
-const MaterialRequestModal = ({ isOpen, onClose }) => {
-    const [items, setItems] = useState([{ name: '', quantity: '', unit: 'Bags' }]);
+const MaterialRequestModal = ({ isOpen, onClose, onSuccess }) => {
+    const { user } = useAuth();
+    const [items, setItems] = useState([{ name: '', quantity: '', unit: 'Nos' }]);
+    const [selectedProject, setSelectedProject] = useState('');
+    const [priority, setPriority] = useState('Medium');
     const [projects, setProjects] = useState([]);
     const [materials, setMaterials] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [showMaterialModal, setShowMaterialModal] = useState(false);
     const [newMaterialRowId, setNewMaterialRowId] = useState(null);
+
+    // Derive unique units from materials master
+    const availableUnits = React.useMemo(() => {
+        const units = new Set(materials.map(m => m.unit).filter(Boolean));
+        // Ensure common defaults exist
+        ['Nos', 'Bags', 'Kg', 'Tons', 'Liters', 'Meters', 'Sq.ft', 'Cu.ft', 'Cu.m', 'Pieces', 'Units', 'Boxes', 'Bundles'].forEach(u => units.add(u));
+        return [...units].sort();
+    }, [materials]);
 
     useEffect(() => {
         if (isOpen) {
@@ -47,12 +60,20 @@ const MaterialRequestModal = ({ isOpen, onClose }) => {
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={24} /></button>
                 </div>
 
-                <div style={{ marginBottom: '24px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>Project</label>
-                    <select style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-main)' }}>
-                        <option value="">Select Project</option>
-                        {projects.map(p => <option key={p._id || p.id} value={p.name}>{p.name}</option>)}
-                    </select>
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
+                    <div style={{ flex: 2 }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>Project *</label>
+                        <select value={selectedProject} onChange={e => setSelectedProject(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-main)' }}>
+                            <option value="">Select Project</option>
+                            {projects.map(p => <option key={p._id || p.id} value={p.name}>{p.name}</option>)}
+                        </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '600' }}>Priority</label>
+                        <select value={priority} onChange={e => setPriority(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-main)' }}>
+                            <option>Low</option><option>Medium</option><option>High</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div style={{ marginBottom: '24px' }}>
@@ -96,23 +117,7 @@ const MaterialRequestModal = ({ isOpen, onClose }) => {
                                     value={item.unit}
                                     onChange={(e) => updateItem(idx, 'unit', e.target.value)}
                                 >
-                                    <option>Bags</option>
-                                    <option>Tons</option>
-                                    <option>Kg</option>
-                                    <option>Grams</option>
-                                    <option>Liters</option>
-                                    <option>Meters</option>
-                                    <option>Feet</option>
-                                    <option>Sq.ft</option>
-                                    <option>Cu.ft</option>
-                                    <option>Cu.m</option>
-                                    <option>Pieces</option>
-                                    <option>Units</option>
-                                    <option>Nos</option>
-                                    <option>Boxes</option>
-                                    <option>Bundles</option>
-                                    <option>Trips</option>
-                                    <option>Brass</option>
+                                    {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
                                 </select>
                                 {items.length > 1 && (
                                     <button onClick={() => removeItem(idx)} style={{ color: '#EF4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={20} /></button>
@@ -124,7 +129,33 @@ const MaterialRequestModal = ({ isOpen, onClose }) => {
 
                 <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
                     <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-                    <button className="btn btn-primary" style={{ flex: 2 }} onClick={onClose}>Submit Request</button>
+                    <button className="btn btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={loading} onClick={async () => {
+                        if (!selectedProject) { alert('Please select a project'); return; }
+                        const validItems = items.filter(i => i.name && parseFloat(i.quantity) > 0);
+                        if (validItems.length === 0) { alert('Add at least one item with name and quantity'); return; }
+                        setLoading(true);
+                        try {
+                            const proj = projects.find(p => p.name === selectedProject);
+                            await inventoryAPI.createRequest({
+                                project_id: proj?._id || proj?.id || '',
+                                project_name: selectedProject,
+                                engineer_id: user?.name || user?.username || '',
+                                requested_items: validItems.map(i => ({ name: i.name, quantity: parseFloat(i.quantity), unit: i.unit })),
+                                priority,
+                            });
+                            setItems([{ name: '', quantity: '', unit: 'Nos' }]);
+                            setSelectedProject('');
+                            setPriority('Medium');
+                            onSuccess?.();
+                            onClose();
+                        } catch (err) {
+                            console.error('Failed to submit request:', err);
+                            alert(err?.response?.data?.detail || 'Failed to submit material request');
+                        } finally { setLoading(false); }
+                    }}>
+                        {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+                        Submit Request
+                    </button>
                 </div>
             </div>
 

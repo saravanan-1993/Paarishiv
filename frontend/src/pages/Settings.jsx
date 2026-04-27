@@ -19,11 +19,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { hasSubTabAccess } from '../utils/rbac';
-import { settingsAPI, profileAPI } from '../utils/api';
+import { settingsAPI, profileAPI, notificationAPI } from '../utils/api';
 import { Loader2 } from 'lucide-react';
 
 const Settings = () => {
-    const { user, updateUser } = useAuth();
+    const { user, updateUser, logout } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Profile');
@@ -77,13 +77,69 @@ const Settings = () => {
     const [testEmail, setTestEmail] = useState('');
     const [testEmailMsg, setTestEmailMsg] = useState('');
 
+    // Notification Preferences State
+    const NOTIF_CATEGORIES = [
+        { key: 'approval', label: 'Approvals', desc: 'Leave, PO, Material, DPR, Expense approval/rejection' },
+        { key: 'workflow', label: 'Workflow', desc: 'PO created, GRN, Material consolidation, Procurement chain' },
+        { key: 'material', label: 'Materials', desc: 'Material requests, warehouse issues, stock alerts' },
+        { key: 'finance', label: 'Finance', desc: 'Payments, bills, overdue reminders' },
+        { key: 'hr', label: 'HR', desc: 'Leave applied, attendance anomalies, payroll, surprise visits' },
+        { key: 'task', label: 'Tasks', desc: 'Task assignments, overdue alerts, reminders' },
+        { key: 'project', label: 'Projects', desc: 'Project created, status changes, assignments' },
+        { key: 'fleet', label: 'Fleet', desc: 'Vehicle maintenance due, low fuel stock' },
+    ];
+    const [notifPrefs, setNotifPrefs] = useState(() => {
+        const defaults = {};
+        NOTIF_CATEGORIES.forEach(c => { defaults[c.key] = { in_app: true, email: false }; });
+        return defaults;
+    });
+    const [notifPrefsSaved, setNotifPrefsSaved] = useState(false);
+
+    const handleToggleNotifPref = (category, channel) => {
+        setNotifPrefs(prev => ({
+            ...prev,
+            [category]: { ...prev[category], [channel]: !prev[category]?.[channel] }
+        }));
+        setNotifPrefsSaved(false);
+    };
+
+    const handleEnableAllNotifs = () => {
+        const all = {};
+        NOTIF_CATEGORIES.forEach(c => { all[c.key] = { in_app: true, email: true }; });
+        setNotifPrefs(all);
+        setNotifPrefsSaved(false);
+    };
+
+    const handleMuteAllNotifs = () => {
+        const muted = {};
+        NOTIF_CATEGORIES.forEach(c => { muted[c.key] = { in_app: false, email: false }; });
+        setNotifPrefs(muted);
+        setNotifPrefsSaved(false);
+    };
+
+    const handleSaveNotifPrefs = () => {
+        // Save to localStorage (can be extended to backend later)
+        localStorage.setItem('erp_notif_prefs', JSON.stringify(notifPrefs));
+        setNotifPrefsSaved(true);
+        setTimeout(() => setNotifPrefsSaved(false), 3000);
+    };
+
+    // Load saved notification preferences
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('erp_notif_prefs');
+            if (saved) setNotifPrefs(JSON.parse(saved));
+        } catch {}
+    }, []);
+
     const tabs = useMemo(() => [
         { id: 'Profile', icon: User, label: 'Profile' },
         { id: 'Company Profile', icon: Building2, label: 'Company Profile' },
+        { id: 'Notifications', icon: Bell, label: 'Notifications', alwaysShow: true },
         { id: 'Security', icon: Shield, label: 'Security' },
         { id: 'Cloudinary', icon: Cloud, label: 'Cloudinary' },
         { id: 'SMTP', icon: Mail, label: 'SMTP' },
-    ].filter(tab => hasSubTabAccess(user, 'Settings', tab.id)), [user]);
+    ].filter(tab => tab.alwaysShow || hasSubTabAccess(user, 'Settings', tab.id)), [user]);
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -246,8 +302,10 @@ const Settings = () => {
                 currentPassword: passwordForm.currentPassword,
                 newPassword: passwordForm.newPassword
             });
-            setPasswordMsg('Password updated successfully!');
+            setPasswordMsg('Password updated! You will be logged out in 3 seconds...');
             setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            // Force re-login after password change for security
+            setTimeout(() => { logout(); }, 3000);
         } catch (err) {
             setPasswordMsg(err.response?.data?.detail || 'Failed to update password');
         } finally {
@@ -729,6 +787,92 @@ const Settings = () => {
                             {testEmailMsg && (
                                 <p style={{ fontSize: '13px', fontWeight: '600', color: testEmailMsg.includes('success') ? '#10B981' : '#EF4444' }}>{testEmailMsg}</p>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'Notifications' && (
+                    <div className="card" style={{ padding: '32px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                            <div>
+                                <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>Notification Preferences</h2>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Control which notifications you receive</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={handleEnableAllNotifs} className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 14px' }}>Enable All</button>
+                                <button onClick={handleMuteAllNotifs} className="btn btn-outline" style={{ fontSize: '12px', padding: '6px 14px', color: '#EF4444', borderColor: '#FECACA' }}>Mute All</button>
+                            </div>
+                        </div>
+
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                            {/* Header */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px', padding: '12px 20px', backgroundColor: '#F8FAFC', borderBottom: '1px solid var(--border)', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                                <span>Category</span>
+                                <span style={{ textAlign: 'center' }}>In-App</span>
+                                <span style={{ textAlign: 'center' }}>Email</span>
+                            </div>
+
+                            {/* Rows */}
+                            {NOTIF_CATEGORIES.map((cat, idx) => (
+                                <div key={cat.key} style={{
+                                    display: 'grid', gridTemplateColumns: '1fr 100px 100px',
+                                    padding: '16px 20px', alignItems: 'center',
+                                    borderBottom: idx < NOTIF_CATEGORIES.length - 1 ? '1px solid var(--border)' : 'none'
+                                }}>
+                                    <div>
+                                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '2px' }}>{cat.label}</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{cat.desc}</div>
+                                    </div>
+                                    {/* In-App Toggle */}
+                                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                        <div
+                                            onClick={() => handleToggleNotifPref(cat.key, 'in_app')}
+                                            style={{
+                                                width: '44px', height: '24px', borderRadius: '12px', cursor: 'pointer',
+                                                backgroundColor: notifPrefs[cat.key]?.in_app ? 'var(--primary)' : '#E2E8F0',
+                                                position: 'relative', transition: 'background 0.2s'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', backgroundColor: 'white',
+                                                position: 'absolute', top: '3px',
+                                                left: notifPrefs[cat.key]?.in_app ? '23px' : '3px',
+                                                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
+                                            }}></div>
+                                        </div>
+                                    </div>
+                                    {/* Email Toggle */}
+                                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                        <div
+                                            onClick={() => handleToggleNotifPref(cat.key, 'email')}
+                                            style={{
+                                                width: '44px', height: '24px', borderRadius: '12px', cursor: 'pointer',
+                                                backgroundColor: notifPrefs[cat.key]?.email ? '#10B981' : '#E2E8F0',
+                                                position: 'relative', transition: 'background 0.2s'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', backgroundColor: 'white',
+                                                position: 'absolute', top: '3px',
+                                                left: notifPrefs[cat.key]?.email ? '23px' : '3px',
+                                                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
+                                            }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginTop: '24px' }}>
+                            {notifPrefsSaved && (
+                                <span style={{ fontSize: '13px', color: '#10B981', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <CheckCircle size={16} /> Preferences saved
+                                </span>
+                            )}
+                            <button className="btn btn-primary" onClick={handleSaveNotifPrefs}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '800' }}>
+                                <Save size={18} /> Save Preferences
+                            </button>
                         </div>
                     </div>
                 )}

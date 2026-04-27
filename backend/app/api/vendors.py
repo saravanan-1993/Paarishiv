@@ -72,21 +72,26 @@ async def create_vendor(vendor: VendorCreate):
 async def update_vendor(id: str, vendor: VendorUpdate):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-    
+    existing = await db.vendors.find_one({"_id": ObjectId(id)})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Vendor not found")
     await db.vendors.update_one({"_id": ObjectId(id)}, {"$set": vendor.model_dump()})
     updated_vendor = await db.vendors.find_one({"_id": ObjectId(id)})
-    if not updated_vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
     return vendor_helper(updated_vendor)
 
 @router.delete("/{id}", dependencies=[Depends(RBACPermission("Procurement", "delete", "Vendors"))])
-async def delete_vendor(id: str):
+async def delete_vendor(id: str, current_user: dict = Depends(get_current_user)):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-    
+    vendor = await db.vendors.find_one({"_id": ObjectId(id)})
     delete_result = await db.vendors.delete_one({"_id": ObjectId(id)})
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    try:
+        from app.utils.logging import log_activity
+        await log_activity(db, str(current_user.get("_id", current_user["username"])), current_user["username"], "Delete Vendor", f"Vendor '{vendor.get('name', id)}' deleted", "warning")
+    except Exception:
+        pass
     return {"message": "Vendor deleted successfully"}
 @router.get("/{id}/ledger", dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_vendor_ledger(id: str):
@@ -164,8 +169,15 @@ async def get_vendor_ledger(id: str):
             "status": "Paid"
         })
         
-    # Sort by date (descending)
-    ledger.sort(key=lambda x: str(x.get("date", "")), reverse=True)
+    # Sort by date (descending) - parse to datetime for proper ordering
+    def parse_date(d):
+        if isinstance(d, datetime):
+            return d
+        try:
+            return datetime.fromisoformat(str(d)) if d else datetime.min
+        except (ValueError, TypeError):
+            return datetime.min
+    ledger.sort(key=lambda x: parse_date(x.get("date", "")), reverse=True)
     
     # Calculate stats
     total_po_value = sum(l["amount"] for l in ledger if l["type"] == "Purchase Order")

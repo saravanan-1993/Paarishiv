@@ -174,7 +174,10 @@ const Dashboard = () => {
                     const appRes = await approvalsAPI.getPending();
                     const tot = (appRes.data.leaves?.length || 0) +
                         (appRes.data.purchase_orders?.length || 0) +
-                        (appRes.data.materials?.length || 0);
+                        (appRes.data.materials?.length || 0) +
+                        (appRes.data.expenses?.length || 0) +
+                        (appRes.data.manpower?.length || 0) +
+                        (appRes.data.dprs?.length || 0);
                     setPendingApprovalsAmount(tot);
                 } catch (e) {
                     console.error("Failed to load approvals context data", e);
