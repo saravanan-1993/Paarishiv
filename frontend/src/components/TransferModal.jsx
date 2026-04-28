@@ -80,7 +80,7 @@ const TransferModal = ({ isOpen, onClose, onTransferAdded, projects = [] }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '640px', width: '95%', paddingBottom: '0' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '640px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#eff6ff', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6' }}>

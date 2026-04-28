@@ -77,7 +77,7 @@ const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
             zIndex: 1000,
             backdropFilter: 'blur(4px)'
         }}>
-            <div className="modal-container animate-fade-in" style={{
+            <div className="card animate-fade-in" style={{
                 backgroundColor: 'white',
                 width: '100%',
                 maxWidth: '700px',

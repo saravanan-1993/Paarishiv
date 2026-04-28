@@ -22,7 +22,7 @@ const DailyReportModal = ({ isOpen, onClose, project }) => {
             backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(4px)'
         }}>
-            <div className="modal-container animate-fade-in" style={{
+            <div className="card animate-fade-in" style={{
                 backgroundColor: 'white', width: '100%', maxWidth: '600px',
                 borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
                 display: 'flex', flexDirection: 'column', maxHeight: '90vh'

@@ -52,6 +52,12 @@ const Fleet = () => {
     const PAGE_SIZE = 15;
     const [tripPage, setTripPage] = useState(1);
     const [driverPage, setDriverPage] = useState(1);
+    // Trip search & filters
+    const [tripSearch, setTripSearch] = useState('');
+    const [tripFilterOpen, setTripFilterOpen] = useState(false);
+    const [tripStatusFilter, setTripStatusFilter] = useState('All');
+    const [tripPaymentFilter, setTripPaymentFilter] = useState('All');
+    const [tripTypeFilter, setTripTypeFilter] = useState('All');
     // Bug 44: Fleet Reports date filter
     const [reportStartDate, setReportStartDate] = useState('');
     const [reportEndDate, setReportEndDate] = useState('');
@@ -221,21 +227,89 @@ const Fleet = () => {
         </div>
     );
 
+    const filteredTrips = useMemo(() => {
+        return trips.filter(trip => {
+            const search = tripSearch.toLowerCase();
+            if (search) {
+                const matchSearch = (trip.tripId || '').toLowerCase().includes(search)
+                    || (trip.vehicleNumber || '').toLowerCase().includes(search)
+                    || (trip.customerName || '').toLowerCase().includes(search)
+                    || (trip.driverName || '').toLowerCase().includes(search)
+                    || (trip.projectName || '').toLowerCase().includes(search)
+                    || (trip.fromLocation || '').toLowerCase().includes(search)
+                    || (trip.toLocation || '').toLowerCase().includes(search)
+                    || (trip.loadType || '').toLowerCase().includes(search);
+                if (!matchSearch) return false;
+            }
+            if (tripStatusFilter !== 'All' && trip.status !== tripStatusFilter) return false;
+            if (tripPaymentFilter !== 'All' && trip.paymentStatus !== tripPaymentFilter) return false;
+            if (tripTypeFilter !== 'All' && trip.tripType !== tripTypeFilter) return false;
+            return true;
+        });
+    }, [trips, tripSearch, tripStatusFilter, tripPaymentFilter, tripTypeFilter]);
+
     const renderTrips = () => (
         <div className="animate-fade-in">
             <div className="card" style={{ marginBottom: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '16px', flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '12px', flex: 1, minWidth: '200px' }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                             <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input type="text" placeholder="Search by Trip ID, Vehicle or Customer..." style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                            <input
+                                type="text"
+                                placeholder="Search by Trip ID, Vehicle, Driver, Customer..."
+                                value={tripSearch}
+                                onChange={(e) => { setTripSearch(e.target.value); setTripPage(1); }}
+                                style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                            />
                         </div>
-                        <button className="btn btn-outline"><Filter size={18} /> Filters</button>
+                        <button
+                            className={`btn ${tripFilterOpen ? 'btn-primary' : 'btn-outline'}`}
+                            onClick={() => setTripFilterOpen(!tripFilterOpen)}
+                        >
+                            <Filter size={18} /> Filters
+                        </button>
                     </div>
-                    <button className="btn btn-primary" onClick={() => { setSelectedTrip(null); setIsTripModalOpen(true); }} style={{ marginLeft: '16px' }}>
-                        <Plus size={18} /> CREATE TRIP
-                    </button>
                 </div>
+
+                {tripFilterOpen && (
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>STATUS</label>
+                            <select value={tripStatusFilter} onChange={(e) => { setTripStatusFilter(e.target.value); setTripPage(1); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                                <option value="All">All Statuses</option>
+                                <option value="Open">Open</option>
+                                <option value="Closed">Closed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>PAYMENT</label>
+                            <select value={tripPaymentFilter} onChange={(e) => { setTripPaymentFilter(e.target.value); setTripPage(1); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                                <option value="All">All Payments</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Partial">Partial</option>
+                                <option value="Paid">Paid</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '4px' }}>TRIP TYPE</label>
+                            <select value={tripTypeFilter} onChange={(e) => { setTripTypeFilter(e.target.value); setTripPage(1); }} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}>
+                                <option value="All">All Types</option>
+                                <option value="Project Trip">Project Trip</option>
+                                <option value="Private Trip">Private Trip</option>
+                            </select>
+                        </div>
+                        {(tripStatusFilter !== 'All' || tripPaymentFilter !== 'All' || tripTypeFilter !== 'All') && (
+                            <button
+                                className="btn btn-outline btn-sm"
+                                style={{ alignSelf: 'flex-end', marginBottom: '2px' }}
+                                onClick={() => { setTripStatusFilter('All'); setTripPaymentFilter('All'); setTripTypeFilter('All'); setTripPage(1); }}
+                            >
+                                Clear Filters
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="card" style={{ padding: 0 }}>
@@ -254,7 +328,7 @@ const Fleet = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {trips.slice((tripPage - 1) * PAGE_SIZE, tripPage * PAGE_SIZE).map((trip, i) => (
+                        {filteredTrips.slice((tripPage - 1) * PAGE_SIZE, tripPage * PAGE_SIZE).map((trip, i) => (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>T-{trip.tripId}</td>
                                 <td>

@@ -106,7 +106,7 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '850px', width: '95%' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '850px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>

@@ -72,8 +72,8 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
     if (!isOpen) return null;
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div className="card animate-fade-in" style={{ width: '600px', padding: '32px', minHeight: '400px', overflow: 'visible' }}>
+        <div className="modal-overlay">
+            <div className="card animate-fade-in" style={{ width: '600px', padding: '32px', minHeight: '400px', maxHeight: '90vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
                     <h2 style={{ fontSize: '24px', fontWeight: '800' }}>{vehicle ? 'Edit Equipment' : 'Register New Equipment'}</h2>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X /></button>
@@ -121,9 +121,9 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
                                 placeholder="Select Driver"
                                 searchable={true}
                             />
-                            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            {/* <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                                 New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/users'}>User Management</span>
-                            </p>
+                            </p> */}
                         </div>
                     </div>
 

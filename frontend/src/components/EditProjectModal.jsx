@@ -155,11 +155,7 @@ const EditProjectModal = ({ isOpen, onClose, project, onProjectUpdated }) => {
     const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' };
 
     return (
-        <div style={{
-            position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1000, backdropFilter: 'blur(4px)', padding: '20px'
-        }}>
+        <div className="modal-overlay">
             <div className="card animate-fade-in" style={{ width: '600px', backgroundColor: 'white', padding: '32px', maxHeight: '90vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
                     <div>

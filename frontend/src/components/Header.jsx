@@ -117,7 +117,7 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 24px',
-            transition: 'all 0.3s ease',
+            transition: 'margin-left 0.3s ease',
             marginLeft: 'var(--sidebar-width, 260px)'
         }} className="app-header">
             <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -296,7 +296,6 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                         }}>
                             <div style={{ padding: '12px', borderBottom: '1px solid #F1F5F9', marginBottom: '4px' }}>
                                 <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.name}</p>
-                                <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{user?.email || 'admin@civilerp.com'}</p>
                             </div>
 
                             <button className="profile-item" onClick={() => { navigate('/settings'); setProfileOpen(false); }}

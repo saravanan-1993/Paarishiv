@@ -83,7 +83,7 @@ const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ width: '500px', borderRadius: '16px' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Apply Leave</h3>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>

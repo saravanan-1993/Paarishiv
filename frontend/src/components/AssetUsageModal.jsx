@@ -59,7 +59,7 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#f0fdf4', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a' }}>
@@ -80,7 +80,7 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Select Machine *</label>
                         <select required value={formData.asset} onChange={(e) => setFormData({ ...formData, asset: e.target.value })} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                             <option value="">Choose equipment</option>
-                            {fleet.map(f => <option key={f.id} value={f.id}>{f.vehicleNumber || f.name}</option>)}
+                            {fleet.map(f => <option key={f.id} value={f.id}>{f.equipmentId ? `${f.equipmentId} - ${f.name}` : f.name}</option>)}
                         </select>
                     </div>
 

@@ -76,25 +76,19 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
             // Immediate feedback reset
             setEngineerName('');
 
-            if (engineerId === 'engineer') {
-                setEngineerName('Suki Engineer');
-            } else if (engineerId === 'admin') {
-                setEngineerName('Super Admin');
-            } else {
-                try {
-                    const res = await employeeAPI.getAll();
-                    const emps = res.data || [];
-                    const emp = emps.find(e =>
-                        getStringId(e._id) === engineerId ||
-                        getStringId(e.username) === engineerId ||
-                        getStringId(e.employeeCode) === engineerId
-                    );
-                    if (emp) {
-                        setEngineerName(emp.fullName);
-                    }
-                } catch (err) {
-                    console.error('Failed to resolve engineer name:', err);
+            try {
+                const res = await employeeAPI.getAll();
+                const emps = res.data || [];
+                const emp = emps.find(e =>
+                    getStringId(e._id) === engineerId ||
+                    getStringId(e.username) === engineerId ||
+                    getStringId(e.employeeCode) === engineerId
+                );
+                if (emp) {
+                    setEngineerName(emp.fullName);
                 }
+            } catch (err) {
+                console.error('Failed to resolve engineer name:', err);
             }
         };
 
@@ -158,18 +152,13 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
 
     return (
         <>
-            <div style={{
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)'
-            }}>
-                <div className="animate-fade-in" style={{
-                    backgroundColor: 'white', width: '100%', maxWidth: '520px',
-                    borderRadius: '14px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-                    display: 'flex', flexDirection: 'column', overflow: 'hidden'
+            <div className="modal-overlay">
+                <div className="card animate-fade-in" style={{
+                    width: '95%', maxWidth: '520px', maxHeight: '90vh',
+                    display: 'flex', flexDirection: 'column', padding: 0
                 }}>
                     {/* Header */}
-                    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg,#1e3a5f,#2F5D8A)' }}>
+                    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg,#1e3a5f,#2F5D8A)', borderRadius: '12px 12px 0 0' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ padding: '10px', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: '8px', color: 'white' }}>
                                 <ClipboardList size={20} />
@@ -187,7 +176,7 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
                     </div>
 
                     {/* Body */}
-                    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px', overflowY: 'auto' }}>
 
                         {/* Project Selection (if no project is passed) */}
                         {!project && projects?.length > 0 && (

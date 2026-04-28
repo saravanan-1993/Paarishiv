@@ -54,7 +54,7 @@ const FuelInventoryModal = ({ isOpen, onClose, projectName = 'All Sites' }) => {
     return (
         <>
             <div className="modal-overlay">
-                <div className="modal-content" style={{ maxWidth: '700px', width: '95%' }}>
+                <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                     <div className="modal-header">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             <div style={{ width: '40px', height: '40px', backgroundColor: '#fff7ed', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f97316' }}>

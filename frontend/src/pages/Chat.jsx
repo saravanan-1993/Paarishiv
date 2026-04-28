@@ -196,6 +196,10 @@ const Chat = () => {
                 receiver: selectedUser.isGroup ? null : selectedUser.username
             };
 
+            if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+                alert('Chat connection lost. Please refresh the page.');
+                return;
+            }
             socketRef.current.send(JSON.stringify(messageData));
         } catch (err) {
             console.error('Upload failed', err);
@@ -716,11 +720,11 @@ const Chat = () => {
             </div>
             {/* Group Creation Modal */}
             {isCreatingGroup && (
-                <div className="modal-overlay" style={{ zIndex: 1000 }}>
-                    <div className="modal-content" style={{
-                        width: '500px',
-                        padding: '0',
-                        overflow: 'hidden',
+                <div className="modal-overlay">
+                    <div className="card animate-fade-in" style={{
+                        width: '95%', maxWidth: '500px',
+                        padding: 0, maxHeight: '90vh',
+                        display: 'flex', flexDirection: 'column',
                         boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
                         border: 'none'
                     }}>

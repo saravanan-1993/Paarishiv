@@ -64,6 +64,16 @@ class FuelStock(BaseModel):
     remarks: Optional[str] = None
     addedBy: Optional[str] = None
 
+class EquipmentBase(BaseModel):
+    equipmentId: str
+    name: str
+    category: str
+    site: Optional[str] = None
+    status: str = "Working"
+    diesel: Optional[str] = None
+    hours: Optional[str] = None
+    ownerType: Optional[str] = None
+
 class FuelLog(BaseModel):
     date: str
     assetId: str
