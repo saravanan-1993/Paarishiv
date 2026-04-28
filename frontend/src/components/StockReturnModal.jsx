@@ -73,8 +73,8 @@ const StockReturnModal = ({ isOpen, onClose, onSuccess }) => {
     };
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 1100, backgroundColor: 'rgba(0,0,0,0.6)' }}>
-            <div className="modal-content animate-fade-in" style={{ maxWidth: '400px', width: '90%' }}>
+        <div className="modal-overlay-nested">
+            <div className="card animate-fade-in" style={{ width: '90%', maxWidth: '400px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#fef2f2', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc2626' }}>

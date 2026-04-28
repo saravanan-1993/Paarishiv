@@ -261,7 +261,7 @@ const ReportPreview = ({
     return (
         <div style={{
             position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-            zIndex: 500, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
             padding: '40px 20px', overflowY: 'auto'
         }}>
             <div style={{

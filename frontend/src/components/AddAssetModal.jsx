@@ -5,6 +5,7 @@ import CustomSelect from './CustomSelect';
 
 const AddAssetModal = ({ isOpen, onClose, onAssetAdded }) => {
     const [projects, setProjects] = useState([]);
+    const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
         id: '',
         name: '',
@@ -31,19 +32,32 @@ const AddAssetModal = ({ isOpen, onClose, onAssetAdded }) => {
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onAssetAdded({
-            ...formData,
-            diesel: `${formData.diesel}L/day`,
-            hours: `${formData.hours}h`
-        });
-        onClose();
+        setSaving(true);
+        try {
+            const payload = {
+                equipmentId: formData.id,
+                name: formData.name,
+                category: formData.category,
+                site: formData.site,
+                status: formData.status,
+                diesel: formData.diesel ? `${formData.diesel}L/day` : '',
+                hours: formData.hours ? `${formData.hours}h` : ''
+            };
+            await onAssetAdded(payload);
+            setFormData({ id: '', name: '', category: '', site: '', status: 'Working', diesel: '', hours: '' });
+            onClose();
+        } catch (err) {
+            console.error('Failed to save equipment:', err);
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '540px', width: '95%', overflow: 'visible' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '540px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#eff6ff', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
@@ -110,7 +124,7 @@ const AddAssetModal = ({ isOpen, onClose, onAssetAdded }) => {
 
                     <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '20px 0 0 0', gap: '12px', justifyContent: 'flex-end', display: 'flex' }}>
                         <button type="button" className="btn btn-outline" onClick={onClose} style={{ padding: '12px 24px' }}>Cancel</button>
-                        <button type="submit" className="btn btn-primary" style={{ fontWeight: '800', padding: '12px 32px' }}>REGISTER EQUIPMENT</button>
+                        <button type="submit" className="btn btn-primary" disabled={saving} style={{ fontWeight: '800', padding: '12px 32px' }}>{saving ? 'SAVING...' : 'REGISTER EQUIPMENT'}</button>
                     </div>
                 </form>
             </div>

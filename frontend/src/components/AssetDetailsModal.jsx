@@ -12,45 +12,38 @@ const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit, onDownloadLog, onTr
     useEffect(() => {
         if (isOpen && asset) {
             setActiveTab('details');
-            setLoading(true);
-            const vid = asset.id || asset._id;
-            if (vid) {
-                fleetAPI.getMaintenance(vid).then(res => {
-                    setMaintenance(res.data || []);
-                }).catch(() => setMaintenance([])).finally(() => setLoading(false));
-            } else {
-                setLoading(false);
-            }
+            setMaintenance([]);
         }
     }, [isOpen, asset]);
 
     if (!isOpen || !asset) return null;
 
-    const vehicleNum = asset.vehicleNumber || '';
-    const vehicleType = asset.vehicleType || asset.category || '';
+    const equipId = asset.equipmentId || asset.vehicleNumber || asset.id || '';
+    const equipName = asset.name || asset.vehicleType || asset.category || '';
+    const isEquipment = !!asset.equipmentId;
 
     const tabs = [
-        { id: 'details', label: 'Vehicle Details' },
+        { id: 'details', label: 'Equipment Details' },
         { id: 'maintenance', label: `Maintenance (${maintenance.length})` },
     ];
 
     return (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div className="modal-overlay">
             <div style={{ backgroundColor: 'white', borderRadius: 16, width: '95%', maxWidth: 800, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
                 {/* Header */}
                 <div style={{ padding: '18px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{ width: 44, height: 44, backgroundColor: '#EFF6FF', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
-                            <Truck size={22} />
+                            <Construction size={22} />
                         </div>
                         <div>
-                            <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{vehicleNum}</h3>
-                            <p style={{ fontSize: 13, color: '#64748B', margin: 0 }}>{vehicleType} | Currently at {asset.site || asset.assignedProject || 'Yard'}</p>
+                            <h3 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>{equipId} — {equipName}</h3>
+                            <p style={{ fontSize: 13, color: '#64748B', margin: 0 }}>{asset.category || ''} | Currently at {asset.site || 'Yard'}</p>
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ padding: '4px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, backgroundColor: asset.status === 'Active' || asset.status === 'Working' ? '#DCFCE7' : '#FEF3C7', color: asset.status === 'Active' || asset.status === 'Working' ? '#15803D' : '#92400E' }}>
-                            {asset.status || 'Active'}
+                            {asset.status || 'Working'}
                         </span>
                         <button onClick={onClose} style={{ background: '#F1F5F9', border: 'none', cursor: 'pointer', color: '#64748B', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <X size={20} />
@@ -73,18 +66,14 @@ const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit, onDownloadLog, onTr
                 <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
                     {activeTab === 'details' && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                            <InfoCard icon={Truck} label="Vehicle Number" value={vehicleNum} />
-                            <InfoCard icon={Construction} label="Vehicle Type" value={vehicleType} />
-                            <InfoCard icon={MapPin} label="Current Site" value={asset.site || asset.assignedProject || 'Yard'} />
-                            <InfoCard icon={Clock} label="Total Hours" value={asset.hours || asset.totalHours || 0} />
-                            <InfoCard icon={Fuel} label="Fuel Type" value={asset.fuelType || '—'} />
-                            <InfoCard icon={Gauge} label="Current KM" value={asset.currentKm || '—'} />
-                            <InfoCard icon={Settings} label="Owner Type" value={asset.ownerType || '—'} />
-                            <InfoCard icon={FileText} label="Driver" value={asset.driverName || '—'} />
-                            <InfoCard icon={Calendar} label="RC Expiry" value={fmtDate(asset.rcExpiry)} />
-                            <InfoCard icon={Calendar} label="Insurance Expiry" value={fmtDate(asset.insuranceExpiry)} />
-                            <InfoCard icon={Calendar} label="FC Expiry" value={fmtDate(asset.fcExpiry)} />
-                            <InfoCard icon={Calendar} label="Last Service" value={fmtDate(asset.lastServiceDate)} />
+                            <InfoCard icon={Construction} label="Equipment ID" value={equipId} />
+                            <InfoCard icon={Truck} label="Machine Name" value={equipName} />
+                            <InfoCard icon={Settings} label="Category" value={asset.category || '—'} />
+                            <InfoCard icon={MapPin} label="Current Site" value={asset.site || 'Yard'} />
+                            <InfoCard icon={Clock} label="Total Hours" value={asset.hours || '0h'} />
+                            <InfoCard icon={Fuel} label="Avg Diesel/Day" value={asset.diesel || '—'} />
+                            {asset.ownerType && <InfoCard icon={FileText} label="Owner Type" value={asset.ownerType} />}
+                            {asset.createdAt && <InfoCard icon={Calendar} label="Registered On" value={fmtDate(asset.createdAt)} />}
                         </div>
                     )}
 
@@ -125,6 +114,8 @@ const AssetDetailsModal = ({ isOpen, onClose, asset, onEdit, onDownloadLog, onTr
 
                 {/* Footer */}
                 <div style={{ padding: '16px 24px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                    {onEdit && <button className="btn btn-outline" onClick={() => onEdit(asset)} style={{ padding: '8px 20px' }}>Edit</button>}
+                    {onScheduleService && <button className="btn btn-outline" onClick={() => onScheduleService(asset)} style={{ padding: '8px 20px' }}>Set Maintenance</button>}
                     <button className="btn btn-outline" onClick={onClose} style={{ padding: '8px 20px' }}>Close</button>
                 </div>
             </div>

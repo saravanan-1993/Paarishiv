@@ -49,8 +49,8 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
     };
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 1200 }}>
-            <div className="modal-content" style={{ maxWidth: '500px', width: '95%' }}>
+        <div className="modal-overlay-nested">
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '40px', height: '40px', backgroundColor: '#e0f2fe', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>

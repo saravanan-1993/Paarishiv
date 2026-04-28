@@ -97,7 +97,7 @@ const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
             backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)'
         }}>
-            <form onSubmit={handleSubmit} className="modal-container animate-fade-in" style={{
+            <form onSubmit={handleSubmit} className="card animate-fade-in" style={{
                 backgroundColor: 'white', width: '100%', maxWidth: '800px',
                 borderRadius: '12px', display: 'flex', flexDirection: 'column', maxHeight: '90vh'
             }}>

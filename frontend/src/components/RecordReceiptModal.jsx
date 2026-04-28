@@ -100,7 +100,7 @@ const RecordReceiptModal = ({ isOpen, onClose, onReceiptRecorded }) => {
 
     return (
         <div className="modal-overlay">
-            <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '500px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <div className="modal-title-wrapper">
                         <div className="modal-icon" style={{ backgroundColor: '#ECFDF5', color: '#10B981' }}>

@@ -105,7 +105,7 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
     if (!isOpen) return null;
 
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div className="modal-overlay">
             <div className="card animate-fade-in" style={{ width: '700px', padding: '32px', maxHeight: '95vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
                     <h2 style={{ fontSize: '24px', fontWeight: '800' }}>Create New Trip Record</h2>
@@ -156,9 +156,9 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                                 searchable={true}
                                 placeholder="Choose a driver"
                             />
-                            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            {/* <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                                 New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/hr?tab=Authorized+Users'}>HRMS</span>
-                            </p>
+                            </p> */}
                         </div>
                     </div>
 

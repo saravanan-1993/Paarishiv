@@ -168,19 +168,39 @@ const Materials = () => {
     // Bug 42: Fetch fleet/machinery data from backend when Machinery tab is active
     const fetchFleetData = async () => {
         try {
-            const res = await fleetAPI.getVehicles();
-            const vehicles = res.data || [];
-            setFleet(vehicles.map(v => ({
-                id: v.id || v._id,
-                name: `${v.vehicleNumber} - ${v.vehicleType || 'N/A'}`,
-                category: v.vehicleType || v.category || 'General',
-                site: v.assignedProject || v.currentSite || 'Yard',
-                hours: v.totalHours || 0,
-                status: v.status || 'Active',
-                ...v
+            const res = await fleetAPI.getEquipment();
+            const equipment = res.data || [];
+            setFleet(equipment.map(e => ({
+                id: e.id || e._id,
+                equipmentId: e.equipmentId,
+                name: e.name || 'N/A',
+                category: e.category || 'General',
+                site: e.site || 'Yard',
+                hours: e.hours || '0h',
+                diesel: e.diesel || '',
+                status: e.status || 'Working',
+                ...e
             })));
         } catch (err) {
-            console.error('Failed to fetch fleet data:', err);
+            console.error('Failed to fetch equipment data:', err);
+        }
+    };
+
+    const fetchDailyLogs = async () => {
+        try {
+            const res = await fleetAPI.getFuelLogs();
+            const logs = res.data || [];
+            setDailyLogs(logs.map(l => ({
+                id: l.id || l._id,
+                date: l.date,
+                assetName: l.assetName || l.assetId || '',
+                site: l.site || '',
+                hoursRun: l.hoursRun ? `${l.hoursRun}h` : '—',
+                dieselUsed: l.qty ? `${l.qty}L` : '—',
+                engineer: l.engineer || ''
+            })));
+        } catch (err) {
+            console.error('Failed to fetch daily logs:', err);
         }
     };
 
@@ -196,6 +216,7 @@ const Materials = () => {
         }
         if (mainTab === 'Machinery') {
             fetchFleetData();
+            fetchDailyLogs();
         }
     }, [mainTab, warehouseSubTab, coordinationSubTab]);
 
@@ -250,8 +271,11 @@ const Materials = () => {
     };
 
     // Asset Handlers - Bug 42: Refresh data from backend after changes
-    const handleLogAdded = (newLog) => { setDailyLogs([newLog, ...dailyLogs]); };
-    const handleAssetAdded = () => { fetchFleetData(); };
+    const handleLogAdded = () => { fetchDailyLogs(); };
+    const handleAssetAdded = async (newAsset) => {
+        await fleetAPI.createEquipment(newAsset);
+        await fetchFleetData();
+    };
     const handleTransferAdded = (newTransfer) => setTransfers([newTransfer, ...transfers]);
     const handleViewDetails = (asset) => {
         setSelectedAsset(asset);
@@ -767,7 +791,7 @@ const Materials = () => {
                                     <tbody>
                                         {fleet.map((item, i) => (
                                             <tr key={i}>
-                                                <td style={{ fontWeight: '700' }}>{item.vehicleNumber || item.id?.slice(-6).toUpperCase()}</td>
+                                                <td style={{ fontWeight: '700' }}>{item.equipmentId || item.id?.slice(-6).toUpperCase()}</td>
                                                 <td>{item.name}</td>
                                                 <td>{item.category}</td>
                                                 <td>{item.site}</td>
@@ -795,10 +819,10 @@ const Materials = () => {
                                         {dailyLogs.map((log, i) => (
                                             <tr key={i}>
                                                 <td>{log.date}</td>
-                                                <td>{log.asset}</td>
+                                                <td style={{ fontWeight: '600' }}>{log.assetName}</td>
                                                 <td>{log.site}</td>
-                                                <td>{log.hoursUsed}</td>
-                                                <td>{log.dieselConsumed}</td>
+                                                <td>{log.hoursRun}</td>
+                                                <td style={{ color: '#B45309', fontWeight: '700' }}>{log.dieselUsed}</td>
                                                 <td>{log.engineer}</td>
                                             </tr>
                                         ))}
@@ -851,13 +875,13 @@ const Materials = () => {
                     if (!assetId) return;
                     const updateData = window.prompt('Edit status (Working / Idle / Maintenance):', asset?.status || 'Working');
                     if (updateData && updateData.trim()) {
-                        fleetAPI.updateVehicle(assetId, { ...asset, status: updateData.trim() })
+                        fleetAPI.updateEquipment(assetId, { status: updateData.trim() })
                             .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); })
                             .catch(err => alert('Update failed: ' + err.message));
                     }
                 }}
                 onDownloadLog={(asset) => {
-                    const name = asset?.vehicleNumber || asset?.name || 'Asset';
+                    const name = asset?.equipmentId || asset?.name || 'Asset';
                     const data = JSON.stringify(asset, null, 2);
                     const blob = new Blob([data], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
@@ -868,12 +892,12 @@ const Materials = () => {
                 onTransferHistory={(asset) => {
                     setSelectedAsset(null);
                     setIsDetailsModalOpen(false);
-                    setSearchTerm(asset?.vehicleNumber || asset?.name || '');
+                    setSearchTerm(asset?.equipmentId || asset?.name || '');
                 }}
                 onScheduleService={(asset) => {
                     const assetId = asset?.id || asset?._id;
                     if (!assetId) return;
-                    fleetAPI.updateVehicle(assetId, { ...asset, status: 'Maintenance' })
+                    fleetAPI.updateEquipment(assetId, { status: 'Maintenance' })
                         .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); alert('Status set to Maintenance'); })
                         .catch(err => alert('Failed: ' + err.message));
                 }}

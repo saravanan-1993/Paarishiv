@@ -52,8 +52,8 @@ const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) =>
     };
 
     return (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-            <div className="modal-content" style={{ maxWidth: '540px', width: '95%' }}>
+        <div className="modal-overlay-nested">
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '540px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <h3 style={{ fontSize: '18px', fontWeight: '800' }}>EDIT MACHINE DETAILS</h3>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Plus size={24} style={{ transform: 'rotate(45deg)' }} /></button>
@@ -114,7 +114,7 @@ const Assets = () => {
     const fetchFleet = async () => {
         setLoading(true);
         try {
-            const res = await fleetAPI.getVehicles();
+            const res = await fleetAPI.getEquipment();
             setFleet(res.data || []);
             const pRes = await projectAPI.getAll();
             setProjects(pRes.data || []);
@@ -145,10 +145,12 @@ const Assets = () => {
 
     const handleAssetAdded = async (newAsset) => {
         try {
-            await fleetAPI.createVehicle(newAsset);
-            fetchFleet();
+            await fleetAPI.createEquipment(newAsset);
+            await fetchFleet();
         } catch (err) {
-            alert('Error adding vehicle');
+            console.error('Error adding equipment:', err);
+            alert('Error adding equipment: ' + (err.response?.data?.detail || err.message));
+            throw err;
         }
     };
 
@@ -162,18 +164,17 @@ const Assets = () => {
     };
 
     const handleAssetUpdated = async (updatedData) => {
-        console.log('Updating asset:', updatedData);
         try {
             const assetId = updatedData.id || updatedData._id || (selectedAsset && (selectedAsset.id || selectedAsset._id));
             if (!assetId) throw new Error('No asset ID found');
-            
-            await fleetAPI.updateVehicle(assetId, updatedData);
+
+            await fleetAPI.updateEquipment(assetId, updatedData);
             await fetchFleet();
             setIsEditModalOpen(false);
             setIsDetailsModalOpen(false);
         } catch (err) {
             console.error('Update failed:', err);
-            alert('Error updating vehicle: ' + err.message);
+            alert('Error updating equipment: ' + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -321,8 +322,8 @@ const Assets = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {fleet.filter(item => 
-                                    (item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                {fleet.filter(item =>
+                                    (item.equipmentId || item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
                                 ).length === 0 ? (
@@ -333,13 +334,13 @@ const Assets = () => {
                                             <span>Try adjusting your search term.</span>
                                         </div>
                                     </td></tr>
-                                ) : fleet.filter(item => 
-                                    (item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                ) : fleet.filter(item =>
+                                    (item.equipmentId || item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
                                 ).map((item, i) => (
                                     <tr key={i}>
-                                        <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{item.id}</td>
+                                        <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{item.equipmentId || item.id}</td>
                                         <td style={{ fontWeight: '600' }}>{item.name}</td>
                                         <td>{item.category}</td>
                                         <td>

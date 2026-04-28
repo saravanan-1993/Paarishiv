@@ -150,11 +150,7 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
 
     return (
         <>
-            <div style={{
-                position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                zIndex: 1000, backdropFilter: 'blur(4px)', padding: '20px'
-            }}>
+            <div className="modal-overlay">
                 <div className="card animate-fade-in" style={{ 
                     width: 'min(95%, 700px)', 
                     backgroundColor: 'white', 

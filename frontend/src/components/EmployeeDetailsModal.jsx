@@ -130,11 +130,12 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
     );
 
     return (
-        <div className="modal-overlay" style={{ backdropFilter: 'blur(8px)', backgroundColor: 'rgba(15, 23, 42, 0.6)' }}>
-            <div className="modal-content animate-slide-up" style={{
+        <div className="modal-overlay">
+            <div className="card animate-fade-in" style={{
                 maxWidth: '900px',
                 width: '95%',
                 maxHeight: '90vh',
+                padding: 0,
                 overflow: 'hidden',
                 padding: 0,
                 borderRadius: '24px',

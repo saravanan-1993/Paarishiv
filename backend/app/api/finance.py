@@ -619,6 +619,25 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
             if hasattr(v, 'isoformat'):
                 e[k] = v.isoformat()
 
+    # Fuel data for this project
+    fuel_stocks = await db.fuel_stock.find({"site": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("date", -1).to_list(500)
+    for fs in fuel_stocks:
+        fs["id"] = str(fs.pop("_id"))
+        for k, v in fs.items():
+            if hasattr(v, 'isoformat'):
+                fs[k] = v.isoformat()
+
+    fuel_logs = await db.fuel_logs.find({"site": {"$regex": f"^{re.escape(project_name)}$", "$options": "i"}}).sort("date", -1).to_list(1000)
+    for fl in fuel_logs:
+        fl["id"] = str(fl.pop("_id"))
+        for k, v in fl.items():
+            if hasattr(v, 'isoformat'):
+                fl[k] = v.isoformat()
+
+    total_fuel_purchased = sum(float(fs.get("totalAmount", 0)) for fs in fuel_stocks)
+    total_fuel_qty = sum(float(fs.get("qty", 0)) for fs in fuel_stocks)
+    total_fuel_consumed = sum(float(fl.get("qty", 0)) for fl in fuel_logs)
+
     # Compute summary totals
     total_sales = sum(float(b.get("total_amount", 0)) for b in sales_bills)
     total_received = sum(float(b.get("collection_amount", 0)) for b in sales_bills)
@@ -635,11 +654,16 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
         "receipts": receipts,
         "purchase_bills": purchase_bills,
         "expenses": expenses,
+        "fuel_stocks": fuel_stocks,
+        "fuel_logs": fuel_logs,
         "summary": {
             "total_sales": total_sales,
             "total_received": actual_received,
             "total_purchase": total_purchase,
             "total_expenses": total_expenses,
+            "total_fuel_cost": total_fuel_purchased,
+            "total_fuel_qty_purchased": total_fuel_qty,
+            "total_fuel_consumed": total_fuel_consumed,
             "gross_profit": total_sales - total_purchase - total_expenses,
             "outstanding": total_sales - actual_received
         }

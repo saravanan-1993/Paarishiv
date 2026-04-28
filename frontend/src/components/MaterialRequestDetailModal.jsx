@@ -13,7 +13,7 @@ const MaterialRequestDetailModal = ({ isOpen, onClose, request }) => {
             alignItems: 'center', justifyContent: 'center', zIndex: 1000,
             backdropFilter: 'blur(4px)'
         }}>
-            <div className="modal-container animate-fade-in" style={{
+            <div className="card animate-fade-in" style={{
                 backgroundColor: 'white', width: '100%', maxWidth: '600px',
                 borderRadius: '16px', display: 'flex', flexDirection: 'column',
                 maxHeight: '90vh', overflow: 'hidden',

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
-from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog
+from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog, EquipmentBase
 from database import get_database
 from bson import ObjectId
 from datetime import datetime
@@ -39,6 +39,42 @@ async def delete_vehicle(vehicle_id: str, db = Depends(get_database)):
     result = await db.vehicles.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Vehicle not found")
+    return {"success": True}
+
+# ── Equipment (Plant & Machinery) ─────────────────────────────────────────────
+
+@router.get("/equipment", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
+async def get_equipment(db=Depends(get_database)):
+    equipment = await db.equipment.find().to_list(500)
+    return [{"id": str(e["_id"]), **{k: v for k, v in e.items() if k != "_id"}} for e in equipment]
+
+@router.post("/equipment", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
+async def create_equipment(equipment: EquipmentBase, db=Depends(get_database)):
+    data = equipment.dict()
+    data["createdAt"] = datetime.now()
+    result = await db.equipment.insert_one(data)
+    data["createdAt"] = data["createdAt"].isoformat()
+    return {"id": str(result.inserted_id), **data}
+
+@router.put("/equipment/{equipment_id}", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
+async def update_equipment(equipment_id: str, equipment: dict, db=Depends(get_database)):
+    oid = validate_object_id(equipment_id, "equipment")
+    if "_id" in equipment:
+        del equipment["_id"]
+    if "id" in equipment:
+        del equipment["id"]
+    equipment["updatedAt"] = datetime.now()
+    result = await db.equipment.update_one({"_id": oid}, {"$set": equipment})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return {"success": True}
+
+@router.delete("/equipment/{equipment_id}", dependencies=[Depends(RBACPermission("Fleet Management", "delete"))])
+async def delete_equipment(equipment_id: str, db=Depends(get_database)):
+    oid = validate_object_id(equipment_id, "equipment")
+    result = await db.equipment.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Equipment not found")
     return {"success": True}
 
 # ── Trips ─────────────────────────────────────────────────────────────────────
@@ -190,9 +226,40 @@ async def get_fuel_stock(project_name: Optional[str] = None, db = Depends(get_da
     return [{"id": str(s["_id"]), **{k: v for k, v in s.items() if k != "_id"}} for s in stocks]
 
 @router.post("/fuel/stock", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def add_fuel_stock(stock: FuelStock, db = Depends(get_database)):
-    result = await db.fuel_stock.insert_one(stock.dict())
-    return {"id": str(result.inserted_id), **stock.dict()}
+async def add_fuel_stock(stock: FuelStock, db=Depends(get_database), current_user: dict=Depends(get_current_user)):
+    stock_data = stock.dict()
+    result = await db.fuel_stock.insert_one(stock_data)
+
+    # Auto-create expense entry in accounts for fuel purchase
+    if stock.totalAmount and stock.totalAmount > 0:
+        expense_doc = {
+            "category": "Fuel/Diesel",
+            "amount": stock.totalAmount,
+            "project": stock.site or "General",
+            "payee": stock.supplier or "Fuel Purchase",
+            "paymentMode": "Cash",
+            "reference": stock.billNo or "",
+            "description": f"Diesel Purchase - {stock.qty}L @ ₹{stock.rate}/L" + (f" ({stock.supplier})" if stock.supplier else ""),
+            "date": datetime.now().isoformat(),
+            "invoice_no": stock.billNo or "",
+            "voucher_no": "",
+            "status": "Recorded",
+            "source": "fuel_stock",
+            "base_amount": stock.totalAmount,
+            "gst_amount": 0,
+            "created_by": current_user.get("username", "System")
+        }
+        await db.expenses.insert_one(expense_doc)
+
+        # Update project spent
+        if stock.site and stock.site != "General":
+            await db.projects.update_one(
+                {"name": stock.site},
+                {"$inc": {"spent": stock.totalAmount}}
+            )
+
+    stock_data["date"] = stock_data["date"].isoformat() if hasattr(stock_data.get("date"), "isoformat") else str(stock_data.get("date", ""))
+    return {"id": str(result.inserted_id), **stock_data}
 
 @router.get("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_database)):
@@ -204,9 +271,37 @@ async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_dat
     return [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs]
 
 @router.post("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def add_fuel_log(log: FuelLog, db = Depends(get_database)):
-    result = await db.fuel_logs.insert_one(log.dict())
-    return {"id": str(result.inserted_id), **log.dict()}
+async def add_fuel_log(log: FuelLog, db=Depends(get_database), current_user: dict=Depends(get_current_user)):
+    log_data = log.dict()
+    result = await db.fuel_logs.insert_one(log_data)
+
+    # Calculate fuel cost from latest stock rate for this site
+    if log.qty and log.qty > 0:
+        query = {"site": log.site} if log.site else {}
+        recent_stock = await db.fuel_stock.find(query).sort("date", -1).to_list(1)
+        rate = recent_stock[0].get("rate", 0) if recent_stock else 0
+        fuel_cost = round(log.qty * rate, 2)
+
+        if fuel_cost > 0:
+            expense_doc = {
+                "category": "Fuel/Diesel",
+                "amount": fuel_cost,
+                "project": log.site or "General",
+                "payee": "Fuel Consumption",
+                "paymentMode": "Internal",
+                "reference": "",
+                "description": f"Diesel Consumption - {log.assetName} ({log.qty}L x ₹{rate}/L) | {log.engineer}",
+                "date": log.date or datetime.now().isoformat(),
+                "voucher_no": "",
+                "status": "Recorded",
+                "source": "fuel_log",
+                "base_amount": fuel_cost,
+                "gst_amount": 0,
+                "created_by": current_user.get("username", "System")
+            }
+            await db.expenses.insert_one(expense_doc)
+
+    return {"id": str(result.inserted_id), **log_data}
 
 @router.get("/fuel/summary", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_database)):

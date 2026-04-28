@@ -194,6 +194,12 @@ export const fleetAPI = {
     getMaintenance: (vehicleId) => api.get(`/fleet/maintenance/${vehicleId}`),
     addMaintenance: (data) => api.post('/fleet/maintenance', data),
 
+    // Equipment (Plant & Machinery)
+    getEquipment: () => api.get('/fleet/equipment'),
+    createEquipment: (data) => api.post('/fleet/equipment', data),
+    updateEquipment: (id, data) => api.put(`/fleet/equipment/${id}`, data),
+    deleteEquipment: (id) => api.delete(`/fleet/equipment/${id}`),
+
     // Fuel Operations
     getFuelStock: (projectName) => api.get('/fleet/fuel/stock', { params: { project_name: projectName } }),
     addFuelStock: (data) => api.post('/fleet/fuel/stock', data),

@@ -324,7 +324,7 @@ const Field = ({ label, children }) => (
 
 const overlayStyle = {
     position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20,
 };
 const modalStyle = {
     backgroundColor: 'white', borderRadius: 14, width: '100%', maxWidth: 980,

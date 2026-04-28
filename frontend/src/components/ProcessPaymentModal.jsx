@@ -155,15 +155,10 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
     };
 
     return (
-        <div className="modal-overlay" style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
-            alignItems: 'center', justifyContent: 'center', zIndex: 2000, backdropFilter: 'blur(4px)'
-        }}>
-            <div className="modal-container animate-fade-in" style={{
-                backgroundColor: 'white', width: '100%', maxWidth: '650px',
-                borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                display: 'flex', flexDirection: 'column'
+        <div className="modal-overlay">
+            <div className="card animate-fade-in" style={{
+                width: '95%', maxWidth: '650px', maxHeight: '90vh',
+                display: 'flex', flexDirection: 'column', padding: 0
             }}>
                 {/* Header */}
                 <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
