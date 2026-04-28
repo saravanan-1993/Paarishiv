@@ -74,8 +74,8 @@ const DirectIssueModal = ({ isOpen, onClose, onSuccess }) => {
     };
 
     return (
-        <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div style={modal}>
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: 700, maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div style={header}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -165,8 +165,6 @@ const DirectIssueModal = ({ isOpen, onClose, onSuccess }) => {
     );
 };
 
-const overlay = { position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 };
-const modal = { backgroundColor: 'white', borderRadius: 14, width: '100%', maxWidth: 700, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.3)' };
 const header = { padding: '18px 22px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' };
 const body = { padding: '18px 22px', overflowY: 'auto', flex: 1 };
 const footer = { padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 };
