@@ -167,11 +167,14 @@ const Approvals = () => {
             await approvalsAPI.action(type, id, action, payload);
             setData(prev => ({
                 ...prev,
-                [type]: prev[type].filter(item => item._id !== id)
+                [type]: prev[type].filter(item => item._id !== id && item.id !== id)
             }));
+            const label = type === 'labour_payments' ? 'Labour Payment' : type === 'subcontractor_bills' ? 'SC Bill' : type.replace('_', ' ');
+            alert(`${label} ${action === 'approve' ? 'approved' : 'rejected'} successfully. Notification sent.`);
         } catch (error) {
             console.error('Error performing action:', error);
-            alert('Failed to process approval.');
+            const detail = error.response?.data?.detail;
+            alert(typeof detail === 'string' ? detail : 'Failed to process approval.');
         } finally {
             setActionLoading(null);
         }

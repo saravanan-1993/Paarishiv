@@ -295,17 +295,25 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             if lp_doc and lp_doc.get("payment_status") != "Payment Requested":
                 raise HTTPException(status_code=400, detail="No pending payment request")
             approver_name = update_fields["approvedBy"]
+            # Build recipients: Accountant + person who requested + person who marked
+            lp_recipients = ["Accountant"]
+            if lp_doc.get("payment_requested_by"): lp_recipients.append(lp_doc["payment_requested_by"])
+            if lp_doc.get("marked_by") and lp_doc["marked_by"] not in lp_recipients: lp_recipients.append(lp_doc["marked_by"])
+            day_cost = sum(
+                (c.get("count", 0) * (c.get("daily_wage", 0)) * (float(c.get("shift", 1)) or 1))
+                for c in lp_doc.get("categories", [])
+            )
+
             if status == "Approved":
                 await db.labour_attendance.update_one({"_id": oid}, {"$set": {
                     "payment_status": "Payment Approved",
                     "payment_approved_by": approver_name,
                     "updated_at": datetime.now(),
                 }})
-                # Notify accountant
                 try:
-                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                    await notify(db, approver_name, lp_recipients, EVENT_APPROVAL,
                         "Labour Payment Approved",
-                        f"Payment for {lp_doc.get('project_name')} ({lp_doc.get('date')}) approved. Accountant can now process.",
+                        f"Payment of Rs.{day_cost:,.0f} for {lp_doc.get('project_name')} ({lp_doc.get('date')}) approved by {approver_name}. Ready for processing.",
                         entity_type="labour_payment", entity_id=obj_id,
                         project_name=lp_doc.get("project_name"), priority="high")
                 except Exception:
@@ -317,9 +325,9 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "updated_at": datetime.now(),
                 }})
                 try:
-                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                    await notify(db, approver_name, lp_recipients, EVENT_APPROVAL,
                         "Labour Payment Rejected",
-                        f"Payment for {lp_doc.get('project_name')} ({lp_doc.get('date')}) rejected." + (f" Reason: {reason}" if reason else ""),
+                        f"Payment of Rs.{day_cost:,.0f} for {lp_doc.get('project_name')} ({lp_doc.get('date')}) rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
                         entity_type="labour_payment", entity_id=obj_id,
                         project_name=lp_doc.get("project_name"), priority="high")
                 except Exception:
