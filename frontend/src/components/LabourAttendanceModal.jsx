@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Plus, Trash2, Users, Loader2, Save } from 'lucide-react';
+import { X, Plus, Trash2, Users, Loader2, Save, Send } from 'lucide-react';
 import { labourAttendanceAPI, vendorAPI } from '../utils/api';
 
 const emptyRow = () => ({
@@ -12,7 +12,9 @@ const emptyRow = () => ({
     ot: '0',
 });
 
-const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRecord }) => {
+const WAGE_VISIBLE_ROLES = ['administrator', 'super admin', 'admin', 'accountant', 'general manager', 'managing director', 'manager'];
+
+const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRecord, userRole }) => {
     const isEdit = !!existingRecord?.id;
     const [saving, setSaving] = useState(false);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -22,7 +24,9 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
     const [allVendors, setAllVendors] = useState([]);
     const [prevRecords, setPrevRecords] = useState([]);
 
-    // Fetch vendors (contractors with rate cards) on open
+    // Determine if wage columns should be shown
+    const showWages = WAGE_VISIBLE_ROLES.includes((userRole || '').toLowerCase());
+
     useEffect(() => {
         if (!isOpen) return;
         vendorAPI.getAll().then(res => {
@@ -37,7 +41,6 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
             setContractors(labourContractors.length > 0 ? labourContractors : vendors);
         }).catch(() => {});
 
-        // Load previous records for copy
         if (project) {
             labourAttendanceAPI.getAll({ project_id: project._id || project.id }).then(r => {
                 setPrevRecords((r.data || []).slice(0, 5));
@@ -65,7 +68,6 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
         }
     }, [isOpen, existingRecord, project]);
 
-    // Get rate card categories for a selected contractor
     const getCategoriesForParty = (partyName) => {
         const vendor = [...contractors, ...allVendors].find(v => v.name === partyName);
         if (!vendor || !vendor.rate_card) return [];
@@ -124,7 +126,7 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
         if (copied.length) setRows(copied);
     };
 
-    const handleSave = async () => {
+    const handleSave = async (submitForApproval = false) => {
         const validRows = rows.filter(r => r.party.trim() && r.category.trim() && (parseInt(r.count) || 0) > 0);
         if (!validRows.length) { alert('Add at least one entry with party, category, and count'); return; }
         if (!date) { alert('Select a date'); return; }
@@ -148,8 +150,14 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
 
         setSaving(true);
         try {
-            if (isEdit) await labourAttendanceAPI.update(existingRecord.id, payload);
-            else await labourAttendanceAPI.create(payload);
+            if (isEdit) {
+                await labourAttendanceAPI.update(existingRecord.id, payload);
+            } else {
+                const res = await labourAttendanceAPI.create(payload);
+                if (submitForApproval && res.data?.id) {
+                    await labourAttendanceAPI.submit(res.data.id);
+                }
+            }
             onSuccess?.();
         } catch (err) {
             console.error(err);
@@ -158,9 +166,12 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
         setSaving(false);
     };
 
+    // Column count for footer colspan
+    const colCount = showWages ? 8 : 5;
+
     return (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: 1000, maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+            <div className="card animate-fade-in" style={{ width: '95%', maxWidth: showWages ? 1000 : 780, maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div style={header}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={iconCircle}><Users size={18} /></div>
@@ -195,7 +206,9 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                         )}
                         <div style={{ display: 'flex', gap: 12, marginLeft: 'auto' }}>
                             <StatBadge label="Total Labour" value={totalCount} color="#3B82F6" />
-                            <StatBadge label="Day Cost" value={`₹${Math.round(totalCost).toLocaleString('en-IN')}`} color="#10B981" />
+                            {showWages && (
+                                <StatBadge label="Day Cost" value={`\u20B9${Math.round(totalCost).toLocaleString('en-IN')}`} color="#10B981" />
+                            )}
                         </div>
                     </div>
 
@@ -207,10 +220,10 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                                     <th style={{ ...th, minWidth: 180 }}>Party / Contractor</th>
                                     <th style={{ ...th, minWidth: 160 }}>Workforce Category</th>
                                     <th style={{ ...th, width: 80 }}>Count</th>
-                                    <th style={{ ...th, width: 100 }}>Wage (₹)</th>
+                                    {showWages && <th style={{ ...th, width: 100 }}>Wage ({'\u20B9'})</th>}
                                     <th style={{ ...th, width: 70 }}>Shift</th>
                                     <th style={{ ...th, width: 70 }}>OT (Hr)</th>
-                                    <th style={{ ...th, width: 110, textAlign: 'right' }}>Cost</th>
+                                    {showWages && <th style={{ ...th, width: 110, textAlign: 'right' }}>Cost</th>}
                                     <th style={{ ...th, width: 36 }}></th>
                                 </tr>
                             </thead>
@@ -238,7 +251,7 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                                                 <select value={r.category} onChange={e => handleCategoryChange(r.id, e.target.value, r.party)} style={cellInput}>
                                                     <option value="">Select Category</option>
                                                     {partyCats.map((cat, i) => (
-                                                        <option key={i} value={cat.role}>{cat.role} (₹{cat.rate})</option>
+                                                        <option key={i} value={cat.role}>{cat.role}{showWages ? ` (\u20B9${cat.rate})` : ''}</option>
                                                     ))}
                                                 </select>
                                             </td>
@@ -246,10 +259,12 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                                                 <input type="number" min="0" value={r.count} onChange={e => updateRow(r.id, 'count', e.target.value)}
                                                     style={{ ...cellInput, textAlign: 'center', fontWeight: 700 }} placeholder="0" />
                                             </td>
-                                            <td style={td}>
-                                                <input type="number" min="0" value={r.daily_wage} onChange={e => updateRow(r.id, 'daily_wage', e.target.value)}
-                                                    style={{ ...cellInput, backgroundColor: '#F8FAFC' }} placeholder="₹" />
-                                            </td>
+                                            {showWages && (
+                                                <td style={td}>
+                                                    <input type="number" min="0" value={r.daily_wage} onChange={e => updateRow(r.id, 'daily_wage', e.target.value)}
+                                                        style={{ ...cellInput, backgroundColor: '#F8FAFC' }} placeholder={'\u20B9'} />
+                                                </td>
+                                            )}
                                             <td style={td}>
                                                 <input type="number" min="1" value={r.shift} onChange={e => updateRow(r.id, 'shift', e.target.value)}
                                                     style={{ ...cellInput, textAlign: 'center' }} />
@@ -258,9 +273,11 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                                                 <input type="number" min="0" step="0.5" value={r.ot} onChange={e => updateRow(r.id, 'ot', e.target.value)}
                                                     style={{ ...cellInput, textAlign: 'center' }} />
                                             </td>
-                                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#0F172A', fontSize: 13, whiteSpace: 'nowrap' }}>
-                                                ₹{Math.round(cost).toLocaleString('en-IN')}
-                                            </td>
+                                            {showWages && (
+                                                <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: '#0F172A', fontSize: 13, whiteSpace: 'nowrap' }}>
+                                                    {'\u20B9'}{Math.round(cost).toLocaleString('en-IN')}
+                                                </td>
+                                            )}
                                             <td style={td}>
                                                 <button onClick={() => removeRow(r.id)} style={trashBtn} disabled={rows.length <= 1}><Trash2 size={14} /></button>
                                             </td>
@@ -272,8 +289,11 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
                                 <tr style={{ backgroundColor: '#F1F5F9' }}>
                                     <td style={{ ...td, fontWeight: 800 }} colSpan={2}>Total</td>
                                     <td style={{ ...td, textAlign: 'center', fontWeight: 800 }}>{totalCount}</td>
-                                    <td colSpan={3}></td>
-                                    <td style={{ ...td, textAlign: 'right', fontWeight: 800, color: '#1D4ED8' }}>₹{Math.round(totalCost).toLocaleString('en-IN')}</td>
+                                    {showWages && <td></td>}
+                                    <td colSpan={showWages ? 2 : 2}></td>
+                                    {showWages && (
+                                        <td style={{ ...td, textAlign: 'right', fontWeight: 800, color: '#1D4ED8' }}>{'\u20B9'}{Math.round(totalCost).toLocaleString('en-IN')}</td>
+                                    )}
                                     <td></td>
                                 </tr>
                             </tfoot>
@@ -291,10 +311,15 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
 
                 <div style={footer}>
                     <button onClick={onClose} style={cancelBtn} disabled={saving}>Cancel</button>
-                    <button onClick={handleSave} style={saveBtn} disabled={saving}>
+                    <button onClick={() => handleSave(false)} style={saveBtn} disabled={saving}>
                         {saving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={16} />}
                         {isEdit ? 'Update' : 'Save Attendance'}
                     </button>
+                    {!isEdit && !showWages && (
+                        <button onClick={() => handleSave(true)} style={{ ...saveBtn, backgroundColor: '#059669' }} disabled={saving}>
+                            <Send size={16} /> Save & Submit
+                        </button>
+                    )}
                 </div>
                 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>

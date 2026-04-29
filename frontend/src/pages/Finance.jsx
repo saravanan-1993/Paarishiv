@@ -13,7 +13,7 @@ import PaymentHistoryModal from '../components/PaymentHistoryModal';
 import CreateBillModal from '../components/CreateBillModal';
 import BillDetailsModal from '../components/BillDetailsModal';
 import CustomSelect from '../components/CustomSelect';
-import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI } from '../utils/api';
+import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI, subcontractorBillingAPI } from '../utils/api';
 import { hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
@@ -61,6 +61,7 @@ const Finance = () => {
     const [receipts, setReceipts] = useState([]);
     const [grns, setGrns] = useState([]);
     const [trips, setTrips] = useState([]);
+    const [scBills, setScBills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [billTypeFilter, setBillTypeFilter] = useState('All Types');
     const [billSearch, setBillSearch] = useState('');
@@ -103,6 +104,7 @@ const Finance = () => {
     const [selectedProject, setSelectedProject] = useState('All Projects');
 
     const [paymentSearch, setPaymentSearch] = useState('');
+    const [paymentPayee, setPaymentPayee] = useState('');
     const [paymentDateFrom, setPaymentDateFrom] = useState('');
     const [paymentDateTo, setPaymentDateTo] = useState('');
 
@@ -119,7 +121,8 @@ const Finance = () => {
                 financeAPI.getExpenses(),
                 financeAPI.getReceipts(),
                 billingAPI.getPurchaseBills(),
-                fleetAPI.getTrips()
+                fleetAPI.getTrips(),
+                subcontractorBillingAPI.getAll()
             ]);
 
             setProjects(results[0].status === 'fulfilled' ? (results[0].value.data || []) : []);
@@ -129,6 +132,7 @@ const Finance = () => {
             setReceipts(results[4].status === 'fulfilled' ? (results[4].value.data || []) : []);
             setPurchaseBills(results[5].status === 'fulfilled' ? (results[5].value.data || []) : []);
             setTrips(results[6].status === 'fulfilled' ? (results[6].value.data || []) : []);
+            setScBills(results[7].status === 'fulfilled' ? (results[7].value.data || []) : []);
 
             // Fetch GRNs to show pending billing
             const grnRes = await grnAPI.getAll();
@@ -420,8 +424,9 @@ const Finance = () => {
 
         const matchesFrom = !paymentDateFrom || eDate >= new Date(paymentDateFrom);
         const matchesTo = !paymentDateTo || eDate <= new Date(paymentDateTo + 'T23:59:59');
+        const matchesPayee = !paymentPayee || (e.payee || '').toLowerCase() === paymentPayee.toLowerCase();
 
-        return matchesSearch && matchesFrom && matchesTo;
+        return matchesSearch && matchesFrom && matchesTo && matchesPayee;
     });
 
     const filteredReceipts = selectedProject === 'All Projects'
@@ -655,6 +660,9 @@ const Finance = () => {
     const totalBilled = filteredBills.reduce((s, b) => s + (b.total_amount || 0), 0);
     const totalCollected = filteredBills.reduce((s, b) => s + (b.collection_amount || 0), 0);
     const totalPayableAmt = filteredPayables.reduce((s, p) => s + (p.amount || 0), 0);
+    const scOutstanding = scBills.filter(sb => ['Approved', 'Partially Paid'].includes(sb.status))
+        .filter(sb => selectedProject === 'All Projects' || sb.project_name === selectedProject)
+        .reduce((s, sb) => s + (sb.balance || 0), 0);
     const totalPurchases = filteredPayables.reduce((s, p) => s + (p.total_amount || 0), 0);
 
     // Calculate 5% retention on total billed if not specifically tracked
@@ -690,13 +698,18 @@ const Finance = () => {
         const set = new Set();
         payables.forEach(p => p.vendor && p.vendor.toLowerCase() !== 'internal' && set.add(p.vendor.trim()));
         purchaseBills.forEach(pb => pb.vendor_name && set.add(pb.vendor_name.trim()));
-        // Only add expense payees that match a known vendor from payables/purchase bills
-        const knownVendors = new Set([...set]);
+        // Add subcontractor names from SC bills
+        scBills.forEach(sb => sb.contractor_name && set.add(sb.contractor_name.trim()));
+        // Add expense payees from known vendors + subcontractor payments
         expenses.forEach(e => {
-            if (e.payee && knownVendors.has(e.payee.trim())) set.add(e.payee.trim());
+            if (e.payee && e.payee.trim()) {
+                if (set.has(e.payee.trim()) || e.category === 'Subcontractor Payment' || e.sc_bill_id) {
+                    set.add(e.payee.trim());
+                }
+            }
         });
         return [...set].sort();
-    }, [payables, purchaseBills, expenses]);
+    }, [payables, purchaseBills, expenses, scBills]);
 
     const ledgerParties = useMemo(() => {
         if (ledgerType === 'Client') return ['All Parties', ...clientParties];
@@ -788,7 +801,22 @@ const Finance = () => {
             });
         });
 
-        // ── 5. EXPENSES / PAYMENTS (Money paid out) — Debit: cash out ──
+        // ── 5. SUBCONTRACTOR BILLS (Approved SC bills) — Credit: amount owed to subcontractor ──
+        if (showVendor) scBills.filter(sb => ['Approved', 'Partially Paid', 'Paid'].includes(sb.status) && matchesProject(sb.project_name)).forEach(sb => {
+            const party = (sb.contractor_name || '').trim();
+            if (!matchesParty(party)) return;
+            entries.push({
+                date: sb.bill_date || sb.created_at || new Date().toISOString(),
+                type: 'SC Bill',
+                particulars: `Subcontractor Bill - ${sb.bill_no} (${sb.bill_type === 'work_based' ? 'Work Based' : 'Day Based'})`,
+                debit: 0,
+                credit: parseFloat(sb.payable_amount) || 0,
+                party,
+                project: sb.project_name
+            });
+        });
+
+        // ── 6. EXPENSES / PAYMENTS (Money paid out) — Debit: cash out ──
         if (showVendor) expenses.filter(e => matchesProject(e.project)).forEach(e => {
             const entryParty = e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense');
             if (!matchesParty(entryParty)) return;
@@ -1465,6 +1493,16 @@ const Finance = () => {
                                     style={{ padding: '9px 12px', borderRadius: '8px', border: '1.5px solid #E2E8F0', fontSize: '13px', background: 'white' }}
                                 />
                             </div>
+                            <select
+                                value={paymentPayee}
+                                onChange={(e) => setPaymentPayee(e.target.value)}
+                                style={{ padding: '9px 12px', borderRadius: '8px', border: '1.5px solid #E2E8F0', fontSize: '13px', background: 'white', minWidth: '160px' }}
+                            >
+                                <option value="">All Parties</option>
+                                {[...new Set(expenses.map(e => e.payee).filter(Boolean))].sort().map(p => (
+                                    <option key={p} value={p}>{p}</option>
+                                ))}
+                            </select>
                         </div>
 
                         {filteredExpenses.length === 0 ? (

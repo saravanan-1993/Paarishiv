@@ -17,7 +17,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "materials": [],
         "expenses": [],
         "manpower": [],
-        "dprs": []
+        "dprs": [],
+        "subcontractor_bills": []
     }
     
     query = {}
@@ -138,6 +139,15 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
     dpr_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     results["dprs"] = dpr_list
 
+    # Subcontractor bills: only Admin/GM see pending bills
+    sc_query = {"status": "Pending Approval"} if status.lower() != "all" else {}
+    if is_admin_user or status.lower() == "all":
+        sc_bills = await db.subcontractor_bills.find(sc_query).sort("created_at", -1).to_list(100)
+        for sb in sc_bills:
+            sb["_id"] = str(sb["_id"])
+            resolve_names(sb)
+        results["subcontractor_bills"] = sc_bills
+
     return results
 
 @router.get("/pending", response_model=Dict[str, List[Any]])
@@ -248,6 +258,22 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             await db.expenses.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "manpower":
             await db.manpower_requests.update_one({"_id": oid}, {"$set": update_fields})
+        elif type == "subcontractor_bills":
+            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+            user_role_check = (current_user.get("role") or "").strip().lower()
+            if user_role_check not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject subcontractor bills")
+            # Validate bill is in correct status for action
+            sc_bill = await db.subcontractor_bills.find_one({"_id": oid})
+            if sc_bill and sc_bill.get("status") != "Pending Approval":
+                raise HTTPException(status_code=400, detail="Bill is not pending approval")
+            sc_update = {"status": status}
+            if status == "Approved":
+                sc_update["approved_by"] = update_fields["approvedBy"]
+                sc_update["approved_at"] = datetime.now().isoformat()
+            elif status == "Rejected":
+                sc_update["rejection_reason"] = reason
+            await db.subcontractor_bills.update_one({"_id": oid}, {"$set": sc_update})
         elif type == "dprs":
             # Bug 26 - Multi-stage DPR approval workflow
             # Workflow: Pending → Coordinator Approved → Dept Approved → Approved

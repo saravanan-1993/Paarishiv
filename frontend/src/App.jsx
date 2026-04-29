@@ -26,6 +26,7 @@ import Notifications from './pages/Notifications';
 import SiteReports from './pages/SiteReports';
 import Quotations from './pages/Quotations';
 import LabourWages from './pages/LabourWages';
+import SubcontractorBilling from './pages/SubcontractorBilling';
 import { fetchAndSyncRoles, hasPermission } from './utils/rbac';
 import { profileAPI } from './utils/api';
 import { ShieldOff } from 'lucide-react';
@@ -132,6 +133,7 @@ const MainLayout = () => {
                         <Route path="/notifications" element={<Notifications />} />
                         <Route path="/approvals" element={<ProtectedRoute module="Approvals"><Approvals /></ProtectedRoute>} />
                         <Route path="/site-reports" element={<ProtectedRoute module="Site Reports"><SiteReports /></ProtectedRoute>} />
+                        <Route path="/subcontractor-billing" element={<ProtectedRoute module="Subcontractor Billing"><SubcontractorBilling /></ProtectedRoute>} />
                         <Route path="/profile" element={<Navigate to="/settings?tab=Profile" replace />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>

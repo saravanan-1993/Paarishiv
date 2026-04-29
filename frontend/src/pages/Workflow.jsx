@@ -614,7 +614,12 @@ const Workflow = () => {
                                                 <td style={{ fontWeight: '700', color: 'var(--primary)', cursor: 'pointer' }} onClick={() => handlePOClick(po)}>
                                                     PO-{po.id.slice(-6).toUpperCase()}
                                                 </td>
-                                                <td style={{ fontWeight: '600' }}>{po.vendor_name}</td>
+                                                <td style={{ fontWeight: '600' }}>
+                                                    {po.vendor_name}
+                                                    {po.is_multi_vendor && (
+                                                        <span style={{ fontSize: '9px', backgroundColor: '#DBEAFE', color: '#1D4ED8', padding: '1px 6px', borderRadius: '4px', marginLeft: '6px', fontWeight: '700', verticalAlign: 'middle' }}>MULTI</span>
+                                                    )}
+                                                </td>
                                                 <td>{po.project_name}</td>
                                                 <td>
                                                     <span className={`badge ${po.status === 'Approved' ? 'badge-success' : 'badge-warning'}`}>{po.status}</span>

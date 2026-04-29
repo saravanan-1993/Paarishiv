@@ -75,6 +75,9 @@ def _helper(doc) -> dict:
         "verified": doc.get("verified", False),
         "verified_by": doc.get("verified_by", ""),
         "verified_at": doc.get("verified_at"),
+        "approval_status": doc.get("approval_status", "Pending"),
+        "approved_by": doc.get("approved_by", ""),
+        "approved_at": doc.get("approved_at"),
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
     }
@@ -311,6 +314,92 @@ async def update_labour_attendance(
     await db.labour_attendance.update_one({"_id": oid}, {"$set": data})
     doc = await db.labour_attendance.find_one({"_id": oid})
     return _helper(doc)
+
+
+@router.put("/{id}/submit")
+async def submit_for_approval(
+    id: str,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Site Engineer submits attendance for approval."""
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+    current_status = doc.get("approval_status", "Pending")
+    if current_status not in ("Pending", "Rejected"):
+        raise HTTPException(status_code=400, detail=f"Cannot submit — current status is {current_status}")
+
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {"approval_status": "Submitted", "updated_at": datetime.now()}}
+    )
+    return {"success": True, "message": "Attendance submitted for approval"}
+
+
+@router.put("/{id}/approve")
+async def approve_attendance(
+    id: str,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Coordinator/Admin approves submitted attendance."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles and "coordinator" not in user_role:
+        raise HTTPException(status_code=403, detail="Only Coordinator or Admin can approve attendance")
+
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if doc.get("approval_status") != "Submitted":
+        raise HTTPException(status_code=400, detail="Only submitted records can be approved")
+
+    approver = current_user.get("full_name") or current_user.get("username", "")
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {
+            "approval_status": "Approved",
+            "verified": True,
+            "verified_by": approver,
+            "verified_at": datetime.now(),
+            "approved_by": approver,
+            "approved_at": datetime.now(),
+        }}
+    )
+    return {"success": True, "message": "Attendance approved"}
+
+
+@router.put("/{id}/reject")
+async def reject_attendance(
+    id: str,
+    body: dict = Body(default={}),
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Coordinator/Admin rejects submitted attendance."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles and "coordinator" not in user_role:
+        raise HTTPException(status_code=403, detail="Only Coordinator or Admin can reject attendance")
+
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    reason = body.get("reason", "")
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {
+            "approval_status": "Rejected",
+            "rejection_reason": reason,
+            "updated_at": datetime.now(),
+        }}
+    )
+    return {"success": True, "message": "Attendance rejected"}
 
 
 @router.delete("/{id}")

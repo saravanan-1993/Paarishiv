@@ -19,9 +19,10 @@ class POItem(BaseModel):
     unit: str
     rate: Optional[float] = None
     site_quantities: Optional[dict] = None
+    vendor_name: Optional[str] = None  # Per-item vendor assignment for multi-vendor POs
 
 class POCreate(BaseModel):
-    vendor_name: str
+    vendor_name: str = ""  # Legacy single-vendor field; blank when multi-vendor
     project_name: str
     expected_delivery: str
     items: List[POItem]
@@ -29,9 +30,10 @@ class POCreate(BaseModel):
     status: str = "Pending"
     total_amount: Optional[float] = 0
     request_id: Optional[str] = None
+    is_multi_vendor: bool = False  # True when items have individual vendor assignments
 
 class POUpdate(BaseModel):
-    vendor_name: str
+    vendor_name: str = ""
     project_name: str
     expected_delivery: str
     items: List[POItem]
@@ -40,20 +42,33 @@ class POUpdate(BaseModel):
     status: str = "Pending"
     total_amount: Optional[float] = 0
     request_id: Optional[str] = None
+    is_multi_vendor: bool = False
 
 def po_helper(po) -> dict:
+    items = po.get("items", [])
+    is_multi_vendor = po.get("is_multi_vendor", False)
+    # Build list of unique vendors from items (for multi-vendor POs)
+    vendor_names = list(dict.fromkeys(
+        item.get("vendor_name") for item in items if item.get("vendor_name")
+    ))
+    # Fallback: use top-level vendor_name for legacy single-vendor POs
+    display_vendor = po.get("vendor_name", "")
+    if is_multi_vendor and vendor_names:
+        display_vendor = ", ".join(vendor_names)
     return {
         "id": str(po["_id"]),
-        "vendor_name": po["vendor_name"],
+        "vendor_name": display_vendor,
         "project_name": po["project_name"],
         "expected_delivery": po["expected_delivery"],
-        "items": po["items"],
+        "items": items,
         "notes": po.get("notes", ""),
         "admin_remarks": po.get("admin_remarks", ""),
         "status": po.get("status", "Pending"),
         "total_amount": po.get("total_amount", 0),
         "request_id": po.get("request_id"),
-        "created_at": po.get("created_at")
+        "created_at": po.get("created_at"),
+        "is_multi_vendor": is_multi_vendor,
+        "vendor_names": vendor_names if vendor_names else ([po.get("vendor_name", "")] if po.get("vendor_name") else [])
     }
 
 @router.get("/", response_model=List[dict])
@@ -87,6 +102,19 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
 
     po_dict = po.model_dump()
     po_dict["created_at"] = datetime.now()
+
+    # For multi-vendor POs, derive vendor_name summary from items
+    if po.is_multi_vendor:
+        item_vendors = list(dict.fromkeys(
+            item.vendor_name for item in po.items if item.vendor_name
+        ))
+        if not item_vendors:
+            raise HTTPException(status_code=400, detail="Multi-vendor PO requires at least one item with a vendor assigned")
+        unassigned = [item.name for item in po.items if not item.vendor_name]
+        if unassigned:
+            raise HTTPException(status_code=400, detail=f"All items must have a vendor assigned in multi-vendor mode. Missing: {', '.join(unassigned)}")
+        po_dict["vendor_name"] = ", ".join(item_vendors)
+
     result = await db.purchase_orders.insert_one(po_dict)
 
     # Update linked Material Request (Individual or Consolidated) status
@@ -102,29 +130,53 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
             )
 
     new_po = await db.purchase_orders.find_one({"_id": result.inserted_id})
+    po_result = po_helper(new_po)
+    vendor_display = po_result["vendor_name"]
+
     project = await db.projects.find_one({"name": po.project_name})
     if project:
         user = {"username": "System", "role": "Purchase Officer"}
-        await trigger_workflow_event(str(project["_id"]), "po_created", user, db, f"PO generated for {po.vendor_name}")
+        await trigger_workflow_event(str(project["_id"]), "po_created", user, db, f"PO generated for {vendor_display}")
 
-    # Bug 6.1 - Auto-send email to vendor on PO creation
+    # Auto-send email to vendor(s) on PO creation
     try:
-        vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(po.vendor_name.strip())}$", "$options": "i"}})
-        if vendor and vendor.get("email"):
-            po_data = po_helper(new_po)
-            vendor_data = {"name": vendor["name"], "email": vendor["email"]}
-            html_content = generate_po_html(po_data, vendor_data)
-            background_tasks.add_task(
-                send_email,
-                to_email=vendor["email"],
-                subject=f"Purchase Order: PO-{po_data['id'][-6:].upper()} - {po_data['project_name']}",
-                body=html_content,
-                is_html=True
-            )
-    except Exception as e:
+        if po.is_multi_vendor:
+            # Multi-vendor: send separate email per vendor with only their items
+            item_vendors = list(dict.fromkeys(
+                item.vendor_name for item in po.items if item.vendor_name
+            ))
+            for vname in item_vendors:
+                vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(vname.strip())}$", "$options": "i"}})
+                if vendor and vendor.get("email"):
+                    vendor_items = [it for it in po_result["items"] if it.get("vendor_name") == vname]
+                    vendor_total = sum((it.get("qty", 0) or 0) * (it.get("rate", 0) or 0) for it in vendor_items)
+                    vendor_po_data = {**po_result, "items": vendor_items, "total_amount": vendor_total, "vendor_name": vname}
+                    vendor_data = {"name": vendor["name"], "email": vendor["email"]}
+                    html_content = generate_po_html(vendor_po_data, vendor_data)
+                    background_tasks.add_task(
+                        send_email,
+                        to_email=vendor["email"],
+                        subject=f"Purchase Order: PO-{po_result['id'][-6:].upper()} - {po_result['project_name']}",
+                        body=html_content,
+                        is_html=True
+                    )
+        else:
+            # Single-vendor: send one email
+            vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(po.vendor_name.strip())}$", "$options": "i"}})
+            if vendor and vendor.get("email"):
+                vendor_data = {"name": vendor["name"], "email": vendor["email"]}
+                html_content = generate_po_html(po_result, vendor_data)
+                background_tasks.add_task(
+                    send_email,
+                    to_email=vendor["email"],
+                    subject=f"Purchase Order: PO-{po_result['id'][-6:].upper()} - {po_result['project_name']}",
+                    body=html_content,
+                    is_html=True
+                )
+    except Exception:
         pass
 
-    await log_activity(db, "system", "Purchase Officer", "Create PO", f"PO created for {po.vendor_name} | Project: {po.project_name}", "info")
+    await log_activity(db, "system", "Purchase Officer", "Create PO", f"PO created for {vendor_display} | Project: {po.project_name}", "info")
 
     # Notify GM + stakeholders about new PO
     try:
@@ -135,12 +187,12 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
         po_id_short = str(result.inserted_id)[-6:].upper()
         await notify(db, "Purchase Officer", recipients, EVENT_WORKFLOW,
             "New Purchase Order",
-            f"PO-{po_id_short} created for {po.vendor_name} | Project: {po.project_name} | Amount: Rs.{po.total_amount:,.0f}. Awaiting approval.",
+            f"PO-{po_id_short} created for {vendor_display} | Project: {po.project_name} | Amount: Rs.{po.total_amount:,.0f}. Awaiting approval.",
             entity_type="po", entity_id=str(result.inserted_id), project_name=po.project_name, priority="high")
     except Exception:
         pass
 
-    return po_helper(new_po)
+    return po_result
 
 @router.put("/{id}", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 @router.put("/{id}/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
@@ -149,9 +201,17 @@ async def update_po(id: str, po_data: dict = Body(...)):
         raise HTTPException(status_code=400, detail="Invalid ID")
     
     # Extract only valid fields to avoid injecting unexpected data
-    valid_fields = ["vendor_name", "project_name", "expected_delivery", "items", "notes", "admin_remarks", "status", "total_amount"]
+    valid_fields = ["vendor_name", "project_name", "expected_delivery", "items", "notes", "admin_remarks", "status", "total_amount", "is_multi_vendor"]
     update_data = {k: v for k, v in po_data.items() if k in valid_fields}
-    
+
+    # Recalculate vendor_name when multi-vendor items are updated
+    is_multi = update_data.get("is_multi_vendor", po_data.get("is_multi_vendor", False))
+    if is_multi and "items" in update_data:
+        item_vendors = list(dict.fromkeys(
+            item.get("vendor_name") for item in update_data["items"] if item.get("vendor_name")
+        ))
+        update_data["vendor_name"] = ", ".join(item_vendors) if item_vendors else ""
+
     await db.purchase_orders.update_one(
         {"_id": ObjectId(id)},
         {"$set": update_data}
@@ -210,44 +270,60 @@ async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
 async def send_po_email(id: str, background_tasks: BackgroundTasks):
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-    
-    # Fetch PO
+
     po = await db.purchase_orders.find_one({"_id": ObjectId(id)})
     if not po:
         raise HTTPException(status_code=404, detail="PO not found")
-    
-    # Fetch Vendor to get email
-    # Use regex for flexible matching (ignore case and trailing/leading spaces)
-    vendor_name = po["vendor_name"].strip()
-    vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(vendor_name)}$", "$options": "i"}})
-    
-    if not vendor:
-        # Try a more aggressive search if exact match fails
-        vendor = await db.vendors.find_one({"name": {"$regex": vendor_name.replace(" ", ".*"), "$options": "i"}})
-    
-    if not vendor or not vendor.get("email"):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Vendor '{po['vendor_name']}' not found or doesn't have an email address."
-        )
-    
-    # Prepare data for helper
+
     po_data = po_helper(po)
-    vendor_data = {
-        "name": vendor["name"],
-        "email": vendor["email"]
-    }
-    
-    # Generate HTML content
-    html_content = generate_po_html(po_data, vendor_data)
-    
-    # Send email in background
-    background_tasks.add_task(
-        send_email, 
-        to_email=vendor["email"], 
-        subject=f"Purchase Order: PO-{po_data['id'][-6:].upper()} - {po_data['project_name']}",
-        body=html_content,
-        is_html=True
-    )
-    
-    return {"message": f"PO email is being sent to {vendor['email']}"}
+    sent_to = []
+
+    if po.get("is_multi_vendor"):
+        # Multi-vendor: send separate emails per vendor with only their items
+        vendor_names = list(dict.fromkeys(
+            item.get("vendor_name") for item in po.get("items", []) if item.get("vendor_name")
+        ))
+        if not vendor_names:
+            raise HTTPException(status_code=400, detail="No vendor assignments found on items.")
+
+        for vname in vendor_names:
+            vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(vname.strip())}$", "$options": "i"}})
+            if not vendor:
+                vendor = await db.vendors.find_one({"name": {"$regex": vname.strip().replace(' ', '.*'), "$options": "i"}})
+            if vendor and vendor.get("email"):
+                vendor_items = [it for it in po_data["items"] if it.get("vendor_name") == vname]
+                vendor_total = sum((it.get("qty", 0) or 0) * (it.get("rate", 0) or 0) for it in vendor_items)
+                vendor_po_data = {**po_data, "items": vendor_items, "total_amount": vendor_total, "vendor_name": vname}
+                vendor_data = {"name": vendor["name"], "email": vendor["email"]}
+                html_content = generate_po_html(vendor_po_data, vendor_data)
+                background_tasks.add_task(
+                    send_email,
+                    to_email=vendor["email"],
+                    subject=f"Purchase Order: PO-{po_data['id'][-6:].upper()} - {po_data['project_name']}",
+                    body=html_content,
+                    is_html=True
+                )
+                sent_to.append(vendor["email"])
+
+        if not sent_to:
+            raise HTTPException(status_code=400, detail="No vendor emails found for the assigned vendors.")
+        return {"message": f"PO emails are being sent to {', '.join(sent_to)}"}
+    else:
+        # Single-vendor PO
+        vendor_name = po.get("vendor_name", "").strip()
+        vendor = await db.vendors.find_one({"name": {"$regex": f"^{re.escape(vendor_name)}$", "$options": "i"}})
+        if not vendor:
+            vendor = await db.vendors.find_one({"name": {"$regex": vendor_name.replace(' ', '.*'), "$options": "i"}})
+        if not vendor or not vendor.get("email"):
+            raise HTTPException(status_code=400, detail=f"Vendor '{po.get('vendor_name')}' not found or doesn't have an email address.")
+
+        vendor_data = {"name": vendor["name"], "email": vendor["email"]}
+        html_content = generate_po_html(po_data, vendor_data)
+        background_tasks.add_task(
+            send_email,
+            to_email=vendor["email"],
+            subject=f"Purchase Order: PO-{po_data['id'][-6:].upper()} - {po_data['project_name']}",
+            body=html_content,
+            is_html=True
+        )
+        return {"message": f"PO email is being sent to {vendor['email']}"}

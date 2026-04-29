@@ -25,6 +25,7 @@ export const SYSTEM_FEATURES = [
     { id: 'approve_leave', label: 'Approve Leaves' },
     { id: 'add_employee', label: 'Add New Employee' },
     { id: 'create_invoice', label: 'Create Invoice/Bill' },
+    { id: 'create_sc_bill', label: 'Create Subcontractor Bill' },
 ];
 
 export const SUB_TABS = {
@@ -60,6 +61,7 @@ export const DEFAULT_ROLES = [
             { name: 'System Logs', actions: { view: true, edit: true, delete: true } },
             { name: 'Settings', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Settings'] },
             { name: 'Site Reports', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Site Reports'] },
+            { name: 'Subcontractor Billing', actions: { view: true, edit: true, delete: true } },
         ],
         dashboardCards: DASHBOARD_CARDS.map(c => c.id),
         features: SYSTEM_FEATURES.map(f => f.id),
@@ -116,9 +118,10 @@ export const DEFAULT_ROLES = [
             { name: 'Reports', actions: { view: true, edit: true, delete: false } },
             { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
             { name: 'HRMS', actions: { view: true, edit: false, delete: false }, subTabs: ['Dashboard', 'Payroll'] },
+            { name: 'Subcontractor Billing', actions: { view: true, edit: true, delete: false } },
         ],
         dashboardCards: ['budget_overview', 'overview_stats'],
-        features: ['create_invoice'],
+        features: ['create_invoice', 'create_sc_bill'],
         userCount: 2
     },
     {
