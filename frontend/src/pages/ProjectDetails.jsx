@@ -1257,7 +1257,10 @@ const ProjectDetails = () => {
                 )}
 
                 {/* Labour Attendance Tab */}
-                {activeTab === 'Labour Attendance' && (
+                {activeTab === 'Labour Attendance' && (() => {
+                    const wageRoles = ['administrator', 'super admin', 'admin', 'accountant', 'general manager', 'managing director', 'manager'];
+                    const canSeeWages = wageRoles.includes((user?.role || '').toLowerCase());
+                    return (
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                             <div>
@@ -1274,11 +1277,13 @@ const ProjectDetails = () => {
                         {/* Summary cards */}
                         {labourSummary && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
-                                <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Cost</span><span style={{ fontSize: 18, fontWeight: 800 }}>₹{(labourSummary.total_cost || 0).toLocaleString('en-IN')}</span></div>
+                                {canSeeWages && (
+                                    <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Cost</span><span style={{ fontSize: 18, fontWeight: 800 }}>{'\u20B9'}{(labourSummary.total_cost || 0).toLocaleString('en-IN')}</span></div>
+                                )}
                                 <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Days Recorded</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_days_recorded || 0}</span></div>
                                 <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Heads</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_heads || 0}</span></div>
                                 {Object.entries(labourSummary.categories || {}).map(([cat, data]) => (
-                                    <div key={cat} style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>{cat}</span><span style={{ fontSize: 18, fontWeight: 800 }}>{data.total_heads} · ₹{data.cost.toLocaleString('en-IN')}</span></div>
+                                    <div key={cat} style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>{cat}</span><span style={{ fontSize: 18, fontWeight: 800 }}>{data.total_heads}{canSeeWages ? ` \u00B7 \u20B9${data.cost.toLocaleString('en-IN')}` : ''}</span></div>
                                 ))}
                             </div>
                         )}
@@ -1302,13 +1307,23 @@ const ProjectDetails = () => {
                                             <th style={labourThStyle}>Date</th>
                                             <th style={labourThStyle}>Breakdown</th>
                                             <th style={{ ...labourThStyle, textAlign: 'center' }}>Total</th>
-                                            <th style={{ ...labourThStyle, textAlign: 'right' }}>Day Cost</th>
+                                            {canSeeWages && <th style={{ ...labourThStyle, textAlign: 'right' }}>Day Cost</th>}
                                             <th style={labourThStyle}>Marked By</th>
+                                            <th style={{ ...labourThStyle, textAlign: 'center' }}>Status</th>
                                             <th style={{ ...labourThStyle, textAlign: 'center' }}>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {labourRecords.map(rec => (
+                                        {labourRecords.map(rec => {
+                                            const status = rec.approval_status || (rec.verified ? 'Approved' : 'Pending');
+                                            const statusColors = {
+                                                'Pending': { bg: '#FEF3C7', color: '#92400E' },
+                                                'Submitted': { bg: '#DBEAFE', color: '#1E40AF' },
+                                                'Approved': { bg: '#D1FAE5', color: '#065F46' },
+                                                'Rejected': { bg: '#FEE2E2', color: '#991B1B' },
+                                            };
+                                            const sc = statusColors[status] || statusColors['Pending'];
+                                            return (
                                             <tr key={rec.id} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer' }}
                                                 onClick={() => { setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}>
                                                 <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 700 }}>{fmtDate(rec.date)}</td>
@@ -1316,14 +1331,17 @@ const ProjectDetails = () => {
                                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                                         {(rec.categories || []).map((c, i) => (
                                                             <span key={i} style={{ padding: '2px 8px', borderRadius: 6, backgroundColor: '#F1F5F9', fontWeight: 600, fontSize: 11 }}>
-                                                                {c.party ? `${c.party} — ` : ''}{c.category}: {c.count}
+                                                                {c.party ? `${c.party} \u2014 ` : ''}{c.category}: {c.count}
                                                             </span>
                                                         ))}
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '12px 14px', fontSize: 14, textAlign: 'center', fontWeight: 800 }}>{rec.total_count}</td>
-                                                <td style={{ padding: '12px 14px', fontSize: 13, textAlign: 'right', fontWeight: 700 }}>₹{(rec.day_cost || 0).toLocaleString('en-IN')}</td>
+                                                {canSeeWages && <td style={{ padding: '12px 14px', fontSize: 13, textAlign: 'right', fontWeight: 700 }}>{'\u20B9'}{(rec.day_cost || 0).toLocaleString('en-IN')}</td>}
                                                 <td style={{ padding: '12px 14px', fontSize: 13, color: '#64748B' }}>{rec.marked_by}</td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                                    <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: sc.bg, color: sc.color }}>{status}</span>
+                                                </td>
                                                 <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                                                     <button onClick={e => { e.stopPropagation(); setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}
                                                         style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #E2E8F0', backgroundColor: 'white', cursor: 'pointer', fontSize: 12, color: '#3B82F6', fontWeight: 600 }}>
@@ -1331,13 +1349,15 @@ const ProjectDetails = () => {
                                                     </button>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
                         )}
                     </div>
-                )}
+                    );
+                })()}
 
             </div>
 
@@ -1354,6 +1374,7 @@ const ProjectDetails = () => {
                 onSuccess={() => { setIsLabourModalOpen(false); setEditingLabourRecord(null); loadLabourData(); }}
                 project={project}
                 existingRecord={editingLabourRecord}
+                userRole={user?.role}
             />
             <AddTaskModal
                 isOpen={isAddTaskOpen}

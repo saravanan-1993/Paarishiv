@@ -62,7 +62,8 @@ const Approvals = () => {
         materials: [],
         expenses: [],
         manpower: [],
-        dprs: []
+        dprs: [],
+        subcontractor_bills: []
     });
 
     const fetchData = async () => {
@@ -75,7 +76,8 @@ const Approvals = () => {
                 materials: res.data.materials || [],
                 expenses: res.data.expenses || [],
                 manpower: res.data.manpower || [],
-                dprs: res.data.dprs || []
+                dprs: res.data.dprs || [],
+                subcontractor_bills: res.data.subcontractor_bills || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -180,6 +182,7 @@ const Approvals = () => {
         { id: 'expenses', label: 'Expenses', count: data.expenses?.length || 0, icon: CreditCard, color: '#ec4899' },
         { id: 'manpower', label: 'Manpower', count: data.manpower?.length || 0, icon: User, color: '#10b981' },
         { id: 'dprs', label: 'DPR', count: data.dprs?.length || 0, icon: FileText, color: '#6366f1' },
+        { id: 'subcontractor_bills', label: 'SC Bills', count: data.subcontractor_bills?.length || 0, icon: FileText, color: '#0891b2' },
     ];
 
     const handleDprAction = async (dpr, action) => {
@@ -656,6 +659,64 @@ const Approvals = () => {
         return 'Approve';
     };
 
+    const renderSCBillCard = (item) => (
+        <div key={item._id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>{item.contractor_name || 'Unknown Contractor'}</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.bill_no || '—'} &bull; {item.project_name || ''}</p>
+                </div>
+                <span style={{
+                    padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                    backgroundColor: item.status === 'Pending Approval' ? '#FEF3C7' : item.status === 'Approved' ? '#DCFCE7' : '#FEE2E2',
+                    color: item.status === 'Pending Approval' ? '#92400E' : item.status === 'Approved' ? '#166534' : '#991B1B'
+                }}>{item.status}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>TYPE</p>
+                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.bill_type === 'work_based' ? 'Work Based' : 'Day Based'}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>AMOUNT</p>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)' }}>{'\u20B9'}{(item.payable_amount || 0).toLocaleString('en-IN')}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>DATE</p>
+                    <p style={{ fontSize: '13px' }}>{item.bill_date || item.created_at?.split('T')[0] || '—'}</p>
+                </div>
+            </div>
+            {item.mbook_entries?.length > 0 && (
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>
+                    M-Book: {item.mbook_entries.length} measurement entries &bull; Pg {item.mbook_page_no || '—'}
+                </p>
+            )}
+            {item.status === 'Pending Approval' && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button
+                        className="btn btn-primary btn-sm"
+                        disabled={!!actionLoading}
+                        onClick={() => handleAction('subcontractor_bills', item._id, 'approve')}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}
+                    >
+                        {actionLoading === `${item._id}-approve` ? 'Approving...' : 'Approve'}
+                    </button>
+                    <button
+                        className="btn btn-outline btn-sm"
+                        disabled={!!actionLoading}
+                        onClick={() => handleAction('subcontractor_bills', item._id, 'reject')}
+                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
+                    >
+                        {actionLoading === `${item._id}-reject` ? 'Rejecting...' : 'Reject'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
     const renderDPRCard = (item) => {
         const stepIdx = getStepIndex(item.status);
         return (
@@ -987,6 +1048,7 @@ const Approvals = () => {
                                 if (activeTab === 'expenses') return renderExpenseCard(item);
                                 if (activeTab === 'manpower') return renderManpowerCard(item);
                                 if (activeTab === 'dprs') return renderDPRCard(item);
+                                if (activeTab === 'subcontractor_bills') return renderSCBillCard(item);
                                 return null;
                             })}
                         </div>

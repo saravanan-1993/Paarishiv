@@ -48,6 +48,7 @@ const menuItems = [
             { label: 'Ledger', tabId: 'Ledger' },
             { label: 'Quotation', tabId: 'Quotations', path: '/quotations' },
             { label: 'Labour Wages', tabId: 'LabourWages', path: '/labour-wages' },
+            { label: 'SC Billing', tabId: 'SubcontractorBilling', path: '/subcontractor-billing' },
         ]
     },
     {

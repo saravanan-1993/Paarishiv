@@ -337,10 +337,29 @@ export const labourAttendanceAPI = {
     create: (data) => api.post('/labour-attendance/', data),
     update: (id, data) => api.put(`/labour-attendance/${id}`, data),
     delete: (id) => api.delete(`/labour-attendance/${id}`),
+    submit: (id) => api.put(`/labour-attendance/${id}/submit`),
+    approve: (id) => api.put(`/labour-attendance/${id}/approve`),
+    reject: (id, data) => api.put(`/labour-attendance/${id}/reject`, data),
     getProjectSummary: (projectName) => api.get('/labour-attendance/project-summary', { params: { project_name: projectName } }),
     getWagesSummary: (params) => api.get('/labour-attendance/wages-summary', { params }),
     getSalaryPayments: (params) => api.get('/labour-attendance/salary-payments', { params }),
     processSalary: (data) => api.post('/labour-attendance/process-salary', data),
+};
+
+// ── Subcontractor Billing ────────────────────────────────────────────────────
+export const subcontractorBillingAPI = {
+    getAll: (params) => api.get('/subcontractor-billing/', { params }),
+    getById: (id) => api.get(`/subcontractor-billing/${id}`),
+    create: (data) => api.post('/subcontractor-billing/', data),
+    update: (id, data) => api.put(`/subcontractor-billing/${id}`, data),
+    submit: (id) => api.put(`/subcontractor-billing/${id}/submit`),
+    approve: (id) => api.put(`/subcontractor-billing/${id}/approve`),
+    reject: (id, data) => api.put(`/subcontractor-billing/${id}/reject`, data),
+    recordPayment: (id, data) => api.post(`/subcontractor-billing/${id}/payment`, data),
+    getPayments: (id) => api.get(`/subcontractor-billing/${id}/payments`),
+    getDprWork: (params) => api.get('/subcontractor-billing/dpr-work', { params }),
+    getContractorSummary: () => api.get('/subcontractor-billing/contractor-summary'),
+    delete: (id) => api.delete(`/subcontractor-billing/${id}`),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────────
