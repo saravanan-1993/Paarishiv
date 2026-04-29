@@ -13,6 +13,7 @@ from datetime import datetime
 
 from app.utils.auth import get_current_user, validate_object_id
 from app.utils.logging import log_activity
+from app.utils.notifications import notify, EVENT_APPROVAL, EVENT_WORKFLOW
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/labour-attendance", tags=["labour-attendance"])
@@ -78,6 +79,9 @@ def _helper(doc) -> dict:
         "approval_status": doc.get("approval_status", "Pending"),
         "approved_by": doc.get("approved_by", ""),
         "approved_at": doc.get("approved_at"),
+        "payment_status": doc.get("payment_status", ""),
+        "payment_requested_by": doc.get("payment_requested_by", ""),
+        "payment_approved_by": doc.get("payment_approved_by", ""),
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at"),
     }
@@ -335,6 +339,19 @@ async def submit_for_approval(
         {"_id": oid},
         {"$set": {"approval_status": "Submitted", "updated_at": datetime.now()}}
     )
+
+    # Notify Coordinator/Admin
+    submitter = current_user.get("full_name") or current_user.get("username", "")
+    try:
+        total_count = sum(c.get("count", 0) for c in doc.get("categories", []))
+        await notify(db, submitter, ["Project Coordinator", "Administrator"], EVENT_APPROVAL,
+            "Labour Attendance Submitted",
+            f"Labour attendance for {doc.get('project_name')} ({doc.get('date')}) submitted by {submitter}. {total_count} workers. Awaiting approval.",
+            entity_type="labour_attendance", entity_id=id,
+            project_name=doc.get("project_name"), priority="normal")
+    except Exception:
+        pass
+
     return {"success": True, "message": "Attendance submitted for approval"}
 
 
@@ -369,6 +386,19 @@ async def approve_attendance(
             "approved_at": datetime.now(),
         }}
     )
+
+    # Notify the person who marked attendance
+    try:
+        marked_by = doc.get("marked_by", "")
+        recipients = [marked_by, "Accountant"] if marked_by else ["Accountant"]
+        await notify(db, approver, recipients, EVENT_APPROVAL,
+            "Labour Attendance Approved",
+            f"Attendance for {doc.get('project_name')} ({doc.get('date')}) approved by {approver}.",
+            entity_type="labour_attendance", entity_id=id,
+            project_name=doc.get("project_name"), priority="normal")
+    except Exception:
+        pass
+
     return {"success": True, "message": "Attendance approved"}
 
 
@@ -391,6 +421,7 @@ async def reject_attendance(
         raise HTTPException(status_code=404, detail="Record not found")
 
     reason = body.get("reason", "")
+    rejector = current_user.get("full_name") or current_user.get("username", "")
     await db.labour_attendance.update_one(
         {"_id": oid},
         {"$set": {
@@ -399,7 +430,145 @@ async def reject_attendance(
             "updated_at": datetime.now(),
         }}
     )
+
+    try:
+        marked_by = doc.get("marked_by", "")
+        recipients = [marked_by] if marked_by else []
+        await notify(db, rejector, recipients, EVENT_APPROVAL,
+            "Labour Attendance Rejected",
+            f"Attendance for {doc.get('project_name')} ({doc.get('date')}) rejected by {rejector}." + (f" Reason: {reason}" if reason else ""),
+            entity_type="labour_attendance", entity_id=id,
+            project_name=doc.get("project_name"), priority="high")
+    except Exception:
+        pass
+
     return {"success": True, "message": "Attendance rejected"}
+
+
+@router.put("/{id}/request-payment")
+async def request_payment_approval(
+    id: str,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Accountant requests Admin approval before processing payment."""
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    requester = current_user.get("full_name") or current_user.get("username", "")
+    day_cost = _compute_day_cost(doc.get("categories", []))
+
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {
+            "payment_status": "Payment Requested",
+            "payment_requested_by": requester,
+            "updated_at": datetime.now(),
+        }}
+    )
+
+    # Notify Admin
+    try:
+        await notify(db, requester, ["Administrator", "General Manager"], EVENT_APPROVAL,
+            "Labour Payment Approval Required",
+            f"Payment of Rs.{day_cost:,.0f} requested for {doc.get('project_name')} ({doc.get('date')}). {doc.get('total_count', sum(c.get('count',0) for c in doc.get('categories',[])))} workers. Awaiting approval.",
+            entity_type="labour_payment", entity_id=id,
+            project_name=doc.get("project_name"), priority="high")
+    except Exception:
+        pass
+
+    await log_activity(db, str(current_user.get("_id", "")), requester,
+        "Request Labour Payment", f"Payment approval requested for {doc.get('project_name')} — {doc.get('date')}", "info")
+
+    return {"success": True, "message": "Payment approval requested"}
+
+
+@router.put("/{id}/approve-payment")
+async def approve_payment(
+    id: str,
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin approves the payment request so Accountant can process it."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can approve payment requests")
+
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if doc.get("payment_status") != "Payment Requested":
+        raise HTTPException(status_code=400, detail="No pending payment request for this record")
+
+    approver = current_user.get("full_name") or current_user.get("username", "")
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {
+            "payment_status": "Payment Approved",
+            "payment_approved_by": approver,
+            "updated_at": datetime.now(),
+        }}
+    )
+
+    # Notify Accountant
+    try:
+        await notify(db, approver, ["Accountant"], EVENT_APPROVAL,
+            "Labour Payment Approved",
+            f"Payment for {doc.get('project_name')} ({doc.get('date')}) approved by {approver}. You can now process the payment.",
+            entity_type="labour_payment", entity_id=id,
+            project_name=doc.get("project_name"), priority="high")
+    except Exception:
+        pass
+
+    await log_activity(db, str(current_user.get("_id", "")), approver,
+        "Approve Labour Payment", f"Payment approved for {doc.get('project_name')} — {doc.get('date')}", "success")
+
+    return {"success": True, "message": "Payment approved — Accountant can now process it"}
+
+
+@router.put("/{id}/reject-payment")
+async def reject_payment(
+    id: str,
+    body: dict = Body(default={}),
+    db=Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    """Admin rejects the payment request."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can reject payment requests")
+
+    oid = validate_object_id(id, "Labour Attendance ID")
+    doc = await db.labour_attendance.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    reason = body.get("reason", "")
+    rejector = current_user.get("full_name") or current_user.get("username", "")
+    await db.labour_attendance.update_one(
+        {"_id": oid},
+        {"$set": {
+            "payment_status": "Payment Rejected",
+            "payment_rejection_reason": reason,
+            "updated_at": datetime.now(),
+        }}
+    )
+
+    try:
+        await notify(db, rejector, ["Accountant"], EVENT_APPROVAL,
+            "Labour Payment Rejected",
+            f"Payment for {doc.get('project_name')} ({doc.get('date')}) rejected by {rejector}." + (f" Reason: {reason}" if reason else ""),
+            entity_type="labour_payment", entity_id=id,
+            project_name=doc.get("project_name"), priority="high")
+    except Exception:
+        pass
+
+    return {"success": True, "message": "Payment request rejected"}
 
 
 @router.delete("/{id}")

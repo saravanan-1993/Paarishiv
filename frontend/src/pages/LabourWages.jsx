@@ -1,20 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Users, IndianRupee, Search, Calendar, Download, Loader2,
-    CreditCard, X, CheckCircle
+    CreditCard, X, CheckCircle, Send, Clock, AlertCircle
 } from 'lucide-react';
 import { labourAttendanceAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const fmt = (n) => `\u20B9${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const fmtDate = (d) => {
     if (!d) return '-';
     const dt = new Date(d);
     if (isNaN(dt.getTime())) return '-';
     return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
+
+const ADMIN_ROLES = ['administrator', 'super admin', 'admin', 'general manager', 'managing director', 'manager'];
 
 const LabourWages = () => {
     const { user } = useAuth();
@@ -26,8 +28,11 @@ const LabourWages = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [activeTab, setActiveTab] = useState('Pending');
-    const [payModal, setPayModal] = useState(null); // record to pay
+    const [payModal, setPayModal] = useState(null);
     const [paying, setPaying] = useState(false);
+    const [requesting, setRequesting] = useState(false);
+
+    const isAdmin = ADMIN_ROLES.includes((user?.role || '').toLowerCase());
 
     const loadData = async () => {
         setLoading(true);
@@ -49,7 +54,6 @@ const LabourWages = () => {
 
     useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
-    // Set of paid record keys: "projectName||date"
     const paidKeys = useMemo(() => {
         const s = new Set();
         (payments || []).forEach(p => s.add(`${p.project_name}||${p.date}`));
@@ -76,6 +80,22 @@ const LabourWages = () => {
         days: filtered.length,
     }), [filtered]);
 
+    // Request Admin approval for payment
+    const handleRequestPayment = async (rec) => {
+        if (!window.confirm(`Request payment approval for ${rec.project_name} — ${fmtDate(rec.date)} (${fmt(rec.day_cost)})?`)) return;
+        setRequesting(true);
+        try {
+            await labourAttendanceAPI.requestPayment(rec.id);
+            alert('Payment approval request sent to Admin.');
+            await loadData();
+        } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.detail || 'Failed to request payment approval');
+        }
+        setRequesting(false);
+    };
+
+    // Process payment (only after Admin approval via Approvals page)
     const handlePay = async (rec) => {
         setPaying(true);
         try {
@@ -118,30 +138,80 @@ const LabourWages = () => {
 
         autoTable(doc, {
             startY: 30,
-            head: [['#', 'Date', 'Project', 'Breakdown', 'Total', 'Day Cost', 'Status']],
-            body: filtered.map((r, i) => [
-                i + 1, r.date, r.project_name,
-                (r.categories || []).map(c => `${c.party ? c.party + '-' : ''}${c.category}: ${c.count}`).join(', '),
-                r.total_count, `Rs. ${(r.day_cost || 0).toLocaleString('en-IN')}`,
-                isPaid(r) ? 'Paid' : 'Pending',
+            head: [['Date', 'Project', 'Category', 'Count', 'Day Cost']],
+            body: filtered.map(r => [
+                fmtDate(r.date),
+                r.project_name,
+                (r.categories || []).map(c => c.category).join(', '),
+                r.total_count,
+                fmt(r.day_cost),
             ]),
-            theme: 'grid',
+            foot: [['', '', 'Total', totals.totalHeads, fmt(totals.totalCost)]],
+            theme: 'striped',
             headStyles: { fillColor: [59, 130, 246] },
-            styles: { fontSize: 8 },
+            footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
         });
-        doc.save('Labour_Wages_Report.pdf');
+        doc.save(`labour-wages-${new Date().toISOString().slice(0, 10)}.pdf`);
+    };
+
+    // Determine action button for a record in Pending tab
+    // Approve/Reject is only in the Approvals page — here we show status + Pay after approval
+    const renderPaymentAction = (r) => {
+        const ps = r.payment_status || '';
+
+        // Payment request sent, waiting for Admin (Admin approves via Approvals page)
+        if (ps === 'Payment Requested') {
+            return (
+                <span style={{ padding: '4px 12px', borderRadius: 6, backgroundColor: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <Clock size={12} /> Sent for Approval
+                </span>
+            );
+        }
+
+        // Admin approved — show "Pay" button to process payment
+        if (ps === 'Payment Approved') {
+            return (
+                <button onClick={() => setPayModal(r)}
+                    style={{ padding: '5px 16px', borderRadius: 6, border: 'none', backgroundColor: '#10B981', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <CheckCircle size={14} /> Pay
+                </button>
+            );
+        }
+
+        // Payment rejected — show status + re-request button
+        if (ps === 'Payment Rejected') {
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 10, color: '#EF4444', fontWeight: 600 }}>Rejected</span>
+                    <button onClick={() => handleRequestPayment(r)} disabled={requesting}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+                        Re-request
+                    </button>
+                </div>
+            );
+        }
+
+        // Default — "Send" button to request Admin approval
+        return (
+            <button onClick={() => handleRequestPayment(r)} disabled={requesting}
+                style={{ padding: '5px 16px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Send size={14} /> Send
+            </button>
+        );
     };
 
     return (
-        <div style={{ padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                 <div>
-                    <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Labour Wages</h1>
-                    <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 14 }}>Date-wise labour attendance and salary processing.</p>
+                    <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>Labour Wages</h1>
+                    <p style={{ color: '#64748B', fontSize: 14, marginTop: 4 }}>Date-wise labour attendance and salary processing.</p>
                 </div>
-                <button onClick={handleDownloadPDF} style={primaryBtn} disabled={!filtered.length}>
-                    <Download size={16} /> Download Report
-                </button>
+                {filtered.length > 0 && (
+                    <button onClick={handleDownloadPDF} style={primaryBtn}>
+                        <Download size={16} /> Download Report
+                    </button>
+                )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
@@ -216,7 +286,7 @@ const LabourWages = () => {
                                             <th style={{ ...thStyle, textAlign: 'right' }}>Day Cost</th>
                                             <th style={thStyle}>Marked By</th>
                                             {!isAwaiting && <th style={thStyle}>Verified By</th>}
-                                            <th style={{ ...thStyle, textAlign: 'center', width: 120 }}>Action</th>
+                                            <th style={{ ...thStyle, textAlign: 'center', width: 180 }}>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -254,12 +324,7 @@ const LabourWages = () => {
                                                         <span style={{ padding: '4px 12px', borderRadius: 6, backgroundColor: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700 }}>
                                                             Awaiting
                                                         </span>
-                                                    ) : (
-                                                        <button onClick={() => setPayModal(r)}
-                                                            style={{ padding: '5px 16px', borderRadius: 6, border: 'none', backgroundColor: '#10B981', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                                                            Pay
-                                                        </button>
-                                                    )}
+                                                    ) : renderPaymentAction(r)}
                                                 </td>
                                             </tr>
                                         ))}
@@ -304,7 +369,7 @@ const LabourWages = () => {
                 )}
             </div>
 
-            {/* Payment Detail Modal */}
+            {/* Payment Confirmation Modal — only shows after Admin approval */}
             {payModal && (
                 <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setPayModal(null); }}>
                     <div className="card animate-fade-in" style={{ width: '95%', maxWidth: 750, maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'auto' }}>
@@ -317,7 +382,14 @@ const LabourWages = () => {
                         </div>
 
                         <div style={{ padding: '18px 22px' }}>
-                            {/* Summary */}
+                            {/* Admin Approval Badge */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', backgroundColor: '#D1FAE5', borderRadius: 8, marginBottom: 16, border: '1px solid #A7F3D0' }}>
+                                <CheckCircle size={18} style={{ color: '#059669' }} />
+                                <span style={{ fontSize: 13, fontWeight: 600, color: '#065F46' }}>
+                                    Payment approved by {payModal.payment_approved_by || 'Admin'}
+                                </span>
+                            </div>
+
                             <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
                                 <div style={summaryCard}><span style={{ color: '#64748B', fontSize: 11 }}>Date</span><span style={{ fontWeight: 800 }}>{fmtDate(payModal.date)}</span></div>
                                 <div style={summaryCard}><span style={{ color: '#64748B', fontSize: 11 }}>Project</span><span style={{ fontWeight: 800 }}>{payModal.project_name}</span></div>
@@ -325,7 +397,6 @@ const LabourWages = () => {
                                 <div style={summaryCard}><span style={{ color: '#64748B', fontSize: 11 }}>Marked By</span><span style={{ fontWeight: 800 }}>{payModal.marked_by}</span></div>
                             </div>
 
-                            {/* Breakdown Table */}
                             <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                     <thead>
@@ -417,7 +488,6 @@ const StatCard = ({ icon: Icon, label, value, color }) => (
 const primaryBtn = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, border: 'none', backgroundColor: '#3B82F6', color: 'white', fontWeight: 600, cursor: 'pointer' };
 const thStyle = { padding: '12px 14px', fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', textAlign: 'left' };
 const tdStyle = { padding: '12px 14px', fontSize: 13, color: '#334155' };
-const modalStyle = { backgroundColor: 'white', borderRadius: 14, width: '100%', maxWidth: 750, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'auto' };
 const summaryCard = { flex: 1, minWidth: 120, padding: '10px 14px', borderRadius: 10, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 2, backgroundColor: '#F8FAFC' };
 
 export default LabourWages;

@@ -21,8 +21,8 @@ const statusConfig = {
 };
 
 const typeConfig = {
-    'Work Based': { bg: '#EDE9FE', color: '#5B21B6' },
-    'Day Based': { bg: '#FEF3C7', color: '#92400E' },
+    'work_based': { bg: '#EDE9FE', color: '#5B21B6', label: 'Work Based' },
+    'day_based': { bg: '#FEF3C7', color: '#92400E', label: 'Day Based' },
 };
 
 const fmt = (n) => {
@@ -194,7 +194,7 @@ const SubcontractorBilling = () => {
     };
 
     const renderTypeBadge = (type) => {
-        const config = typeConfig[type] || { bg: '#F3F4F6', color: '#374151' };
+        const config = typeConfig[type] || { bg: '#F3F4F6', color: '#374151', label: type };
         return (
             <span style={{
                 padding: '4px 10px',
@@ -205,7 +205,7 @@ const SubcontractorBilling = () => {
                 color: config.color,
                 whiteSpace: 'nowrap',
             }}>
-                {type}
+                {config.label}
             </span>
         );
     };
@@ -388,7 +388,7 @@ const SubcontractorBilling = () => {
                                         <td style={{ fontWeight: '700' }}>{fmt(bill.payable_amount || bill.amount || 0)}</td>
                                         <td>{renderStatusBadge(bill.status)}</td>
                                         <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                            {bill.date ? new Date(bill.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                            {(bill.bill_date || bill.created_at) ? new Date(bill.bill_date || bill.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
                                         </td>
                                         <td>
                                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -521,8 +521,7 @@ const SubcontractorBilling = () => {
                 <MBookViewModal
                     isOpen={showMBookModal}
                     onClose={() => { setShowMBookModal(false); setSelectedBill(null); }}
-                    onSuccess={loadData}
-                    data={selectedBill}
+                    bill={selectedBill}
                 />
             )}
 
@@ -531,7 +530,7 @@ const SubcontractorBilling = () => {
                     isOpen={showPaymentModal}
                     onClose={() => { setShowPaymentModal(false); setSelectedBill(null); }}
                     onSuccess={() => { setShowPaymentModal(false); setSelectedBill(null); loadData(); }}
-                    data={selectedBill}
+                    bill={selectedBill}
                 />
             )}
         </div>

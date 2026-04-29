@@ -63,7 +63,8 @@ const Approvals = () => {
         expenses: [],
         manpower: [],
         dprs: [],
-        subcontractor_bills: []
+        subcontractor_bills: [],
+        labour_payments: []
     });
 
     const fetchData = async () => {
@@ -77,7 +78,8 @@ const Approvals = () => {
                 expenses: res.data.expenses || [],
                 manpower: res.data.manpower || [],
                 dprs: res.data.dprs || [],
-                subcontractor_bills: res.data.subcontractor_bills || []
+                subcontractor_bills: res.data.subcontractor_bills || [],
+                labour_payments: res.data.labour_payments || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -183,6 +185,7 @@ const Approvals = () => {
         { id: 'manpower', label: 'Manpower', count: data.manpower?.length || 0, icon: User, color: '#10b981' },
         { id: 'dprs', label: 'DPR', count: data.dprs?.length || 0, icon: FileText, color: '#6366f1' },
         { id: 'subcontractor_bills', label: 'SC Bills', count: data.subcontractor_bills?.length || 0, icon: FileText, color: '#0891b2' },
+        { id: 'labour_payments', label: 'Labour Pay', count: data.labour_payments?.length || 0, icon: FileText, color: '#7C3AED' },
     ];
 
     const handleDprAction = async (dpr, action) => {
@@ -717,6 +720,67 @@ const Approvals = () => {
         </div>
     );
 
+    const renderLabourPaymentCard = (item) => (
+        <div key={item._id || item.id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>Labour Payment</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.project_name} &bull; {item.date}</p>
+                </div>
+                <span style={{
+                    padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                    backgroundColor: '#FEF3C7', color: '#92400E'
+                }}>{item.payment_status || 'Payment Requested'}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>TOTAL LABOUR</p>
+                    <p style={{ fontSize: '16px', fontWeight: '800' }}>{item.total_count || 0}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>DAY COST</p>
+                    <p style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>{'\u20B9'}{(item.day_cost || 0).toLocaleString('en-IN')}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>REQUESTED BY</p>
+                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.payment_requested_by || item.marked_by || '—'}</p>
+                </div>
+            </div>
+            {(item.categories || []).length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    {item.categories.map((c, i) => (
+                        <span key={i} style={{ padding: '2px 8px', borderRadius: '6px', backgroundColor: '#F1F5F9', fontSize: '11px', fontWeight: '600' }}>
+                            {c.party ? `${c.party} \u2014 ` : ''}{c.category}: {c.count}
+                        </span>
+                    ))}
+                </div>
+            )}
+            {item.payment_status === 'Payment Requested' && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button
+                        className="btn btn-primary btn-sm"
+                        disabled={!!actionLoading}
+                        onClick={() => handleAction('labour_payments', item._id || item.id, 'approve')}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}
+                    >
+                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Payment'}
+                    </button>
+                    <button
+                        className="btn btn-outline btn-sm"
+                        disabled={!!actionLoading}
+                        onClick={() => handleAction('labour_payments', item._id || item.id, 'reject')}
+                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
+                    >
+                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
     const renderDPRCard = (item) => {
         const stepIdx = getStepIndex(item.status);
         return (
@@ -1049,6 +1113,7 @@ const Approvals = () => {
                                 if (activeTab === 'manpower') return renderManpowerCard(item);
                                 if (activeTab === 'dprs') return renderDPRCard(item);
                                 if (activeTab === 'subcontractor_bills') return renderSCBillCard(item);
+                                if (activeTab === 'labour_payments') return renderLabourPaymentCard(item);
                                 return null;
                             })}
                         </div>

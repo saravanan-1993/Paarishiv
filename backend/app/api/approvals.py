@@ -18,7 +18,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "expenses": [],
         "manpower": [],
         "dprs": [],
-        "subcontractor_bills": []
+        "subcontractor_bills": [],
+        "labour_payments": []
     }
     
     query = {}
@@ -148,6 +149,17 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             resolve_names(sb)
         results["subcontractor_bills"] = sc_bills
 
+    # Labour payment approvals: Admin sees payment requests
+    lp_query = {"payment_status": "Payment Requested"} if status.lower() != "all" else {"payment_status": {"$exists": True, "$ne": ""}}
+    if is_admin_user or status.lower() == "all":
+        from app.api.labour_attendance import _helper as la_helper, _compute_day_cost
+        lp_records = await db.labour_attendance.find(lp_query).sort("updated_at", -1).to_list(100)
+        for lp in lp_records:
+            lp_entry = la_helper(lp)
+            lp_entry["_id"] = str(lp["_id"])
+            resolve_names(lp_entry)
+            results["labour_payments"].append(lp_entry)
+
     return results
 
 @router.get("/pending", response_model=Dict[str, List[Any]])
@@ -274,6 +286,44 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             elif status == "Rejected":
                 sc_update["rejection_reason"] = reason
             await db.subcontractor_bills.update_one({"_id": oid}, {"$set": sc_update})
+        elif type == "labour_payments":
+            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+            user_role_check = (current_user.get("role") or "").strip().lower()
+            if user_role_check not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject labour payments")
+            lp_doc = await db.labour_attendance.find_one({"_id": oid})
+            if lp_doc and lp_doc.get("payment_status") != "Payment Requested":
+                raise HTTPException(status_code=400, detail="No pending payment request")
+            approver_name = update_fields["approvedBy"]
+            if status == "Approved":
+                await db.labour_attendance.update_one({"_id": oid}, {"$set": {
+                    "payment_status": "Payment Approved",
+                    "payment_approved_by": approver_name,
+                    "updated_at": datetime.now(),
+                }})
+                # Notify accountant
+                try:
+                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                        "Labour Payment Approved",
+                        f"Payment for {lp_doc.get('project_name')} ({lp_doc.get('date')}) approved. Accountant can now process.",
+                        entity_type="labour_payment", entity_id=obj_id,
+                        project_name=lp_doc.get("project_name"), priority="high")
+                except Exception:
+                    pass
+            else:
+                await db.labour_attendance.update_one({"_id": oid}, {"$set": {
+                    "payment_status": "Payment Rejected",
+                    "payment_rejection_reason": reason,
+                    "updated_at": datetime.now(),
+                }})
+                try:
+                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                        "Labour Payment Rejected",
+                        f"Payment for {lp_doc.get('project_name')} ({lp_doc.get('date')}) rejected." + (f" Reason: {reason}" if reason else ""),
+                        entity_type="labour_payment", entity_id=obj_id,
+                        project_name=lp_doc.get("project_name"), priority="high")
+                except Exception:
+                    pass
         elif type == "dprs":
             # Bug 26 - Multi-stage DPR approval workflow
             # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
