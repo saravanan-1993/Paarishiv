@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, MapPin, User, LayoutDashboard, Calendar, Package, Download, ArrowRight, PlayCircle } from 'lucide-react';
 import { projectAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import DPRViewModal from '../components/DPRViewModal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -386,13 +387,13 @@ const SiteReports = () => {
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
                                                             {/* Bug 4.7 - Coordinator: Pending -> Reviewed, Admin: Reviewed -> Approved */}
-                                                            {dpr.status === 'Pending' && (user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role?.toLowerCase().includes('coordinator')) && (
+                                                            {dpr.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, user?.role?.toLowerCase().includes('coordinator') && user?.role !== 'Super Admin' ? 'Reviewed' : 'Approved')}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, !hasPermission(user, 'Approvals', 'edit') ? 'Reviewed' : 'Approved')}
                                                                         disabled={processingId === dpr.id}
-                                                                        title={user?.role?.toLowerCase().includes('coordinator') && user?.role !== 'Super Admin' ? 'Review DPR' : 'Approve DPR'}
+                                                                        title={!hasPermission(user, 'Approvals', 'edit') ? 'Review DPR' : 'Approve DPR'}
                                                                     >
                                                                         {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                                                     </button>
@@ -407,7 +408,7 @@ const SiteReports = () => {
                                                                     </button>
                                                                 </>
                                                             )}
-                                                            {dpr.status === 'Reviewed' && (user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'Managing Director') && (
+                                                            {dpr.status === 'Reviewed' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
@@ -462,7 +463,7 @@ const SiteReports = () => {
                                                             >
                                                                 <Eye size={14} /> View
                                                             </button>
-                                                            {req.status === 'Pending' && (
+                                                            {req.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
@@ -518,7 +519,7 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
-                                                            {xf.status === 'Pending' && (
+                                                            {xf.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)} disabled={processingId === xf.id}>{processingId === xf.id ? <Loader2 size={14} className="animate-spin" /> : 'APPROVE'}</button>
                                                                     <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleRejectTransfer(xf.id)} disabled={processingId === xf.id}>REJECT</button>

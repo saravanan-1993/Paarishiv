@@ -132,7 +132,8 @@ const CATEGORIES = ['All', 'Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 // ─── Report Preview Modal ────────────────────────────────────────────────────
 const ReportPreview = ({
     report, onClose, budgetData = [], progressData = [], inventoryData = [],
-    materialStockReport = [], expenseData = [], attendanceData = [], bills = [], payables = []
+    materialStockReport = [], expenseData = [], attendanceData = [], bills = [], payables = [],
+    payrollData = []
 }) => {
     const [companyInfo, setCompanyInfo] = useState({ companyName: 'CIVIL ERP' });
 
@@ -583,15 +584,25 @@ const ReportPreview = ({
                                     <tr>
                                         <th>Date</th>
                                         <th>Employee Name</th>
+                                        <th>Check-in</th>
+                                        <th>Check-out</th>
                                         <th>Status</th>
                                         <th>Remarks</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(attendanceData || []).map((att, i) => (
+                                    {(attendanceData || []).map((att, i) => {
+                                        const fmtTime = (t) => {
+                                            if (!t) return '—';
+                                            const d = new Date(t);
+                                            return isNaN(d.getTime()) ? t : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                                        };
+                                        return (
                                         <tr key={i}>
                                             <td style={{ fontSize: '13px' }}>{att.date}</td>
                                             <td style={{ fontWeight: '700' }}>{att.employeeName}</td>
+                                            <td style={{ fontSize: '12px', color: '#059669', fontWeight: '600' }}>{fmtTime(att.check_in || att.clockIn)}</td>
+                                            <td style={{ fontSize: '12px', color: '#DC2626', fontWeight: '600' }}>{fmtTime(att.check_out || att.clockOut)}</td>
                                             <td>
                                                 <span className={`badge ${att.status === 'Present' ? 'badge-success' : att.status === 'Leave' ? 'badge-info' : 'badge-danger'}`}>
                                                     {att.status}
@@ -601,8 +612,9 @@ const ReportPreview = ({
                                                 {att.remarks?.includes('Leave Approved ID:') ? 'Leave Approved' : (att.remarks || '—')}
                                             </td>
                                         </tr>
-                                    ))}
-                                    {attendanceData.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>No attendance records found for this period.</td></tr>}
+                                        );
+                                    })}
+                                    {attendanceData.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>No attendance records found for this period.</td></tr>}
                                 </tbody>
                             </table>
                         </>
@@ -741,6 +753,7 @@ const ReportPreview = ({
                     {/* R006 - Payroll Summary */}
                     {report.id === 'R006' && (
                         <>
+                            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>Payroll Summary — {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</h3>
                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead><tr style={{ backgroundColor: '#F8FAFC' }}>
                                     <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid var(--border)' }}>Employee</th>
@@ -1312,6 +1325,7 @@ const Reports = () => {
                 attendanceData={attendanceData}
                 bills={bills}
                 payables={payables}
+                payrollData={payrollData}
             />
         </>
     );

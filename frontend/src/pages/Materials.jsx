@@ -15,13 +15,16 @@ import StockIssueModal from '../components/StockIssueModal';
 import StockReturnModal from '../components/StockReturnModal';
 import DirectIssueModal from '../components/DirectIssueModal';
 import MaterialTransferModal from '../components/MaterialTransferModal';
+import AccountantTransferModal from '../components/AccountantTransferModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 
 const Materials = () => {
     const { user } = useAuth();
+    const isAdmin = ['administrator', 'super admin', 'general manager', 'managing director'].includes((user?.role || '').toLowerCase());
     const isCoordinator = ['Project Coordinator', 'Super Admin', 'Administrator'].includes(user?.role);
+    const canEditInventory = hasPermission(user, 'Inventory Management', 'edit');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [mainTab, setMainTab] = useState('Materials');
@@ -47,6 +50,7 @@ const Materials = () => {
     };
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterProject, setFilterProject] = useState('');
 
     const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
     const [selectedMaterial, setSelectedMaterial] = useState(null);
@@ -88,7 +92,10 @@ const Materials = () => {
     const [isWarehouseLoading, setIsWarehouseLoading] = useState(false);
 
     // Coordination / Consolidation States
-    const [coordinationSubTab, setCoordinationSubTab] = useState('Pending'); // Pending, Consolidated
+    const [coordinationSubTab, setCoordinationSubTab] = useState('Pending'); // Pending, Consolidated, Transfers
+    const [materialTransfers, setMaterialTransfers] = useState([]);
+    const [selectedTransfer, setSelectedTransfer] = useState(null);
+    const [showTransferExecuteModal, setShowTransferExecuteModal] = useState(false);
     const [selectedRequestIds, setSelectedRequestIds] = useState([]);
     const [consolidatedRequests, setConsolidatedRequests] = useState([]);
     const [isConsolidating, setIsConsolidating] = useState(false);
@@ -109,6 +116,20 @@ const Materials = () => {
         };
         load();
     }, []);
+
+    // Auto-set filterProject for Site Engineers / Coordinators
+    useEffect(() => {
+        if (!isAdmin && projects.length > 0 && !filterProject) {
+            const userProject = projects.find(p =>
+                (p.site_engineer || '').toLowerCase() === (user?.username || '').toLowerCase() ||
+                (p.project_coordinator || '').toLowerCase() === (user?.username || '').toLowerCase() ||
+                (p.assigned_to || '').toLowerCase() === (user?.username || '').toLowerCase()
+            );
+            if (userProject) {
+                setFilterProject(userProject.name);
+            }
+        }
+    }, [projects, isAdmin, user]);
 
     useEffect(() => {
         if (selectedProject) {
@@ -212,13 +233,23 @@ const Materials = () => {
         }
         if (mainTab === 'Coordination') {
             if (coordinationSubTab === 'Pending') fetchStockRequests();
-            else fetchConsolidatedRequests();
+            else if (coordinationSubTab === 'Consolidated') fetchConsolidatedRequests();
+            else if (coordinationSubTab === 'Transfers') fetchMaterialTransfers();
         }
         if (mainTab === 'Machinery') {
             fetchFleetData();
             fetchDailyLogs();
         }
     }, [mainTab, warehouseSubTab, coordinationSubTab]);
+
+    const fetchMaterialTransfers = async () => {
+        try {
+            const res = await inventoryAPI.getPendingTransfers();
+            setMaterialTransfers(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch material transfers:', err);
+        }
+    };
 
     const fetchConsolidatedRequests = async () => {
         setIsWarehouseLoading(true);
@@ -254,7 +285,8 @@ const Materials = () => {
         : projects.find(p => (p._id || p.id) === selectedProject)?.name || '—';
 
     const filteredInventory = inventory.filter(item =>
-        item.material_name?.toLowerCase().includes(searchTerm.toLowerCase())
+        item.material_name?.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        (!filterProject || item.project_name === filterProject)
     );
 
     const totalItemsAtSite = inventory.length;
@@ -315,6 +347,7 @@ const Materials = () => {
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Project-wise inventory tracking and consumption monitoring.</p>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+                                {canEditInventory && (
                                 <button
                                     className="btn btn-outline"
                                     onClick={() => setIsMaterialTransferOpen(true)}
@@ -329,6 +362,7 @@ const Materials = () => {
                                 >
                                     <ArrowRightLeft size={18} /> TRANSFER MATERIALS
                                 </button>
+                                )}
                                 <div style={{ flex: '1 1 200px' }}>
                                     <CustomSelect
                                         options={[
@@ -379,6 +413,21 @@ const Materials = () => {
                         {/* ── Search ────────────────────────────────────────────────────── */}
                         <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
                             <div style={{ display: 'flex', gap: '16px' }}>
+                                <select
+                                    value={filterProject}
+                                    onChange={e => setFilterProject(e.target.value)}
+                                    style={{
+                                        padding: '10px 12px', borderRadius: 'var(--radius-sm)',
+                                        border: '1px solid var(--border)', fontSize: '14px',
+                                        fontWeight: 600, minWidth: '200px', backgroundColor: 'var(--bg-card)',
+                                        color: 'var(--text-main)', cursor: 'pointer'
+                                    }}
+                                >
+                                    {isAdmin && <option value="">All Projects</option>}
+                                    {projects.map(p => (
+                                        <option key={p._id || p.id} value={p.name}>{p.name}</option>
+                                    ))}
+                                </select>
                                 <div style={{ flex: 1, position: 'relative' }}>
                                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                     <input
@@ -427,12 +476,16 @@ const Materials = () => {
                                                     {item.stock}
                                                 </td>
                                                 <td>
-                                                    <input
-                                                        type="number"
-                                                        defaultValue={item.min_stock || 10}
-                                                        onBlur={(e) => handleUpdateMinStock(item.id, e.target.value)}
-                                                        style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '13px', textAlign: 'center' }}
-                                                    />
+                                                    {canEditInventory ? (
+                                                        <input
+                                                            type="number"
+                                                            defaultValue={item.min_stock || 10}
+                                                            onBlur={(e) => handleUpdateMinStock(item.id, e.target.value)}
+                                                            style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '13px', textAlign: 'center' }}
+                                                        />
+                                                    ) : (
+                                                        <span style={{ fontSize: '13px' }}>{item.min_stock || 10}</span>
+                                                    )}
                                                 </td>
                                                 <td style={{ color: 'var(--text-muted)' }}>{item.unit}</td>
                                                 <td>
@@ -461,15 +514,17 @@ const Materials = () => {
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Manage centralized stock, requests, and returns.</p>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '0 0 auto', justifyContent: 'flex-end' }}>
-                                <button className="btn btn-outline" onClick={() => setIsCreateMaterialOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
-                                    <Plus size={18} /> ADD MASTER MATERIAL
-                                </button>
-                                <button className="btn btn-outline" onClick={() => setIsDirectIssueOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px', backgroundColor: '#EFF6FF', borderColor: '#3B82F6', color: '#1D4ED8' }}>
-                                    <Truck size={18} /> SEND TO SITE
-                                </button>
-                                <button className="btn btn-outline" onClick={() => setIsStockReturnOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
-                                    <ArrowDownLeft size={18} /> RECORD RETURN
-                                </button>
+                                {canEditInventory && <>
+                                    <button className="btn btn-outline" onClick={() => setIsCreateMaterialOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
+                                        <Plus size={18} /> ADD MASTER MATERIAL
+                                    </button>
+                                    <button className="btn btn-outline" onClick={() => setIsDirectIssueOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px', backgroundColor: '#EFF6FF', borderColor: '#3B82F6', color: '#1D4ED8' }}>
+                                        <Truck size={18} /> SEND TO SITE
+                                    </button>
+                                    <button className="btn btn-outline" onClick={() => setIsStockReturnOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
+                                        <ArrowDownLeft size={18} /> RECORD RETURN
+                                    </button>
+                                </>}
                                 <button className="btn btn-primary" onClick={() => setIsStockRequestOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                     <Plus size={18} /> NEW STOCK REQUEST
                                 </button>
@@ -562,7 +617,7 @@ const Materials = () => {
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    {(req.status === 'Pending' || req.status === 'Approved') && (
+                                                    {canEditInventory && (req.status === 'Pending' || req.status === 'Approved') && (
                                                         <button className="btn btn-primary btn-sm" onClick={() => { setSelectedRequest(req); setIsStockIssueOpen(true); }}>
                                                             ISSUE STOCK
                                                         </button>
@@ -615,7 +670,7 @@ const Materials = () => {
                                 <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '4px' }}>Material Consolidation</h2>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Select multiple site requests to combine them for the Purchase Officer.</p>
                             </div>
-                            {coordinationSubTab === 'Pending' && selectedRequestIds.length > 0 && (
+                            {canEditInventory && coordinationSubTab === 'Pending' && selectedRequestIds.length > 0 && (
                                 <button
                                     className="btn btn-primary"
                                     onClick={handleConsolidate}
@@ -633,6 +688,7 @@ const Materials = () => {
                             {[
                                 { id: 'Pending', label: 'Pending Site Requests', icon: Clock },
                                 { id: 'Consolidated', label: 'Consolidated for Purchase', icon: FileText },
+                                { id: 'Transfers', label: 'Transfers', icon: ArrowRightLeft },
                             ].map(tab => (
                                 <button
                                     key={tab.id}
@@ -672,7 +728,7 @@ const Materials = () => {
                                         {stockRequests.filter(r => r.status === 'Pending').map((req, i) => (
                                             <tr key={i}>
                                                 <td>
-                                                    <input
+                                                    {canEditInventory && (<input
                                                         type="checkbox"
                                                         checked={selectedRequestIds.includes(req.id)}
                                                         onChange={(e) => {
@@ -680,7 +736,7 @@ const Materials = () => {
                                                             else setSelectedRequestIds(selectedRequestIds.filter(id => id !== req.id));
                                                         }}
                                                         style={{ width: '18px', height: '18px' }}
-                                                    />
+                                                    />)}
                                                 </td>
                                                 <td style={{ fontSize: '13px' }}>{new Date(req.created_at).toLocaleDateString()}</td>
                                                 <td style={{ fontWeight: '700' }}>{req.project_name}</td>
@@ -701,7 +757,7 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : (
+                            ) : coordinationSubTab === 'Consolidated' ? (
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -730,7 +786,69 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            )}
+                            ) : coordinationSubTab === 'Transfers' ? (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table className="data-table">
+                                        <thead><tr>
+                                            <th>Date</th>
+                                            <th>From</th>
+                                            <th>To</th>
+                                            <th>Items</th>
+                                            <th>Status</th>
+                                            <th>Requested By</th>
+                                            <th>Action</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {materialTransfers.length === 0 ? (
+                                                <tr><td colSpan={7} style={{textAlign:'center',padding:'40px',color:'var(--text-muted)'}}>No transfer requests</td></tr>
+                                            ) : materialTransfers.map(t => (
+                                                <tr key={t.id}>
+                                                    <td>{new Date(t.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</td>
+                                                    <td style={{fontWeight:700}}>{t.from_project}</td>
+                                                    <td style={{fontWeight:700}}>{t.to_project}</td>
+                                                    <td>{(t.items||[]).map(i => `${i.name} x${i.quantity}`).join(', ')}</td>
+                                                    <td>
+                                                        <span style={{padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700,
+                                                            backgroundColor: t.status==='Pending'?'#FEF3C7':t.status==='Admin Approved'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
+                                                            color: t.status==='Pending'?'#92400E':t.status==='Admin Approved'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
+                                                        }}>{t.status}</span>
+                                                    </td>
+                                                    <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
+                                                    <td>
+                                                        {t.status === 'Pending' && isAdmin && (
+                                                            <div style={{display:'flex',gap:4}}>
+                                                                <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
+                                                                    onClick={async () => { if(window.confirm('Approve this transfer?')){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>
+                                                                    Approve
+                                                                </button>
+                                                                <button className="btn btn-outline btn-sm" style={{padding:'4px 10px',fontSize:11,color:'#EF4444',borderColor:'#EF4444'}}
+                                                                    onClick={async () => { const r=window.prompt('Reason?'); if(r!==null){ await inventoryAPI.rejectTransfer(t.id,{reason:r}); fetchMaterialTransfers(); } }}>
+                                                                    Reject
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {t.status === 'Admin Approved' && (user?.role||'').toLowerCase() === 'accountant' && (
+                                                            <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
+                                                                onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
+                                                                Execute
+                                                            </button>
+                                                        )}
+                                                        {t.status === 'Admin Approved' && isAdmin && (
+                                                            <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
+                                                                onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
+                                                                Execute
+                                                            </button>
+                                                        )}
+                                                        {t.status === 'Pending' && !isAdmin && (
+                                                            <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Admin</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 ) : (
@@ -740,6 +858,7 @@ const Materials = () => {
                                 <h2 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Plant & Machinery</h2>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Equipment tracking, diesel consumption & site logistics</p>
                             </div>
+                            {canEditInventory && (
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '0 0 auto', justifyContent: 'flex-end' }}>
                                 <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto', padding: '10px 20px', borderRadius: '8px', fontWeight: '700', height: '42px' }} onClick={() => setIsFuelModalOpen(true)}>
                                     <Fuel size={18} /> FUEL INVENTORY
@@ -748,6 +867,7 @@ const Materials = () => {
                                     <Plus size={18} /> ADD {assetSubTab.toUpperCase()}
                                 </button>
                             </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid var(--border)', marginBottom: '32px', flexWrap: 'wrap' }}>
@@ -909,6 +1029,14 @@ const Materials = () => {
             <StockReturnModal isOpen={isStockReturnOpen} onClose={() => setIsStockReturnOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsStockReturnOpen(false); }} />
             <DirectIssueModal isOpen={isDirectIssueOpen} onClose={() => setIsDirectIssueOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsDirectIssueOpen(false); }} />
             <MaterialTransferModal isOpen={isMaterialTransferOpen} onClose={() => setIsMaterialTransferOpen(false)} onSuccess={() => { fetchInventory(currentProjectName); setIsMaterialTransferOpen(false); }} />
+            {showTransferExecuteModal && (
+                <AccountantTransferModal
+                    isOpen={showTransferExecuteModal}
+                    onClose={() => { setShowTransferExecuteModal(false); setSelectedTransfer(null); }}
+                    transfer={selectedTransfer}
+                    onSuccess={() => { setShowTransferExecuteModal(false); setSelectedTransfer(null); fetchMaterialTransfers(); }}
+                />
+            )}
         </div>
     );
 };

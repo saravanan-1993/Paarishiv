@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { employeeAPI, hrmsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import CustomSelect from './CustomSelect';
 import { User, Calendar, Briefcase, Tag } from 'lucide-react';
 
@@ -18,7 +19,7 @@ const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
         reason: ''
     });
 
-    const isAdmin = user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'HR Manager';
+    const isAdmin = hasPermission(user, 'HRMS', 'edit');
 
     useEffect(() => {
         if (isOpen && isAdmin) {

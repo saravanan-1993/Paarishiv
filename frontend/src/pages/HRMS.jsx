@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission, hasSubTabAccess, DEFAULT_ROLES, getRoles, saveRoles, fetchAndSyncRoles } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, getRoles, saveRoles, fetchAndSyncRoles } from '../utils/rbac';
 import AddEmployeeModal from '../components/AddEmployeeModal';
 import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
@@ -51,7 +51,9 @@ const HRMS = () => {
     const [employees, setEmployees] = useState([]);
     const [attendance, setAttendance] = useState([]);
     const [leaves, setLeaves] = useState([]);
-    const isAdmin = user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'HR Manager';
+    const canEditHRMS = hasPermission(user, 'HRMS', 'edit');
+    const canDeleteHRMS = hasPermission(user, 'HRMS', 'delete');
+    const isAdmin = canEditHRMS;
 
     useEffect(() => {
         if (!hasPermission(user, 'HRMS', 'view')) {
@@ -842,15 +844,15 @@ const HRMS = () => {
                                         >
                                             <History size={16} />
                                         </button>
-                                        <button
+                                        {canEditHRMS && (<button
                                             className="icon-btn"
                                             title="Edit Employee"
                                             onClick={() => handleEditEmployee(emp)}
                                             style={{ background: '#fff7ed', color: '#f59e0b', borderRadius: '8px', border: '1px solid #fed7aa', padding: '8px', transition: 'all 0.2s' }}
                                         >
                                             <Edit3 size={16} />
-                                        </button>
-                                        <button
+                                        </button>)}
+                                        {canEditHRMS && (<button
                                             className="icon-btn"
                                             title={emp.status === 'Active' ? 'Deactivate Employee' : 'Activate Employee'}
                                             onClick={() => handleToggleEmployeeStatus(emp)}
@@ -864,7 +866,7 @@ const HRMS = () => {
                                             }}
                                         >
                                             <Power size={16} />
-                                        </button>
+                                        </button>)}
                                     </div>
                                 </td>
                             </tr>
@@ -952,10 +954,10 @@ const HRMS = () => {
                             />
                         </div>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-outline" onClick={handleBulkPresent}><CheckCircle size={18} /> Bulk Present</button>
-                            <button className="btn btn-success" onClick={handleSaveAttendance} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '700', fontSize: '14px', letterSpacing: '0.025em' }}>
+                            {canEditHRMS && <button className="btn btn-outline" onClick={handleBulkPresent}><CheckCircle size={18} /> Bulk Present</button>}
+                            {canEditHRMS && <button className="btn btn-success" onClick={handleSaveAttendance} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '700', fontSize: '14px', letterSpacing: '0.025em' }}>
                                 <Save size={18} /> SAVE CHANGES
-                            </button>
+                            </button>}
                         </div>
                     </div>
 
@@ -1182,7 +1184,7 @@ const HRMS = () => {
                     />
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="btn btn-primary" onClick={generatePayrollRecord}>GENERATE PAYROLL</button>
+                    {canEditHRMS && <button className="btn btn-primary" onClick={generatePayrollRecord}>GENERATE PAYROLL</button>}
                 </div>
             </div>
 
@@ -1584,9 +1586,11 @@ const HRMS = () => {
                             <div className="animate-fade-in">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                                     <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Manage System Users</h3>
-                                    <button className="btn btn-primary" onClick={() => { setEditingUser(null); setNewUser({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' }); setIsAddUserModalOpen(true); }}>
-                                        <UserPlus size={18} /> Add New User
-                                    </button>
+                                    {canEditHRMS && (
+                                        <button className="btn btn-primary" onClick={() => { setEditingUser(null); setNewUser({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' }); setIsAddUserModalOpen(true); }}>
+                                            <UserPlus size={18} /> Add New User
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>
@@ -1648,9 +1652,9 @@ const HRMS = () => {
                                                         <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{u.lastLogin}</td>
                                                         <td style={{ textAlign: 'right', paddingRight: '20px' }}>
                                                             <div style={{ display: 'inline-flex', alignItems: 'center', backgroundColor: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0', gap: '4px' }}>
-                                                                <button onClick={() => handleEditUser(u)} title="Edit User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit2 size={16} /></button>
-                                                                <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
-                                                                <button onClick={() => handleDeleteUser(u.id)} title="Delete User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>
+                                                                {canEditHRMS && <button onClick={() => handleEditUser(u)} title="Edit User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Edit2 size={16} /></button>}
+                                                                {canEditHRMS && canDeleteHRMS && <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>}
+                                                                {canDeleteHRMS && <button onClick={() => handleDeleteUser(u.id)} title="Delete User" style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Trash2 size={16} /></button>}
                                                                 <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
                                                                 <div style={{ position: 'relative' }}>
                                                                     <button title="More Options" onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === u.id ? null : u.id); }} style={{ padding: '8px', borderRadius: '8px', border: 'none', background: openMenuId === u.id ? '#F1F5F9' : 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MoreVertical size={16} /></button>
@@ -1683,9 +1687,11 @@ const HRMS = () => {
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Role Definitions</h3>
                                         <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Define access permissions for each role below</p>
                                     </div>
-                                    <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }}>
-                                        <Plus size={18} /> CREATE ROLE
-                                    </button>
+                                    {canEditHRMS && (
+                                        <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }}>
+                                            <Plus size={18} /> CREATE ROLE
+                                        </button>
+                                    )}
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', alignItems: 'start' }}>
                                     {umRoles.map((role, idx) => (
@@ -1695,12 +1701,14 @@ const HRMS = () => {
                                                     <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{role.name}</h4>
                                                     <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{role.description}</p>
                                                 </div>
+                                                {canEditHRMS && (
                                                 <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
                                                     <button onClick={() => { setEditingRole(role); setIsRoleModalOpen(true); }} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#0284c7' }}><Edit3 size={14} /> Edit</button>
-                                                    {role.name !== 'Administrator' && role.name !== 'Super Admin' && (
+                                                    {canDeleteHRMS && role.name !== 'Administrator' && role.name !== 'Super Admin' && (
                                                         <button onClick={() => handleDeleteRole(role.name)} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#dc2626' }}><Trash2 size={14} /> Delete</button>
                                                     )}
                                                 </div>
+                                                )}
                                             </div>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
                                                 {(role.tags || []).map(tag => (
@@ -1798,7 +1806,7 @@ const HRMS = () => {
                     setEditingEmployee(null);
                 }}
                 onEmployeeAdded={fetchInitialData}
-                roles={DEFAULT_ROLES}
+                roles={getRoles()}
                 employee={editingEmployee}
             />
             <ApplyLeaveModal

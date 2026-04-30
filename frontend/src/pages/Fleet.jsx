@@ -18,6 +18,8 @@ import Pagination from '../components/Pagination';
 
 const Fleet = () => {
     const { user } = useAuth();
+    const canEditFleet = hasPermission(user, 'Fleet Management', 'edit');
+    const canDeleteFleet = hasPermission(user, 'Fleet Management', 'delete');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Dashboard');
@@ -187,13 +189,13 @@ const Fleet = () => {
                                         <div style={{ fontSize: '13px', fontWeight: '700' }}>{t.tripType === 'Private Trip' ? t.customerName : t.projectName}</div>
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>T-{t.tripId} | ₹{t.totalRevenue.toLocaleString()}</div>
                                     </div>
-                                    <button
+                                    {canEditFleet && <button
                                         className="btn btn-primary btn-sm"
                                         style={{ padding: '4px 8px', fontSize: '11px' }}
                                         onClick={() => handleMarkPaid(t.id)}
                                     >
                                         Mark Paid
-                                    </button>
+                                    </button>}
                                 </div>
                             ))
                         ) : (
@@ -359,14 +361,14 @@ const Fleet = () => {
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        {trip.paymentStatus === 'Pending' && (
+                                        {canEditFleet && trip.paymentStatus === 'Pending' && (
                                             <button className="icon-btn" style={{ color: '#10B981' }} onClick={() => handleMarkPaid(trip.id || trip._id)} title="Mark as Paid">
                                                 <CheckCircle size={16} />
                                             </button>
                                         )}
-                                        <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>
-                                        <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>
-                                        <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>
+                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>}
+                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>}
+                                        {canDeleteFleet && <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>}
                                     </div>
                                 </td>
                             </tr>
@@ -417,8 +419,8 @@ const Fleet = () => {
                         <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
                             <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }} onClick={() => { setSelectedTrip(v); setActiveTab('Trips'); }}>History</button>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                <button className="icon-btn" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>
-                                <button className="icon-btn" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>
+                                {canEditFleet && <button className="icon-btn" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>}
+                                {canDeleteFleet && <button className="icon-btn" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>}
                             </div>
                         </div>
                     </div>
@@ -492,15 +494,15 @@ const Fleet = () => {
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button className="icon-btn" onClick={() => { setSelectedDriver(driver); setIsDriverModalOpen(true); }} title="Edit Driver"><Edit2 size={16} /></button>
-                                        <button className="icon-btn" style={{ color: '#EF4444' }} onClick={async () => {
+                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedDriver(driver); setIsDriverModalOpen(true); }} title="Edit Driver"><Edit2 size={16} /></button>}
+                                        {canDeleteFleet && <button className="icon-btn" style={{ color: '#EF4444' }} onClick={async () => {
                                             if (window.confirm('Are you sure you want to delete this driver?')) {
                                                 try {
                                                     await employeeAPI.delete(driver.id || driver._id);
                                                     fetchData();
                                                 } catch (err) { alert('Failed to delete driver'); }
                                             }
-                                        }} title="Delete Driver"><Trash2 size={16} /></button>
+                                        }} title="Delete Driver"><Trash2 size={16} /></button>}
                                     </div>
                                 </td>
                             </tr>

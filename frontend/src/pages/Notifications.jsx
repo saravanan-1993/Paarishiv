@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notificationAPI } from '../utils/api';
 import { useNotifications } from '../context/NotificationContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import {
     Bell, CheckCircle2, AlertCircle, Package, Wallet, Users, Truck, Briefcase,
     ArrowRight, Filter, CheckCheck, Trash2, RefreshCw, ChevronLeft, ChevronRight,
@@ -40,6 +42,7 @@ const ENTITY_ROUTES = {
 
 const Notifications = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const { refreshCount } = useNotifications();
     const [notifications, setNotifications] = useState([]);
     const [total, setTotal] = useState(0);
@@ -116,14 +119,14 @@ const Notifications = () => {
     const filters = [
         { key: 'all', label: 'All' },
         { key: 'unread', label: 'Unread' },
-        { key: 'approval', label: 'Approvals' },
-        { key: 'workflow', label: 'Workflow' },
-        { key: 'material', label: 'Material' },
-        { key: 'finance', label: 'Finance' },
-        { key: 'hr', label: 'HR' },
-        { key: 'project', label: 'Project' },
-        { key: 'task', label: 'Task' },
-    ];
+        hasPermission(user, 'Approvals', 'view') && { key: 'approval', label: 'Approvals' },
+        hasPermission(user, 'Procurement', 'view') && { key: 'workflow', label: 'Workflow' },
+        hasPermission(user, 'Inventory Management', 'view') && { key: 'material', label: 'Material' },
+        hasPermission(user, 'Accounts', 'view') && { key: 'finance', label: 'Finance' },
+        hasPermission(user, 'HRMS', 'view') && { key: 'hr', label: 'HR' },
+        hasPermission(user, 'Projects', 'view') && { key: 'project', label: 'Project' },
+        hasPermission(user, 'Tasks', 'view') && { key: 'task', label: 'Task' },
+    ].filter(Boolean);
 
     return (
         <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>

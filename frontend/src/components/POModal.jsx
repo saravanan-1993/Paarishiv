@@ -60,11 +60,10 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
             inventoryAPI.getRequests().then(res => {
                 const approved = (res.data || []).filter(r => r.status === 'Approved');
                 setApprovedRequests(approved);
+                // Auto-fill form when opened from a specific request (CREATE PO button)
                 if (requestIdProp) {
                     const match = approved.find(r => r.id === requestIdProp);
-                    if (match) {
-                        handleRequestSelect(requestIdProp);
-                    }
+                    if (match) handleRequestSelect(requestIdProp);
                 }
             }).catch(() => { });
 
@@ -72,6 +71,7 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
             inventoryAPI.getConsolidated().then(res => {
                 const pending = (res.data || []).filter(r => r.status === 'Consolidated');
                 setConsolidatedRequests(pending);
+                // Auto-fill for consolidated requests
                 if (requestIdProp && !approvedRequests.find(r => r.id === requestIdProp)) {
                     const match = pending.find(r => r.id === requestIdProp);
                     if (match) handleConsolidatedSelect(requestIdProp);

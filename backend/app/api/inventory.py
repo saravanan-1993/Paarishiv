@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from typing import List, Optional
 from database import get_database
 from bson import ObjectId
@@ -345,14 +345,25 @@ async def issue_stock(request_id: str, issue: StockIssue, db = Depends(get_datab
         )
         
         # Calculate cost for project spending update
-        # Try to find last purchase rate
+        # Try multiple rate sources: purchase bill → PO → warehouse inventory → material master
         rate = 0
         last_bill = await db.purchase_bills.find_one({"items.name": item["name"]}, sort=[("bill_date", -1)])
         if last_bill:
-             for bi in last_bill.get("items", []):
-                if bi["name"] == item["name"]:
-                    rate = float(bi.get("rate") or 0)
+            for bi in last_bill.get("items", []):
+                if bi["name"] == item["name"] and float(bi.get("rate") or 0) > 0:
+                    rate = float(bi["rate"])
                     break
+        if rate == 0:
+            last_po = await db.purchase_orders.find_one({"items.name": item["name"]}, sort=[("created_at", -1)])
+            if last_po:
+                for pi in last_po.get("items", []):
+                    if pi["name"] == item["name"] and float(pi.get("rate") or 0) > 0:
+                        rate = float(pi["rate"])
+                        break
+        if rate == 0:
+            wh_item = await db.warehouse_inventory.find_one({"material_name": item["name"]})
+            if wh_item and float(wh_item.get("last_rate") or wh_item.get("rate") or 0) > 0:
+                rate = float(wh_item.get("last_rate") or wh_item.get("rate"))
         total_issue_value += float(item["quantity"]) * rate
 
         # Record in Stock Ledger (two entries: OUT from warehouse, IN to site)
@@ -540,25 +551,46 @@ class MaterialTransfer(BaseModel):
 
 @router.post("/transfers/request", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def request_material_transfer(transfer: MaterialTransferRequest, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    # 1. Validate source project user? Or just anyone?
     request_dict = transfer.dict()
     request_dict["status"] = "Pending"
     request_dict["created_at"] = datetime.now()
     request_dict["engineer_id"] = current_user.get("username")
-    
+    request_dict["requested_by"] = current_user.get("full_name") or current_user.get("username", "")
+
     result = await db.material_transfer_requests.insert_one(request_dict)
+
+    # Notify Admin about new transfer request
+    try:
+        requester = request_dict["requested_by"]
+        items_summary = ", ".join(f"{i.get('name')} x{i.get('quantity')}" for i in transfer.items[:3])
+        await notify(db, requester, ["Administrator", "General Manager"], EVENT_MATERIAL,
+            "Material Transfer Request",
+            f"Transfer requested: {transfer.from_project} → {transfer.to_project} ({items_summary}). Awaiting admin approval.",
+            entity_type="material_transfer", entity_id=str(result.inserted_id),
+            project_name=transfer.from_project, priority="high")
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id), "success": True}
 
+
+def _transfer_helper(r):
+    """Convert transfer request doc to JSON-safe dict."""
+    d = {k: v for k, v in r.items() if k != "_id"}
+    d["id"] = str(r["_id"])
+    for field in ["created_at", "approval_date", "executed_at", "updated_at"]:
+        if field in d and hasattr(d[field], "isoformat"):
+            d[field] = d[field].isoformat()
+    return d
+
+
 @router.get("/transfers/pending")
-async def get_pending_transfers(db = Depends(get_database)):
-    requests = await db.material_transfer_requests.find({"status": "Pending"}).sort("created_at", -1).to_list(100)
-    return [
-        {
-            "id": str(r["_id"]),
-            **{k: v for k, v in r.items() if k != "_id"}
-        }
-        for r in requests
-    ]
+async def get_pending_transfers(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Get all transfer requests (not just Pending — includes Admin Approved for accountant)."""
+    requests = await db.material_transfer_requests.find(
+        {"status": {"$in": ["Pending", "Admin Approved", "Approved", "Completed", "Rejected"]}}
+    ).sort("created_at", -1).to_list(200)
+    return [_transfer_helper(r) for r in requests]
 
 async def get_lifo_rate(db, material_name, project_name):
     # LIFO: Get the rate of the LAST purchase or issue for this project
@@ -586,134 +618,182 @@ async def get_lifo_rate(db, material_name, project_name):
 
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Admin approves transfer request — does NOT move stock yet. Accountant executes later."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can approve transfer requests")
+
     oid = validate_object_id(transfer_id, "transfer")
     request = await db.material_transfer_requests.find_one({"_id": oid})
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
-    
-    if request["status"] != "Pending":
+    if request.get("status") != "Pending":
         raise HTTPException(status_code=400, detail="Request already processed")
+
+    approver = current_user.get("full_name") or current_user.get("username", "")
+    await db.material_transfer_requests.update_one(
+        {"_id": oid},
+        {"$set": {
+            "status": "Admin Approved",
+            "admin_approved_by": approver,
+            "admin_approved_at": datetime.now(),
+        }}
+    )
+
+    # Notify Accountant + Requester
+    try:
+        engineer = request.get("requested_by") or request.get("engineer_id", "")
+        recipients = ["Accountant"]
+        if engineer: recipients.append(engineer)
+        await notify(db, approver, recipients, EVENT_MATERIAL,
+            "Transfer Approved — Ready for Execution",
+            f"Material transfer {request['from_project']} → {request['to_project']} approved by {approver}. Accountant can now execute with cost entry.",
+            entity_type="material_transfer", entity_id=transfer_id,
+            project_name=request.get("from_project"), priority="high")
+    except Exception:
+        pass
+
+    return {"success": True, "message": "Transfer approved. Accountant can now execute."}
+
+
+@router.put("/transfers/{transfer_id}/execute")
+async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Accountant executes the transfer with manual rate entry (M-Book based cost)."""
+    oid = validate_object_id(transfer_id, "transfer")
+    request = await db.material_transfer_requests.find_one({"_id": oid})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if request.get("status") != "Admin Approved":
+        raise HTTPException(status_code=400, detail="Transfer must be admin-approved before execution")
 
     from_proj = request["from_project"]
     to_proj = request["to_project"]
-    items = request["items"]
+    # Accountant provides items with rates
+    accountant_items = body.get("items", request.get("items", []))
     total_transfer_value = 0
     calculated_items = []
 
-    for item in items:
-        qty = float(item["quantity"])
+    for item in accountant_items:
+        qty = float(item.get("quantity", 0))
+        rate = float(item.get("rate", 0))
 
-        # C10 Fix: Atomic check-and-decrement for transfer stock
+        # Atomic check-and-decrement from source
         deduct_result = await db.inventory.update_one(
             {"project_name": from_proj, "material_name": item["name"], "stock": {"$gte": qty}},
             {"$inc": {"stock": -qty}}
         )
         if deduct_result.matched_count == 0:
-            source_inv = await db.inventory.find_one({
-                "project_name": from_proj,
-                "material_name": item["name"]
-            })
-            available_stock = float(source_inv.get("stock", 0)) if source_inv else 0
-            raise HTTPException(
-                status_code=400,
-                detail=f"Insufficient stock for '{item['name']}' at {from_proj}. Available: {available_stock}, Requested: {qty}"
-            )
+            source_inv = await db.inventory.find_one({"project_name": from_proj, "material_name": item["name"]})
+            available = float(source_inv.get("stock", 0)) if source_inv else 0
+            raise HTTPException(status_code=400,
+                detail=f"Insufficient stock for '{item['name']}' at {from_proj}. Available: {available}, Requested: {qty}")
 
-        # Get LIFO Rate
-        rate = await get_lifo_rate(db, item["name"], from_proj)
         item_val = qty * rate
         total_transfer_value += item_val
-        calculated_items.append({**item, "rate": rate, "value": item_val})
+        calculated_items.append({**item, "rate": rate, "value": item_val, "quantity": qty})
 
-        # 2. Add to Destination Project
+        # Add to destination
         await db.inventory.update_one(
             {"project_name": to_proj, "material_name": item["name"]},
             {"$inc": {"stock": qty}, "$set": {"unit": item.get("unit", "Nos")}},
             upsert=True
         )
 
-        # 3. Log to Stock Ledger - separate OUT and IN entries for clarity
+        # Stock ledger entries
         ref_code = f"XFER-{transfer_id[-6:].upper()}"
         now = datetime.now()
         await db.stock_ledger.insert_one({
-            "date": now,
-            "material_name": item["name"],
-            "project_name": from_proj,
-            "type": "Transfer Out",
-            "ref": ref_code,
-            "in_qty": 0,
-            "out_qty": qty,
-            "created_at": now
+            "date": now, "material_name": item["name"], "project_name": from_proj,
+            "type": "Transfer Out", "ref": ref_code, "in_qty": 0, "out_qty": qty, "created_at": now
         })
         await db.stock_ledger.insert_one({
-            "date": now,
-            "material_name": item["name"],
-            "project_name": to_proj,
-            "type": "Transfer In",
-            "ref": ref_code,
-            "in_qty": qty,
-            "out_qty": 0,
-            "created_at": now
+            "date": now, "material_name": item["name"], "project_name": to_proj,
+            "type": "Transfer In", "ref": ref_code, "in_qty": qty, "out_qty": 0, "created_at": now
         })
 
-    # 4. Accounting Entries
-    # CRITICAL-4: Keep source and destination spent changes symmetric
+    # Accounting: symmetric project.spent adjustment
     source_project = await db.projects.find_one({"name": from_proj})
     source_spent = float(source_project.get("spent", 0)) if source_project else 0
-    transfer_deduction = min(total_transfer_value, source_spent)  # Cap to avoid negative
+    transfer_deduction = min(total_transfer_value, source_spent)
 
     if transfer_deduction > 0:
         await db.projects.update_one({"name": from_proj}, {"$inc": {"spent": -transfer_deduction}})
-    # Destination gets same amount as source lost (symmetric)
     await db.projects.update_one({"name": to_proj}, {"$inc": {"spent": transfer_deduction}})
 
-    # Create Accounting Expense records for audit trail
-    # Negative expense for Source (Credit)
+    # Expense audit trail
     await db.expenses.insert_one({
-        "category": "Material Transfer Out",
-        "project": from_proj,
-        "amount": -total_transfer_value,
+        "category": "Material Transfer Out", "project": from_proj, "amount": -total_transfer_value,
         "date": datetime.now().strftime("%Y-%m-%d"),
         "description": f"Transfer to {to_proj} (Ref: {transfer_id[-6:].upper()})",
-        "items": calculated_items,
-        "created_at": datetime.now()
+        "items": calculated_items, "created_at": datetime.now()
     })
-    # Positive expense for Destination (Debit)
     await db.expenses.insert_one({
-        "category": "Material Transfer In",
-        "project": to_proj,
-        "amount": total_transfer_value,
+        "category": "Material Transfer In", "project": to_proj, "amount": total_transfer_value,
         "date": datetime.now().strftime("%Y-%m-%d"),
         "description": f"Transfer from {from_proj} (Ref: {transfer_id[-6:].upper()})",
-        "items": calculated_items,
-        "created_at": datetime.now()
+        "items": calculated_items, "created_at": datetime.now()
     })
 
-    # 5. Update Request Status
+    executor = current_user.get("full_name") or current_user.get("username", "")
     await db.material_transfer_requests.update_one(
-        {"_id": ObjectId(transfer_id)},
+        {"_id": oid},
         {"$set": {
-            "status": "Approved",
-            "approval_date": datetime.now(),
-            "approved_by": current_user.get("username"),
+            "status": "Completed",
+            "executed_by": executor,
+            "executed_at": datetime.now(),
             "total_value": total_transfer_value,
             "items": calculated_items
         }}
     )
 
+    # Notify Admin + Requester
+    try:
+        engineer = request.get("requested_by") or request.get("engineer_id", "")
+        recipients = ["Administrator"]
+        if engineer: recipients.append(engineer)
+        await notify(db, executor, recipients, EVENT_WORKFLOW,
+            "Material Transfer Completed",
+            f"Transfer {from_proj} → {to_proj} executed by {executor}. Total value: Rs.{total_transfer_value:,.0f}",
+            entity_type="material_transfer", entity_id=transfer_id,
+            project_name=from_proj, priority="normal")
+    except Exception:
+        pass
+
     return {"success": True, "value": total_transfer_value}
 
+
 @router.put("/transfers/{transfer_id}/reject")
-async def reject_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+async def reject_transfer(transfer_id: str, body: dict = Body(default={}), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(transfer_id, "transfer")
+    request = await db.material_transfer_requests.find_one({"_id": oid})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    rejector = current_user.get("full_name") or current_user.get("username", "")
+    reason = body.get("reason", "")
     await db.material_transfer_requests.update_one(
         {"_id": oid},
         {"$set": {
             "status": "Rejected",
             "updated_at": datetime.now(),
-            "processed_by": current_user.get("username")
+            "processed_by": rejector,
+            "rejection_reason": reason,
         }}
     )
+
+    # Notify requester
+    try:
+        engineer = request.get("requested_by") or request.get("engineer_id", "")
+        if engineer:
+            await notify(db, rejector, [engineer], EVENT_MATERIAL,
+                "Transfer Rejected",
+                f"Transfer {request.get('from_project')} → {request.get('to_project')} rejected by {rejector}." + (f" Reason: {reason}" if reason else ""),
+                entity_type="material_transfer", entity_id=transfer_id,
+                project_name=request.get("from_project"), priority="high")
+    except Exception:
+        pass
+
     return {"success": True}
 
 

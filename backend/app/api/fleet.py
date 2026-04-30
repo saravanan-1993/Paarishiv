@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List, Optional
 from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog, EquipmentBase
 from database import get_database
@@ -226,40 +226,54 @@ async def get_fuel_stock(project_name: Optional[str] = None, db = Depends(get_da
     return [{"id": str(s["_id"]), **{k: v for k, v in s.items() if k != "_id"}} for s in stocks]
 
 @router.post("/fuel/stock", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def add_fuel_stock(stock: FuelStock, db=Depends(get_database), current_user: dict=Depends(get_current_user)):
-    stock_data = stock.dict()
-    result = await db.fuel_stock.insert_one(stock_data)
+async def add_fuel_stock(stock_data: dict = Body(...), db=Depends(get_database), current_user: dict=Depends(get_current_user)):
+    qty = float(stock_data.get("qty", 0) or 0)
+    rate = float(stock_data.get("rate", 0) or 0)
+    total = float(stock_data.get("totalAmount", 0) or 0) or (qty * rate)
+    stock_doc = {
+        "date": datetime.now(),
+        "qty": qty,
+        "rate": rate,
+        "totalAmount": total,
+        "supplier": stock_data.get("supplier", ""),
+        "billNo": stock_data.get("billNo", ""),
+        "site": stock_data.get("site", ""),
+        "remarks": stock_data.get("remarks", ""),
+        "addedBy": stock_data.get("addedBy") or current_user.get("username", "System"),
+    }
+    result = await db.fuel_stock.insert_one(stock_doc)
 
     # Auto-create expense entry in accounts for fuel purchase
-    if stock.totalAmount and stock.totalAmount > 0:
+    if total > 0:
         expense_doc = {
             "category": "Fuel/Diesel",
-            "amount": stock.totalAmount,
-            "project": stock.site or "General",
-            "payee": stock.supplier or "Fuel Purchase",
+            "amount": total,
+            "project": stock_doc["site"] or "General",
+            "payee": stock_doc["supplier"] or "Fuel Purchase",
             "paymentMode": "Cash",
-            "reference": stock.billNo or "",
-            "description": f"Diesel Purchase - {stock.qty}L @ ₹{stock.rate}/L" + (f" ({stock.supplier})" if stock.supplier else ""),
+            "reference": stock_doc["billNo"],
+            "description": f"Diesel Purchase - {qty}L @ Rs.{rate}/L" + (f" ({stock_doc['supplier']})" if stock_doc["supplier"] else ""),
             "date": datetime.now().isoformat(),
-            "invoice_no": stock.billNo or "",
+            "invoice_no": stock_doc["billNo"],
             "voucher_no": "",
             "status": "Recorded",
             "source": "fuel_stock",
-            "base_amount": stock.totalAmount,
+            "base_amount": total,
             "gst_amount": 0,
-            "created_by": current_user.get("username", "System")
+            "created_by": stock_doc["addedBy"]
         }
         await db.expenses.insert_one(expense_doc)
 
         # Update project spent
-        if stock.site and stock.site != "General":
+        if stock_doc["site"] and stock_doc["site"] != "General":
             await db.projects.update_one(
-                {"name": stock.site},
-                {"$inc": {"spent": stock.totalAmount}}
+                {"name": stock_doc["site"]},
+                {"$inc": {"spent": total}}
             )
 
-    stock_data["date"] = stock_data["date"].isoformat() if hasattr(stock_data.get("date"), "isoformat") else str(stock_data.get("date", ""))
-    return {"id": str(result.inserted_id), **stock_data}
+    stock_doc["date"] = stock_doc["date"].isoformat()
+    stock_doc.pop("_id", None)  # Remove ObjectId added by insert_one
+    return {"id": str(result.inserted_id), **stock_doc}
 
 @router.get("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_database)):
@@ -271,37 +285,58 @@ async def get_fuel_logs(project_name: Optional[str] = None, db = Depends(get_dat
     return [{"id": str(l["_id"]), **{k: v for k, v in l.items() if k != "_id"}} for l in logs]
 
 @router.post("/fuel/logs", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def add_fuel_log(log: FuelLog, db=Depends(get_database), current_user: dict=Depends(get_current_user)):
-    log_data = log.dict()
-    result = await db.fuel_logs.insert_one(log_data)
+async def add_fuel_log(log_data: dict = Body(...), db=Depends(get_database), current_user: dict=Depends(get_current_user)):
+    try:
+        log_doc = {
+            "date": log_data.get("date", datetime.now().strftime("%Y-%m-%d")),
+            "assetId": log_data.get("assetId", ""),
+            "assetName": log_data.get("assetName", ""),
+            "site": log_data.get("site", ""),
+            "qty": float(log_data.get("qty", 0) or 0),
+            "hoursRun": float(log_data.get("hoursRun", 0) or 0),
+            "engineer": log_data.get("engineer", ""),
+            "type": log_data.get("type", "Consumption"),
+            "remarks": log_data.get("remarks", ""),
+            "created_at": datetime.now().isoformat(),
+        }
+        result = await db.fuel_logs.insert_one(log_doc)
 
-    # Calculate fuel cost from latest stock rate for this site
-    if log.qty and log.qty > 0:
-        query = {"site": log.site} if log.site else {}
-        recent_stock = await db.fuel_stock.find(query).sort("date", -1).to_list(1)
-        rate = recent_stock[0].get("rate", 0) if recent_stock else 0
-        fuel_cost = round(log.qty * rate, 2)
+        # Calculate fuel cost from latest stock rate for this site
+        qty = log_doc["qty"]
+        if qty > 0:
+            try:
+                query = {"site": log_doc["site"]} if log_doc["site"] else {}
+                recent_stock = await db.fuel_stock.find(query).sort("date", -1).to_list(1)
+                rate = float(recent_stock[0].get("rate", 0)) if recent_stock else 0
+                fuel_cost = round(qty * rate, 2)
 
-        if fuel_cost > 0:
-            expense_doc = {
-                "category": "Fuel/Diesel",
-                "amount": fuel_cost,
-                "project": log.site or "General",
-                "payee": "Fuel Consumption",
-                "paymentMode": "Internal",
-                "reference": "",
-                "description": f"Diesel Consumption - {log.assetName} ({log.qty}L x ₹{rate}/L) | {log.engineer}",
-                "date": log.date or datetime.now().isoformat(),
-                "voucher_no": "",
-                "status": "Recorded",
-                "source": "fuel_log",
-                "base_amount": fuel_cost,
-                "gst_amount": 0,
-                "created_by": current_user.get("username", "System")
-            }
-            await db.expenses.insert_one(expense_doc)
+                if fuel_cost > 0:
+                    expense_doc = {
+                        "category": "Fuel/Diesel",
+                        "amount": fuel_cost,
+                        "project": log_doc["site"] or "General",
+                        "payee": "Fuel Consumption",
+                        "paymentMode": "Internal",
+                        "reference": "",
+                        "description": f"Diesel Consumption - {log_doc['assetName']} ({qty}L x Rs.{rate}/L) | {log_doc['engineer']}",
+                        "date": log_doc["date"],
+                        "voucher_no": "",
+                        "status": "Recorded",
+                        "source": "fuel_log",
+                        "base_amount": fuel_cost,
+                        "gst_amount": 0,
+                        "created_by": current_user.get("username", "System")
+                    }
+                    await db.expenses.insert_one(expense_doc)
+            except Exception:
+                pass
 
-    return {"id": str(result.inserted_id), **log_data}
+        log_doc.pop("_id", None)  # Remove ObjectId added by insert_one
+        return {"id": str(result.inserted_id), **log_doc}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/fuel/summary", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_database)):

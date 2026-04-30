@@ -1,5 +1,7 @@
 import React from 'react';
 import { X, Package, Calendar, Truck, User, MapPin, ClipboardCheck, FileText, Download } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const GRNDetailModal = ({ isOpen, onClose, grn }) => {
     if (!isOpen || !grn) return null;
@@ -8,7 +10,85 @@ const GRNDetailModal = ({ isOpen, onClose, grn }) => {
         day: '2-digit',
         month: 'short',
         year: 'numeric'
-    }) : '—';
+    }) : '\u2014';
+
+    const grnNum = `GRN-${grn.id.slice(-6).toUpperCase()}`;
+
+    const handleDownloadSlip = () => {
+        try {
+            const doc = new jsPDF();
+
+            // Header
+            doc.setFontSize(20);
+            doc.setTextColor(59, 130, 246);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Goods Received Note', 14, 22);
+
+            doc.setFontSize(12);
+            doc.setTextColor(15, 23, 42);
+            doc.text(grnNum, 14, 32);
+
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Date: ${formattedDate}`, 14, 40);
+            doc.text(`Status: ${grn.status || 'Received'}`, 14, 46);
+
+            // Details table using autoTable for proper layout
+            autoTable(doc, {
+                startY: 52,
+                body: [
+                    ['Reference PO', `PO-${(grn.po_id || '').slice(-6).toUpperCase()}`, 'Vehicle', grn.vehicle_number || 'N/A'],
+                    ['Vendor', grn.vendor_name || 'N/A', 'Invoice', grn.invoice_number || 'N/A'],
+                    ['Project', grn.project_name || 'N/A', '', ''],
+                ],
+                theme: 'plain',
+                styles: { fontSize: 10, cellPadding: 3 },
+                columnStyles: {
+                    0: { fontStyle: 'bold', cellWidth: 30, textColor: [100, 116, 139] },
+                    1: { cellWidth: 65 },
+                    2: { fontStyle: 'bold', cellWidth: 25, textColor: [100, 116, 139] },
+                    3: { cellWidth: 55 },
+                },
+                margin: { left: 14, right: 14 },
+            });
+
+            // Items Table
+            const items = grn.items || [];
+            const detailsEndY = (doc.lastAutoTable?.finalY || 80) + 6;
+            autoTable(doc, {
+                startY: detailsEndY,
+                head: [['S.No', 'Item Name', 'Unit', 'PO Qty', 'Received', 'Rejected']],
+                body: items.map((item, i) => [
+                    i + 1,
+                    item.name || 'Item',
+                    item.unit || 'Nos',
+                    item.po_qty || 0,
+                    item.received_qty || 0,
+                    item.rejected_qty || 0
+                ]),
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246] },
+                styles: { fontSize: 10 },
+            });
+
+            // Footer
+            const finalY = (doc.lastAutoTable?.finalY || 150) + 20;
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.text('Received By: ___________________', 14, finalY);
+            doc.text('Checked By: ___________________', 110, finalY);
+            doc.text('Date: ___________________', 14, finalY + 10);
+
+            doc.setFontSize(8);
+            doc.text('This is a system-generated GRN slip.', 14, finalY + 25);
+
+            doc.save(`${grnNum}_Slip.pdf`);
+        } catch (err) {
+            console.error('GRN PDF error:', err);
+            alert('Failed to generate PDF');
+        }
+    };
 
     return (
         <div className="modal-overlay" style={{
@@ -27,7 +107,7 @@ const GRNDetailModal = ({ isOpen, onClose, grn }) => {
                             <Package size={20} />
                         </div>
                         <div>
-                            <h3 style={{ fontSize: '18px', fontWeight: '800' }}>GRN-{grn.id.slice(-6).toUpperCase()}</h3>
+                            <h3 style={{ fontSize: '18px', fontWeight: '800' }}>{grnNum}</h3>
                             <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Received on {formattedDate}</p>
                         </div>
                     </div>
@@ -92,7 +172,7 @@ const GRNDetailModal = ({ isOpen, onClose, grn }) => {
                 </div>
 
                 <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
-                    <button className="btn btn-outline" style={{ marginRight: 'auto' }}>
+                    <button className="btn btn-outline" style={{ marginRight: 'auto' }} onClick={handleDownloadSlip}>
                         <Download size={18} /> DOWNLOAD SLIP
                     </button>
                     <button className="btn btn-outline" onClick={onClose}>Close</button>

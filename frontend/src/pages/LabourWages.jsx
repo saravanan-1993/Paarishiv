@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { labourAttendanceAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -20,6 +21,7 @@ const ADMIN_ROLES = ['administrator', 'super admin', 'admin', 'general manager',
 
 const LabourWages = () => {
     const { user } = useAuth();
+    const canEditAccounts = hasPermission(user, 'Accounts', 'edit');
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
     const [payments, setPayments] = useState([]);
@@ -170,6 +172,7 @@ const LabourWages = () => {
 
         // Admin approved — show "Pay" button to process payment
         if (ps === 'Payment Approved') {
+            if (!canEditAccounts) return <span style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>Approved</span>;
             return (
                 <button onClick={() => setPayModal(r)}
                     style={{ padding: '5px 16px', borderRadius: 6, border: 'none', backgroundColor: '#10B981', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -183,15 +186,16 @@ const LabourWages = () => {
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <span style={{ fontSize: 10, color: '#EF4444', fontWeight: 600 }}>Rejected</span>
-                    <button onClick={() => handleRequestPayment(r)} disabled={requesting}
+                    {canEditAccounts && <button onClick={() => handleRequestPayment(r)} disabled={requesting}
                         style={{ padding: '4px 12px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
                         Re-request
-                    </button>
+                    </button>}
                 </div>
             );
         }
 
-        // Default — "Send" button to request Admin approval
+        // Default — "Send" button to request Admin approval (only for Accountant/Admin)
+        if (!canEditAccounts) return <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>—</span>;
         return (
             <button onClick={() => handleRequestPayment(r)} disabled={requesting}
                 style={{ padding: '5px 16px', borderRadius: 6, border: 'none', backgroundColor: '#3B82F6', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>

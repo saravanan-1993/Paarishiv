@@ -37,10 +37,12 @@ export const SUB_TABS = {
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
     'Fleet Management': ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay'],
+    'Notifications': [],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };
 
+// Only Administrator is seeded as default. All other roles are created via HRMS → Roles & Permissions.
 export const DEFAULT_ROLES = [
     {
         name: 'Administrator',
@@ -62,126 +64,12 @@ export const DEFAULT_ROLES = [
             { name: 'Settings', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Settings'] },
             { name: 'Site Reports', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['Site Reports'] },
             { name: 'Subcontractor Billing', actions: { view: true, edit: true, delete: true } },
+            { name: 'Notifications', actions: { view: true, edit: true, delete: false } },
         ],
         dashboardCards: DASHBOARD_CARDS.map(c => c.id),
         features: SYSTEM_FEATURES.map(f => f.id),
         userCount: 1
     },
-    {
-        name: 'Site Engineer',
-        description: 'Site operations and material tracking',
-        tags: ['site_engineer'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR', 'Labour Attendance'] },
-            { name: 'HRMS', actions: { view: true, edit: false, delete: false }, subTabs: ['Dashboard', 'Attendance', 'Leave Management'] },
-            { name: 'Inventory Management', actions: { view: true, edit: true, delete: false }, subTabs: ['Materials', 'Warehouse', 'Machinery'] },
-            { name: 'Accounts', actions: { view: false, edit: false, delete: false } },
-            { name: 'Procurement', actions: { view: true, edit: true, delete: false }, subTabs: ['POs', 'Requests', 'GRN'] },
-            { name: 'Reports', actions: { view: true, edit: false, delete: false } },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-            { name: 'Fleet Management', actions: { view: true, edit: true, delete: false } },
-            { name: 'Tasks', actions: { view: true, edit: true, delete: false } },
-            { name: 'System Logs', actions: { view: false, edit: false, delete: false } },
-            { name: 'Settings', actions: { view: false, edit: false, delete: false } },
-        ],
-        dashboardCards: ['quick_actions', 'active_projects_list', 'my_tasks'],
-        features: ['create_dpr', 'add_material_request', 'transfer_material', 'create_grn'],
-        userCount: 3
-    },
-    {
-        name: 'Project Coordinator',
-        description: 'Coordinate projects and track progress',
-        tags: ['project_coordinator'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: ['Overview', 'Tasks', 'DPR', 'Documents', 'Workflow Tracking'] },
-            { name: 'HRMS', actions: { view: true, edit: false, delete: false } },
-            { name: 'Inventory Management', actions: { view: true, edit: true, delete: false } },
-            { name: 'Reports', actions: { view: true, edit: false, delete: false } },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-            { name: 'Fleet Management', actions: { view: true, edit: true, delete: false } },
-            { name: 'Site Reports', actions: { view: true, edit: true, delete: false } },
-            { name: 'Approvals', actions: { view: true, edit: true, delete: false }, subTabs: ['Manpower'] },
-        ],
-        dashboardCards: ['overview_stats', 'active_projects_list', 'my_tasks', 'recent_activities'],
-        features: ['add_project', 'edit_project'],
-        userCount: 2
-    },
-    {
-        name: 'Accountant',
-        description: 'Manage accounts and billing',
-        tags: ['accountant'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Accounts', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['Accounts'] },
-            { name: 'Reports', actions: { view: true, edit: true, delete: false } },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-            { name: 'HRMS', actions: { view: true, edit: false, delete: false }, subTabs: ['Dashboard', 'Payroll'] },
-            { name: 'Subcontractor Billing', actions: { view: true, edit: true, delete: false } },
-        ],
-        dashboardCards: ['budget_overview', 'overview_stats'],
-        features: ['create_invoice', 'create_sc_bill'],
-        userCount: 2
-    },
-    {
-        name: 'HR Manager',
-        description: 'Employee, Leave and Payroll management',
-        tags: ['hr'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'HRMS', actions: { view: true, edit: true, delete: true }, subTabs: SUB_TABS['HRMS'] },
-            { name: 'Reports', actions: { view: true, edit: false, delete: false } },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-        ],
-        dashboardCards: ['overview_stats', 'recent_activities'],
-        features: ['add_employee', 'approve_leave', 'edit_attendance'],
-        userCount: 1
-    },
-    {
-        name: 'Project Manager',
-        description: 'Attendance and Leave approval',
-        tags: ['pm'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['Projects'] },
-            { name: 'Procurement', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['Procurement'] },
-            { name: 'HRMS', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['HRMS'] },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-        ],
-        dashboardCards: ['overview_stats', 'active_projects_list', 'approvals_card'],
-        features: ['add_project', 'edit_project', 'approve_leave'],
-        userCount: 2
-    },
-    {
-        name: 'Purchase Officer',
-        description: 'Handle incoming purchase requests',
-        tags: ['purchase', 'procurement'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'Projects', actions: { view: true, edit: false, delete: false } },
-            { name: 'Procurement', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['Procurement'] },
-            { name: 'Inventory Management', actions: { view: true, edit: true, delete: false }, subTabs: SUB_TABS['Inventory Management'] },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-            { name: 'HRMS', actions: { view: true, edit: false, delete: false } },
-        ],
-        dashboardCards: ['inventory_card', 'approvals_card'],
-        features: ['create_po', 'add_vendor', 'create_grn'],
-        userCount: 2
-    },
-    {
-        name: 'Employee',
-        description: 'Apply for leaves and view profile',
-        tags: ['employee'],
-        permissions: [
-            { name: 'Dashboard', actions: { view: true, edit: false, delete: false } },
-            { name: 'HRMS', actions: { view: true, edit: false, delete: false } },
-            { name: 'Team Chat', actions: { view: true, edit: true, delete: false } },
-        ],
-        dashboardCards: ['my_tasks'],
-        features: [],
-        userCount: 10
-    }
 ];
 
 // v2→v1 label map: v2 keys (from backend) → display labels used by the frontend

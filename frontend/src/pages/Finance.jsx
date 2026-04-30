@@ -30,6 +30,8 @@ const fmt = (n) => {
 
 const Finance = () => {
     const { user } = useAuth();
+    const canEditAccounts = hasPermission(user, 'Accounts', 'edit');
+    const canDeleteAccounts = hasPermission(user, 'Accounts', 'delete');
     const handleMarkBillPaid = async (bill) => {
         if (!window.confirm(`Mark Bill ${bill.bill_no} as fully PAID?`)) return;
         try {
@@ -1157,7 +1159,7 @@ const Finance = () => {
                                                         >
                                                             <Download size={18} color="#10B981" />
                                                         </button>
-                                                        {bill.status !== 'Paid' && (
+                                                        {canEditAccounts && bill.status !== 'Paid' && (
                                                             <button
                                                                 className="btn btn-primary"
                                                                 style={{ fontSize: '10px', padding: '4px 8px', borderRadius: '4px' }}
@@ -1166,16 +1168,6 @@ const Finance = () => {
                                                                 Paid
                                                             </button>
                                                         )}
-                                                        <button
-                                                            onClick={() => {
-                                                                if (window.confirm('Delete this bill?')) {
-                                                                    billingAPI.delete(bill.id).then(() => loadData());
-                                                                }
-                                                            }}
-                                                            style={{ border: 'none', padding: '6px', background: 'transparent' }}
-                                                        >
-                                                            <Trash2 size={18} color="#EF4444" />
-                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1418,7 +1410,7 @@ const Finance = () => {
                                                         <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, base_amount: item.base_amount, gst_amount: item.gst_amount, invoice_no: item.invoice_no, items: item.items, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                             <Download size={18} color="#10B981" />
                                                         </button>
-                                                        {pStatus !== 'Paid' && (
+                                                        {canEditAccounts && pStatus !== 'Paid' && (
                                                             <button className="btn btn-primary btn-sm" onClick={() => handleProcessPayment(item)} style={{ fontSize: '11px' }}>
                                                                 Pay
                                                             </button>

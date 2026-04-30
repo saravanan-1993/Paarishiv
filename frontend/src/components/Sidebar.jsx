@@ -228,14 +228,13 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                 const res = await projectAPI.getAll();
                 const projects = res.data || [];
                 let count = 0;
-                const isEngineer = user.role === 'Site Engineer';
+                const isLimitedUser = !hasPermission(user, 'Projects', 'delete');
 
                 projects.forEach(project => {
                     const projectTasks = project.tasks || [];
                     projectTasks.forEach(t => {
                         if (t.status === 'Pending') {
-                            // Site engineers only see tasks assigned to them, or if no one is assigned but it's their project
-                            if (isEngineer && t.assignedTo !== user.username && project.engineer_id !== user.username) {
+                            if (isLimitedUser && t.assignedTo !== user.username && project.engineer_id !== user.username && project.coordinator_id !== user.username) {
                                 return;
                             }
                             count++;

@@ -34,6 +34,8 @@ const fmt = (n) => {
 
 const SubcontractorBilling = () => {
     const { user } = useAuth();
+    const canEdit = hasPermission(user, 'Subcontractor Billing', 'edit');
+    const canDelete = hasPermission(user, 'Subcontractor Billing', 'delete');
 
     const [bills, setBills] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -337,7 +339,7 @@ const SubcontractorBilling = () => {
                             </button>
                         )}
                     </div>
-                    {activeTab === 'Bills' && (
+                    {activeTab === 'Bills' && canEdit && (
                         <button
                             className="btn btn-primary"
                             onClick={() => { setEditBill(null); setShowCreateModal(true); }}
@@ -408,7 +410,7 @@ const SubcontractorBilling = () => {
                                                 >
                                                     <BookOpen size={14} />
                                                 </button>
-                                                {bill.status === 'Draft' && (
+                                                {canEdit && bill.status === 'Draft' && (
                                                     <button
                                                         className="btn btn-primary btn-sm"
                                                         style={{ padding: '4px 8px', fontSize: '11px' }}
@@ -418,7 +420,7 @@ const SubcontractorBilling = () => {
                                                         <Send size={14} />
                                                     </button>
                                                 )}
-                                                {(bill.status === 'Approved' || bill.status === 'Partially Paid') && (
+                                                {canEdit && (bill.status === 'Approved' || bill.status === 'Partially Paid') && (
                                                     <button
                                                         className="btn btn-primary btn-sm"
                                                         style={{ padding: '4px 8px', fontSize: '11px', backgroundColor: '#10B981', borderColor: '#10B981' }}
@@ -428,7 +430,7 @@ const SubcontractorBilling = () => {
                                                         <CreditCard size={14} />
                                                     </button>
                                                 )}
-                                                {bill.status === 'Draft' && (
+                                                {canDelete && bill.status === 'Draft' && (
                                                     <button
                                                         className="btn btn-outline btn-sm"
                                                         style={{ padding: '4px 8px', color: '#EF4444', borderColor: '#EF4444' }}

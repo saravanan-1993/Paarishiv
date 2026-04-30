@@ -46,6 +46,7 @@ SUB_TABS = {
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP']
 }
 
+# Only Administrator role is seeded. All other roles are created via HRMS → Roles & Permissions.
 DEFAULT_ROLES = [
     {
         "name": 'Administrator',
@@ -54,7 +55,7 @@ DEFAULT_ROLES = [
         "permissions": [
             { "name": 'Dashboard', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Projects', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Projects'] },
-            { "name": 'Budget Control', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Budget & Finance'] },
+            { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Accounts', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Accounts'] },
             { "name": 'Procurement', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Procurement'] },
             { "name": 'HRMS', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['HRMS'] },
@@ -65,155 +66,14 @@ DEFAULT_ROLES = [
             { "name": 'Fleet Management', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'System Logs', "actions": { "view": True, "edit": True, "delete": True } },
             { "name": 'Settings', "actions": { "view": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Settings'] },
-            { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": True } },
+            { "name": 'Subcontractor Billing', "actions": { "view": True, "edit": True, "delete": True } },
+            { "name": 'Notifications', "actions": { "view": True, "edit": True, "delete": False } },
+            { "name": 'Site Reports', "actions": { "view": True, "edit": True, "delete": True } },
         ],
         "dashboardCards": [c["id"] for c in DASHBOARD_CARDS],
         "features": [f["id"] for f in SYSTEM_FEATURES],
         "userCount": 1
     },
-    {
-        "name": 'Site Engineer',
-        "description": 'Site operations and material tracking',
-        "tags": ['site_engineer'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Projects', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": ['Overview', 'Tasks', 'DPR'] },
-            { "name": 'HRMS', "actions": { "view": True, "edit": False, "delete": False }, "subTabs": ['Dashboard', 'Attendance', 'Leave Management'] },
-            { "name": 'Inventory Management', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": ['Materials', 'Warehouse'] },
-            { "name": 'Procurement', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": ['POs', 'Requests', 'GRN'] },
-            { "name": 'Reports', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Fleet Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['quick_actions', 'active_projects_list', 'my_tasks'],
-        "features": ['create_dpr', 'add_material_request', 'transfer_material', 'create_grn'],
-        "userCount": 3
-    },
-    {
-        "name": 'Project Coordinator',
-        "description": 'Coordinate projects and track progress',
-        "tags": ['project_coordinator'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Projects', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Inventory Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Reports', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Fleet Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['overview_stats', 'active_projects_list', 'my_tasks', 'recent_activities'],
-        "features": ['add_project', 'edit_project'],
-        "userCount": 2
-    },
-    {
-        "name": 'General Manager',
-        "description": 'Oversees all operations',
-        "tags": ['gm', 'management'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Projects', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Accounts', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Inventory Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Procurement', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": SUB_TABS['Procurement'] },
-            { "name": 'Reports', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": [c["id"] for c in DASHBOARD_CARDS],
-        "features": [f["id"] for f in SYSTEM_FEATURES],
-        "userCount": 1
-    },
-    {
-        "name": 'Accountant',
-        "description": 'Manage accounts and billing',
-        "tags": ['accountant', 'accounts'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Budget Control', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Accounts', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Reports', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": False, "delete": False } },
-        ],
-        "dashboardCards": ['budget_overview', 'overview_stats'],
-        "features": ['create_invoice'],
-        "userCount": 2
-    },
-    {
-        "name": 'Purchase Officer',
-        "description": 'Handle incoming purchase requests',
-        "tags": ['purchase', 'procurement'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Projects', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Procurement', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": SUB_TABS['Procurement'] },
-            { "name": 'Inventory Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": False, "delete": False } },
-        ],
-        "dashboardCards": ['inventory_card', 'approvals_card'],
-        "features": ['create_po', 'approve_po', 'add_vendor', 'create_grn'],
-        "userCount": 2
-    },
-    {
-        "name": 'Inventory Manager',
-        "description": 'Manage warehouse stock',
-        "tags": ['inventory', 'store'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Inventory Management', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Reports', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['inventory_card', 'recent_activities'],
-        "features": ['create_grn', 'transfer_material'],
-        "userCount": 2
-    },
-    {
-        "name": 'HR Manager',
-        "description": 'Employee, Leave and Payroll management',
-        "tags": ['hr'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": True, "delete": True } },
-            { "name": 'Reports', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['overview_stats', 'recent_activities'],
-        "features": ['add_employee', 'approve_leave', 'edit_attendance'],
-        "userCount": 1
-    },
-    {
-        "name": 'Project Manager',
-        "description": 'Attendance and Leave approval',
-        "tags": ['pm'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Projects', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Procurement', "actions": { "view": True, "edit": True, "delete": False }, "subTabs": ['POs', 'Requests', 'GRN'] },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-            { "name": 'Tasks', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['overview_stats', 'active_projects_list', 'approvals_card'],
-        "features": ['add_project', 'edit_project', 'approve_leave'],
-        "userCount": 2
-    },
-    {
-        "name": 'Employee',
-        "description": 'Apply for leaves and view profile',
-        "tags": ['employee'],
-        "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'HRMS', "actions": { "view": True, "edit": False, "delete": False } },
-            { "name": 'Team Chat', "actions": { "view": True, "edit": True, "delete": False } },
-        ],
-        "dashboardCards": ['my_tasks'],
-        "features": [],
-        "userCount": 10
-    }
 ]
 
 # C4 Fix: Added auth dependency to GET and RBAC to POST

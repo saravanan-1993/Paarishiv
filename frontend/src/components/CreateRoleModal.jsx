@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Shield, LayoutDashboard, Briefcase, ListTodo, Wallet, ShoppingCart, Users, Truck, CheckCircle2, MessageSquare, LayoutList, ShieldCheck, FileText, Settings, Package, HardHat, UserCog, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Shield, LayoutDashboard, Briefcase, ListTodo, Wallet, ShoppingCart, Users, Truck, CheckCircle2, MessageSquare, LayoutList, ShieldCheck, FileText, Settings, Package, HardHat, UserCog, History, ChevronDown, ChevronUp, Bell, IndianRupee } from 'lucide-react';
 import { SUB_TABS } from '../utils/rbac';
 
 const MODULES = [
@@ -7,11 +7,13 @@ const MODULES = [
     { name: 'Projects', icon: Briefcase },
     { name: 'Tasks', icon: ListTodo },
     { name: 'Accounts', icon: Wallet },
+    { name: 'Subcontractor Billing', icon: IndianRupee },
     { name: 'Procurement', icon: ShoppingCart },
     { name: 'HRMS', icon: Users },
     { name: 'Inventory Management', icon: Package },
     { name: 'Fleet Management', icon: Truck },
     { name: 'Approvals', icon: CheckCircle2 },
+    { name: 'Notifications', icon: Bell },
     { name: 'Reports', icon: FileText },
     { name: 'Site Reports', icon: LayoutList },
     { name: 'Team Chat', icon: MessageSquare },

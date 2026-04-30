@@ -76,19 +76,15 @@ const Projects = () => {
 
         const matchStatus = filterStatus === 'All' || p.status === filterStatus;
 
-        if (user?.role === 'Site Engineer') {
-            const isAssigned = p.engineer_id === user.username ||
-                               p.engineer_id === user.employeeCode ||
-                               p.engineer_id === user.id;
-            return matchSearch && matchStatus && isAssigned;
+        // Admin/Manager sees all projects; others see only assigned
+        if (hasPermission(user, 'Projects', 'delete')) {
+            return matchSearch && matchStatus; // Full access users see all
         }
-        if (user?.role === 'Project Coordinator') {
-            const isAssigned = p.coordinator_id === user.username ||
-                               p.coordinator_id === user.employeeCode ||
-                               p.coordinator_id === user.id;
-            return matchSearch && matchStatus && isAssigned;
-        }
-        return matchSearch && matchStatus;
+        // Non-admin: show only projects where user is engineer or coordinator
+        const uid = user?.username || user?.employeeCode || user?.id;
+        const isAssigned = p.engineer_id === uid || p.coordinator_id === uid ||
+                           p.site_engineer === uid || p.assigned_to === uid;
+        return matchSearch && matchStatus && isAssigned;
     });
     const paginatedProjects = filtered.slice((projPage - 1) * PROJ_PAGE_SIZE, projPage * PROJ_PAGE_SIZE);
     useEffect(() => { setProjPage(1); }, [searchTerm, filterStatus]);
@@ -109,7 +105,7 @@ const Projects = () => {
                         <button className="btn btn-outline" onClick={fetchProjects} title="Refresh">
                             <RefreshCw size={16} />
                         </button>
-                        {(hasFeature(user, 'add_project') || hasPermission(user, 'Projects', 'edit')) && (
+                        {hasFeature(user, 'add_project') && (
                             <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
                                 <Plus size={18} /> Create New Project
                             </button>
@@ -208,7 +204,7 @@ const Projects = () => {
                         <p style={{ marginBottom: '24px' }}>
                             {searchTerm ? 'Try a different search term.' : 'Click "Create New Project" to get started.'}
                         </p>
-                        {!searchTerm && (
+                        {!searchTerm && hasFeature(user, 'add_project') && (
                             <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
                                 <Plus size={18} /> Create First Project
                             </button>
@@ -275,7 +271,7 @@ const Projects = () => {
 
                                         {/* Footer */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-                                            {(user?.role === 'Super Admin' || user?.role === 'Manager') ? (
+                                            {hasPermission(user, 'Accounts', 'view') ? (
                                                 <div style={{ display: 'flex', gap: '20px' }}>
                                                     <div>
                                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Credit</div>

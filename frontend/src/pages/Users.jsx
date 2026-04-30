@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 
 const Users = () => {
     const { user } = useAuth();
+    const canEditHRMS = hasPermission(user, 'HRMS', 'edit');
+    const canDeleteHRMS = hasPermission(user, 'HRMS', 'delete');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Users');
@@ -312,9 +314,9 @@ const Users = () => {
                                 <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Role Definitions</h3>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Define access permissions for each role below</p>
                             </div>
-                            <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={handleCreateRoleClick}>
+                            {canEditHRMS && <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={handleCreateRoleClick}>
                                 <Plus size={18} /> CREATE ROLE
-                            </button>
+                            </button>}
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px', alignItems: 'start' }}>
@@ -325,14 +327,14 @@ const Users = () => {
                                             <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{role.name}</h4>
                                             <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{role.description}</p>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
+                                        {canEditHRMS && <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
                                             <button
                                                 onClick={() => handleEditRole(role)}
                                                 style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#0284c7' }}
                                             >
                                                 <Edit3 size={14} /> Edit
                                             </button>
-                                            {role.name !== 'Administrator' && role.name !== 'Super Admin' && (
+                                            {canDeleteHRMS && role.name !== 'Administrator' && role.name !== 'Super Admin' && (
                                                 <button
                                                     onClick={() => handleDeleteRole(role.name)}
                                                     style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#dc2626' }}
@@ -340,7 +342,7 @@ const Users = () => {
                                                     <Trash2 size={14} /> Delete
                                                 </button>
                                             )}
-                                        </div>
+                                        </div>}
                                     </div>
 
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
@@ -528,7 +530,7 @@ const Users = () => {
                                                             border: '1px solid #e2e8f0',
                                                             gap: '4px'
                                                         }}>
-                                                            <button
+                                                            {canEditHRMS && <button
                                                                 onClick={() => handleEdit(user)}
                                                                 title="Edit User"
                                                                 style={{
@@ -553,8 +555,8 @@ const Users = () => {
                                                                 }}
                                                             >
                                                                 <Edit2 size={16} />
-                                                            </button>
-                                                            <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
+                                                            </button>}
+                                                            {canDeleteHRMS && <><div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
                                                             <button
                                                                 onClick={() => handleDelete(user.id)}
                                                                 title="Delete User"
@@ -580,7 +582,7 @@ const Users = () => {
                                                                 }}
                                                             >
                                                                 <Trash2 size={16} />
-                                                            </button>
+                                                            </button></>}
                                                             <div style={{ width: '1px', height: '16px', backgroundColor: '#e2e8f0' }}></div>
                                                             <div style={{ position: 'relative' }}>
                                                                 <button

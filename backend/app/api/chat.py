@@ -15,19 +15,31 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.active_connections: Dict[str, list] = {}
 
     async def connect(self, user_id: str, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections[user_id] = websocket
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
 
-    def disconnect(self, user_id: str):
+    def disconnect(self, user_id: str, websocket: WebSocket = None):
         if user_id in self.active_connections:
-            del self.active_connections[user_id]
+            if websocket:
+                self.active_connections[user_id] = [ws for ws in self.active_connections[user_id] if ws != websocket]
+            if not websocket or not self.active_connections[user_id]:
+                del self.active_connections[user_id]
 
     async def send_personal_message(self, message: str, user_id: str):
         if user_id in self.active_connections:
-            await self.active_connections[user_id].send_text(message)
+            dead = []
+            for ws in self.active_connections[user_id]:
+                try:
+                    await ws.send_text(message)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self.active_connections[user_id].remove(ws)
 
     async def broadcast(self, message: str):
         for connection in self.active_connections.values():
@@ -298,7 +310,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, token: Optional
                 continue
             
     finally:
-        manager.disconnect(user_id)
+        manager.disconnect(user_id, websocket)
 
 @router.get("/history/{user1}/{user2}", response_model=List[MessageResponse], dependencies=[Depends(get_current_user)])
 async def get_chat_history(user1: str, user2: str, db = Depends(get_database)):

@@ -537,7 +537,7 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                                         <tr key={i}>
                                             <td data-label="Activity" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: '600', fontSize: '13px' }}>{row.task}</td>
                                             <td data-label="Progress" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontSize: '13px' }}>{row.today}</td>
-                                            <td data-label="Overall %" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{row.total}</td>
+                                            <td data-label="Overall %" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{row.overall || row.total || '-'}</td>
                                             <td data-label="Remark" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', color: 'var(--text-muted)', fontSize: '12px' }}>{row.remark}</td>
                                         </tr>
                                     ))}

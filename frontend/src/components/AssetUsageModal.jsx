@@ -35,8 +35,8 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
                 assetId: formData.asset,
                 assetName: selectedAsset?.name || formData.asset,
                 site: formData.site,
-                qty: parseFloat(formData.dieselConsumed),
-                hoursRun: parseFloat(formData.hoursUsed),
+                qty: parseFloat(formData.dieselConsumed) || 0,
+                hoursRun: parseFloat(formData.hoursUsed) || 0,
                 engineer: formData.engineer,
                 type: 'Consumption'
             };

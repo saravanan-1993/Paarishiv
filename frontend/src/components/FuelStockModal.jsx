@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { X, Droplets, Calendar, User, DollarSign } from 'lucide-react';
-import { fleetAPI } from '../utils/api';
+import React, { useState, useEffect } from 'react';
+import { X, Droplets } from 'lucide-react';
+import { fleetAPI, projectAPI } from '../utils/api';
 
 const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Sites' }) => {
     const [formData, setFormData] = useState({
@@ -11,9 +11,20 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
         site: projectName !== 'All Sites' ? projectName : '',
         billNo: '',
         remarks: '',
-        date: new Date().toISOString()
     });
     const [loading, setLoading] = useState(false);
+    const [projects, setProjects] = useState([]);
+
+    useEffect(() => {
+        if (isOpen) {
+            projectAPI.getAll().then(res => setProjects(res.data || [])).catch(() => {});
+            setFormData(prev => ({
+                ...prev,
+                qty: '', rate: '', totalAmount: 0, supplier: '', billNo: '', remarks: '',
+                site: projectName !== 'All Sites' ? projectName : '',
+            }));
+        }
+    }, [isOpen, projectName]);
 
     if (!isOpen) return null;
 
@@ -29,12 +40,27 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
         setLoading(true);
         try {
             const user = JSON.parse(localStorage.getItem('erp_user') || '{}');
+            const qty = parseFloat(formData.qty) || 0;
+            const rate = parseFloat(formData.rate) || 0;
+            if (qty <= 0 || rate <= 0) {
+                alert('Please enter valid quantity and rate');
+                setLoading(false);
+                return;
+            }
+            if (!formData.site) {
+                alert('Please select a site/project');
+                setLoading(false);
+                return;
+            }
             const dataToSave = {
-                ...formData,
-                qty: parseFloat(formData.qty),
-                rate: parseFloat(formData.rate),
-                totalAmount: parseFloat(formData.totalAmount),
-                site: formData.site || 'Main Office',
+                date: new Date().toISOString(),
+                qty,
+                rate,
+                totalAmount: qty * rate,
+                supplier: formData.supplier || '',
+                billNo: formData.billNo || '',
+                site: formData.site,
+                remarks: formData.remarks || '',
                 addedBy: user.username || 'System'
             };
             await fleetAPI.addFuelStock(dataToSave);
@@ -42,7 +68,8 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
             onClose();
         } catch (err) {
             console.error('Error adding fuel stock:', err);
-            alert('Failed to add fuel stock');
+            const detail = err.response?.data?.detail;
+            alert(typeof detail === 'string' ? detail : 'Failed to add fuel stock');
         } finally {
             setLoading(false);
         }
@@ -75,7 +102,7 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
                         <div className="form-group">
                             <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Rate per Liter *</label>
                             <div style={{ position: 'relative' }}>
-                                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>₹</span>
+                                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>{'\u20B9'}</span>
                                 <input type="number" step="0.01" required placeholder="0.00" value={formData.rate} onChange={(e) => handleQtyRateChange('rate', e.target.value)} style={{ width: '100%', padding: '12px 12px 12px 24px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                             </div>
                         </div>
@@ -83,7 +110,7 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
 
                     <div className="form-group" style={{ marginBottom: '16px' }}>
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Total Amount</label>
-                        <input type="text" readOnly value={`₹ ${formData.totalAmount.toLocaleString()}`} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: '#F8FAFC', fontWeight: '700', color: 'var(--primary)' }} />
+                        <input type="text" readOnly value={`\u20B9 ${formData.totalAmount.toLocaleString('en-IN')}`} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: '#F8FAFC', fontWeight: '700', color: 'var(--primary)' }} />
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -99,22 +126,27 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
 
                     <div className="form-group" style={{ marginBottom: '16px' }}>
                         <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Site / Project *</label>
-                        <input 
-                            type="text" 
-                            required 
-                            placeholder="Assign to Site" 
-                            value={formData.site} 
-                            onChange={(e) => setFormData({ ...formData, site: e.target.value })} 
-                            readOnly={projectName !== 'All Sites'}
-                            style={{ 
-                                width: '100%', 
-                                padding: '12px', 
-                                borderRadius: '8px', 
-                                border: '1px solid var(--border)', 
-                                backgroundColor: projectName !== 'All Sites' ? '#F1F5F9' : 'white' 
-                            }} 
-                        />
-                        {projectName !== 'All Sites' && <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Locked to current site: {projectName}</p>}
+                        {projectName !== 'All Sites' ? (
+                            <input
+                                type="text"
+                                readOnly
+                                value={formData.site}
+                                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: '#F1F5F9' }}
+                            />
+                        ) : (
+                            <select
+                                required
+                                value={formData.site}
+                                onChange={(e) => setFormData({ ...formData, site: e.target.value })}
+                                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                            >
+                                <option value="">Select Site / Project</option>
+                                <option value="Warehouse">Warehouse</option>
+                                {projects.map(p => (
+                                    <option key={p._id || p.id} value={p.name}>{p.name}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
 
                     <div className="form-group">
