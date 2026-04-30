@@ -18,12 +18,13 @@ import {
     CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { hasSubTabAccess } from '../utils/rbac';
+import { hasSubTabAccess, hasPermission } from '../utils/rbac';
 import { settingsAPI, profileAPI, notificationAPI } from '../utils/api';
 import { Loader2 } from 'lucide-react';
 
 const Settings = () => {
     const { user, updateUser, logout } = useAuth();
+    const canEditSettings = hasPermission(user, 'Settings', 'edit');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Profile');
@@ -595,14 +596,14 @@ const Settings = () => {
                                 </div>
                             </div>
                             <div style={{ gridColumn: 'span 2' }}>
-                                <button
+                                {canEditSettings && <button
                                     className="btn btn-primary"
                                     disabled={loading}
                                     onClick={handleSaveCompanyInfo}
                                     style={{ fontWeight: '800' }}
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} SAVE COMPANY INFO
-                                </button>
+                                </button>}
                             </div>
                         </div>
                     </div>
@@ -646,14 +647,14 @@ const Settings = () => {
                                 />
                             </div>
                             <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-                                <button
+                                {canEditSettings && <button
                                     className="btn btn-primary"
                                     disabled={loading}
                                     onClick={handleSaveCloudinary}
                                     style={{ fontWeight: '800' }}
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} SAVE API KEYS
-                                </button>
+                                </button>}
                                 <button className="btn btn-outline"><Cloud size={16} /> TEST CONNECTION</button>
                             </div>
                         </div>
@@ -774,7 +775,7 @@ const Settings = () => {
                                     {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
                                     Send Test Email
                                 </button>
-                                <button
+                                {canEditSettings && <button
                                     className="btn btn-primary"
                                     disabled={loading}
                                     onClick={handleSaveSMTP}
@@ -782,7 +783,7 @@ const Settings = () => {
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                                     Save Changes
-                                </button>
+                                </button>}
                             </div>
                             {testEmailMsg && (
                                 <p style={{ fontSize: '13px', fontWeight: '600', color: testEmailMsg.includes('success') ? '#10B981' : '#EF4444' }}>{testEmailMsg}</p>

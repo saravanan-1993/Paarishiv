@@ -4,6 +4,7 @@ import {
     MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell, Eye
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { hasPermission } from '../../utils/rbac';
 import { projectAPI, employeeAPI } from '../../utils/api';
 import CompleteTaskModal from '../../components/CompleteTaskModal';
 import AddTaskModal from '../../components/AddTaskModal';
@@ -12,7 +13,7 @@ import CustomSelect from '../../components/CustomSelect';
 
 const Tasks = () => {
     const { user } = useAuth();
-    const isEngineer = user?.role === 'Site Engineer';
+    const canCreateTasks = hasPermission(user, 'Projects', 'delete') || hasPermission(user, 'Tasks', 'edit');
 
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -212,7 +213,7 @@ const Tasks = () => {
                     <h1 style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Tasks & Workflow</h1>
                     <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Manage site activities and execution progress.</p>
                 </div>
-                {!isEngineer && (
+                {canCreateTasks && (
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button className="btn btn-primary" onClick={() => setIsAddTaskModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Plus size={18} /> NEW TASK

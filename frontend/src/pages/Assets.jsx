@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 
 import { fleetAPI, projectAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 import AssetUsageModal from '../components/AssetUsageModal';
 import TransferModal from '../components/TransferModal';
@@ -94,6 +96,8 @@ const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) =>
 };
 
 const Assets = () => {
+    const { user } = useAuth();
+    const canEditAssets = hasPermission(user, 'Inventory Management', 'edit');
     const [activeTab, setActiveTab] = useState('Fleet');
     const [searchTerm, setSearchTerm] = useState('');
     const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
@@ -234,15 +238,15 @@ const Assets = () => {
                         <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Equipment tracking, diesel consumption & site logistics</p>
                     </div>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                        <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsFuelModalOpen(true)}>
+                        {canEditAssets && <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsFuelModalOpen(true)}>
                             <Fuel size={18} /> FUEL INVENTORY
-                        </button>
-                        {(activeTab === 'Logs' || activeTab === 'Transfers') && (
+                        </button>}
+                        {canEditAssets && (activeTab === 'Logs' || activeTab === 'Transfers') && (
                             <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={handleActionClick}>
                                 <Plus size={18} /> {activeTab === 'Logs' ? 'NEW LOG ENTRY' : 'NEW TRANSFER'}
                             </button>
                         )}
-                        {activeTab === 'Fleet' && (
+                        {canEditAssets && activeTab === 'Fleet' && (
                             <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsAddAssetModalOpen(true)}>
                                 <Plus size={18} /> ADD EQUIPMENT
                             </button>

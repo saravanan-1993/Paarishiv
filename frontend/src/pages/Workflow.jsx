@@ -357,7 +357,7 @@ const Workflow = () => {
             doc.text("Authorized Signature", 14, finalY);
             doc.text("___________________", 14, finalY + 5);
 
-            doc.save(`${poNum}_${(po.vendor_name || 'Vendor').replace(/\s+/g, '_')}.pdf`);
+            doc.save(`${poNum}_${(po.vendor_name || 'Vendor').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
         } catch (error) {
             console.error('PDF Generation Error:', error);
             alert('Failed to generate PDF. Please check console for details.');
@@ -479,7 +479,7 @@ const Workflow = () => {
                             }}
                         />
                     </div>
-                    {(hasPermission(user, 'Procurement', 'edit') || user?.role === 'Purchase Officer' || user?.role === 'Super Admin' || user?.role === 'Administrator') && (
+                    {hasPermission(user, 'Procurement', 'edit') && (
                         <button
                             className="btn btn-primary"
                             onClick={() => {
@@ -691,7 +691,7 @@ const Workflow = () => {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                                        {(req.status === 'Pending' && (user.role === 'Purchase Officer' || user.role === 'Super Admin' || user.role === 'Administrator' || user.role === 'Project Coordinator')) && (
+                                                        {(req.status === 'Pending' && hasPermission(user, 'Procurement', 'edit')) && (
                                                             <button
                                                                 className="btn btn-outline btn-sm" style={{ fontSize: '10px', padding: '4px 8px', border: '1px solid #10B981', color: '#10B981' }}
                                                                 onClick={async () => {
@@ -709,7 +709,7 @@ const Workflow = () => {
                                                         {req.status === 'Approved' && (
                                                             <button
                                                                 className="btn btn-primary btn-sm" style={{ fontSize: '11px', padding: '4px 8px' }}
-                                                                onClick={() => setIsPOModalOpen(true)}
+                                                                onClick={() => { setSearchParams({ tab: 'Requests', request_id: req.id }); setIsPOModalOpen(true); }}
                                                             >
                                                                 CREATE PO
                                                             </button>
@@ -745,7 +745,7 @@ const Workflow = () => {
                                                     {con.status !== 'PO Created' && (
                                                         <button
                                                             className="btn btn-primary btn-sm" style={{ fontSize: '11px', padding: '4px 8px', backgroundColor: '#7c3aed' }}
-                                                            onClick={() => setIsPOModalOpen(true)}
+                                                            onClick={() => { setSearchParams({ tab: 'Requests', request_id: con.id }); setIsPOModalOpen(true); }}
                                                         >
                                                             BULK PO
                                                         </button>

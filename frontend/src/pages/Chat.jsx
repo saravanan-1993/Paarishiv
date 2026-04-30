@@ -78,19 +78,29 @@ const Chat = () => {
                 } catch {}
             };
 
-            ws.onclose = () => {
+            ws.onopen = () => {
+                console.log('[Chat WS] Connected');
+            };
+
+            ws.onclose = (e) => {
+                console.log('[Chat WS] Closed:', e.code, e.reason);
                 socketRef.current = null;
                 if (!isUnmounted) {
                     reconnectTimer = setTimeout(connectWS, 3000);
                 }
             };
 
-            ws.onerror = () => { ws.close(); };
+            ws.onerror = (err) => {
+                console.error('[Chat WS] Error:', err);
+                ws.close();
+            };
         };
 
-        connectWS();
+        // Small delay to let NotificationContext connect first
+        const initTimer = setTimeout(connectWS, 500);
 
         return () => {
+            clearTimeout(initTimer);
             isUnmounted = true;
             if (reconnectTimer) clearTimeout(reconnectTimer);
             if (socketRef.current) socketRef.current.close();
@@ -221,7 +231,12 @@ const Chat = () => {
 
     const handleSendMessage = (e) => {
         e.preventDefault();
-        if (!newMessage.trim() || !selectedUser || !socketRef.current) return;
+        if (!newMessage.trim() || !selectedUser) return;
+
+        if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+            alert('Chat connection lost. Reconnecting...');
+            return;
+        }
 
         const messageData = {
             group_id: selectedUser.isGroup ? selectedUser._id : null,
@@ -231,8 +246,13 @@ const Chat = () => {
             message_type: 'text'
         };
 
-        socketRef.current.send(JSON.stringify(messageData));
-        setNewMessage('');
+        try {
+            socketRef.current.send(JSON.stringify(messageData));
+            setNewMessage('');
+        } catch (err) {
+            console.error('Send failed:', err);
+            alert('Failed to send message. Please refresh.');
+        }
     };
 
     const handleCreateGroup = async () => {

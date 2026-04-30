@@ -41,6 +41,8 @@ import { useAuth } from '../context/AuthContext';
 
 const HR = () => {
     const { user } = useAuth();
+    const canEditHR = hasPermission(user, 'HRMS', 'edit');
+    const canDeleteHR = hasPermission(user, 'HRMS', 'delete');
     const [activeMainTab, setActiveMainTab] = useState('Roles');
     const [activeSubTab, setActiveSubTab] = useState('All');
     const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
@@ -358,12 +360,12 @@ const HR = () => {
                                             <h4 style={{ fontSize: '16px', fontWeight: '700' }}>{role.name}</h4>
                                             <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{role.description}</p>
                                         </div>
-                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                        {canEditHR && <div style={{ display: 'flex', gap: '12px' }}>
                                             <Edit3 size={18} style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => handleEditRole(role)} />
-                                            {role.name !== 'Administrator' && role.name !== 'Super Admin' && (
+                                            {canDeleteHR && role.name !== 'Administrator' && role.name !== 'Super Admin' && (
                                                 <Trash2 size={18} style={{ color: '#EF4444', cursor: 'pointer' }} onClick={() => handleDeleteRole(role.name)} />
                                             )}
-                                        </div>
+                                        </div>}
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
@@ -487,13 +489,13 @@ const HR = () => {
                                                         >
                                                             <ShieldCheck size={18} />
                                                         </button>
-                                                        <button
+                                                        {canEditHR && <button
                                                             onClick={() => handleEditEmployee(emp)}
                                                             style={{ background: 'none', border: 'none', color: '#F59E0B', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                                                             title="Edit Employee"
                                                         >
                                                             <Edit3 size={18} />
-                                                        </button>
+                                                        </button>}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -563,9 +565,9 @@ const HR = () => {
                                 <button className="btn btn-outline btn-sm">
                                     <Plus size={16} /> Bulk Attendance
                                 </button>
-                                <button className="btn btn-primary btn-sm" onClick={() => setIsAddLabourModalOpen(true)}>
+                                {canEditHR && <button className="btn btn-primary btn-sm" onClick={() => setIsAddLabourModalOpen(true)}>
                                     <UserPlus size={16} /> Add Labourer
-                                </button>
+                                </button>}
                             </div>
                         </div>
                         <table className="data-table">
@@ -599,9 +601,9 @@ const HR = () => {
                     <div className="card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                             <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Registered Contractors</h3>
-                            <button className="btn btn-primary btn-sm" onClick={() => setIsAddContractorModalOpen(true)}>
+                            {canEditHR && <button className="btn btn-primary btn-sm" onClick={() => setIsAddContractorModalOpen(true)}>
                                 <Plus size={16} /> Add Contractor
-                            </button>
+                            </button>}
                         </div>
                         <table className="data-table">
                             <thead>
@@ -680,7 +682,7 @@ const HR = () => {
                                             <td style={{ fontWeight: '800', color: 'var(--primary)' }}>₹{net.toLocaleString('en-IN')}</td>
                                             <td><span className={`badge ${status === 'Generated' ? 'badge-success' : 'badge-warning'}`}>{status}</span></td>
                                             <td>
-                                                {status === 'Pending' ? (
+                                                {status === 'Pending' && canEditHR ? (
                                                     <button
                                                         className="btn btn-outline"
                                                         style={{ padding: '4px 12px', fontSize: '11px', fontWeight: '700' }}

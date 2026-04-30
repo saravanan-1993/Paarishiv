@@ -250,7 +250,8 @@ export const inventoryAPI = {
     requestTransfer: (data) => api.post('/inventory/transfers/request', data),
     getPendingTransfers: () => api.get('/inventory/transfers/pending'),
     approveTransfer: (id) => api.put(`/inventory/transfers/${id}/approve`),
-    rejectTransfer: (id) => api.put(`/inventory/transfers/${id}/reject`),
+    executeTransfer: (id, data) => api.put(`/inventory/transfers/${id}/execute`, data),
+    rejectTransfer: (id, data) => api.put(`/inventory/transfers/${id}/reject`, data),
     getConsolidated: () => api.get('/inventory/consolidated'),
     consolidateRequests: (data) => api.post('/inventory/requests/consolidate', data),
     // Warehouse-aware PO flow

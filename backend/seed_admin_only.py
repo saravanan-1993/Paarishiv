@@ -28,31 +28,40 @@ async def seed_admin_only():
     admin_password = "Admin@123"
 
     # 1. Create Administrator role (only if not exists)
-    existing_roles = await db.roles.find_one({"_id": "global_roles"})
-    if not existing_roles:
-        roles_doc = {
-            "_id": "global_roles",
-            "roles": [
-                {"name": "Administrator", "permissions": [
-                    {"name": "Dashboard", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "HRMS", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Inventory", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Fleet Management", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Settings", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Reports", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Team Chat", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": True}},
-                    {"name": "System Logs", "actions": {"view": True, "edit": True, "delete": True}},
-                ]}
-            ]
-        }
-        await db.roles.insert_one(roles_doc)
-        print("  ✅ Administrator role created")
-    else:
-        print("  ⏭️  Roles already exist")
+    # Always reset roles to ensure Administrator has full permissions
+    admin_role = {
+        "name": "Administrator",
+        "description": "Full system access",
+        "tags": ["admin", "System"],
+        "permissions": [
+            {"name": "Dashboard", "actions": {"view": True, "edit": True, "delete": True}},
+            {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Overview", "Tasks", "DPR", "Financials", "Documents", "Labour Attendance", "Workflow Tracking"]},
+            {"name": "Tasks", "actions": {"view": True, "edit": True, "delete": True}},
+            {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Overview", "Sales", "PurchaseBills", "Purchase", "Payments", "Ledger", "Quotations", "LabourWages"]},
+            {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Vendors", "POs", "Requests", "GRN"]},
+            {"name": "HRMS", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Dashboard", "Employee Master", "Attendance", "Leave Management", "Payroll", "Surprise Visits", "Workforce", "Authorized Users", "Roles & Permissions"]},
+            {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Leaves", "Purchase Orders", "Materials", "Expenses", "Manpower", "SC Bills", "Labour Pay"]},
+            {"name": "Inventory Management", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Materials", "Warehouse", "Coordination", "Machinery"]},
+            {"name": "Reports", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Financial", "Project", "HRMS", "Inventory", "Plant"]},
+            {"name": "Team Chat", "actions": {"view": True, "edit": True, "delete": True}},
+            {"name": "Fleet Management", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Dashboard", "Trips", "Vehicles", "Maintenance", "Reports"]},
+            {"name": "System Logs", "actions": {"view": True, "edit": True, "delete": True}},
+            {"name": "Settings", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Profile", "Company Profile", "Security", "Notifications", "Cloudinary", "SMTP"]},
+            {"name": "Site Reports", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": ["Site Reports (DPR)", "Material Requests", "Transfer Requests"]},
+            {"name": "Subcontractor Billing", "actions": {"view": True, "edit": True, "delete": True}},
+            {"name": "Notifications", "actions": {"view": True, "edit": True, "delete": False}},
+        ],
+        "dashboardCards": ["overview_stats", "quick_actions", "active_projects_list", "budget_overview", "recent_activities", "my_tasks", "approvals_card", "inventory_card"],
+        "features": ["add_project", "edit_project", "delete_project", "create_dpr", "add_material_request", "transfer_material", "create_po", "approve_po", "add_vendor", "create_grn", "add_labour", "edit_attendance", "approve_leave", "add_employee", "create_invoice", "create_sc_bill"],
+        "userCount": 1
+    }
+
+    await db.roles.update_one(
+        {"_id": "global_roles"},
+        {"$set": {"roles": [admin_role]}},
+        upsert=True
+    )
+    print("  [OK] Administrator role seeded (all modules)")
 
     # 2. Check if admin user exists (by email, code, or role)
     existing_admin = await db.employees.find_one({
@@ -70,8 +79,8 @@ async def seed_admin_only():
                 {"_id": existing_admin["_id"]},
                 {"$set": {"email": admin_email}}
             )
-            print(f"  ✅ Updated admin email to: {admin_email}")
-        print(f"  ⏭️  Admin exists: {existing_admin.get('employeeCode', 'N/A')}")
+            print(f"  [OK] Updated admin email to: {admin_email}")
+        print(f"  [SKIP]  Admin exists: {existing_admin.get('employeeCode', 'N/A')}")
     else:
         # Create new admin user
         admin_user = {
@@ -93,22 +102,22 @@ async def seed_admin_only():
             "created_at": datetime.now()
         }
         await db.employees.insert_one(admin_user)
-        print(f"  ✅ Admin user created: ADMIN001")
+        print(f"  [OK] Admin user created: ADMIN001")
 
     # 3. Ensure counter exists
     existing_counter = await db.counters.find_one({"_id": "employee_code"})
     if not existing_counter:
         await db.counters.insert_one({"_id": "employee_code", "seq": 1})
-        print("  ✅ Employee counter initialized")
+        print("  [OK] Employee counter initialized")
     else:
-        print("  ⏭️  Counter already exists")
+        print("  [SKIP]  Counter already exists")
 
-    print("\n🎉 Perfect Admin Setup Complete!")
+    print("\n[DONE] Perfect Admin Setup Complete!")
     print("=" * 40)
-    print(f"📧 Email: {admin_email}")
-    print(f"👤 Username: ADMIN001")
-    print(f"🔑 Password: {admin_password}")
-    print(f"🏢 Database: {os.getenv('DATABASE_NAME', 'civil_erp')}")
+    print(f"Email: Email: {admin_email}")
+    print(f"User: Username: ADMIN001")
+    print(f"Pass: Password: {admin_password}")
+    print(f"DB: Database: {os.getenv('DATABASE_NAME', 'civil_erp')}")
     print("=" * 40)
 
     client.close()

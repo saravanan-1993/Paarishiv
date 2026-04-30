@@ -37,7 +37,7 @@ import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, mate
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
-import { hasPermission, hasSubTabAccess } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, hasFeature } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -326,10 +326,12 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const isEngineer = user?.role === 'Site Engineer';
+    const isEngineer = !hasPermission(user, 'Projects', 'delete') && hasPermission(user, 'Projects', 'edit');
+    const canEditProjects = hasPermission(user, 'Projects', 'edit');
+    const canDeleteProjects = hasPermission(user, 'Projects', 'delete');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
-    const [activeTab, setActiveTab] = useState(user?.role === 'Site Engineer' ? 'Tasks' : 'Overview');
+    const [activeTab, setActiveTab] = useState(isEngineer ? 'Tasks' : 'Overview');
     const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
     const [isUploadDocOpen, setIsUploadDocOpen] = useState(false);
     const [isDPRModalOpen, setIsDPRModalOpen] = useState(false);
@@ -644,7 +646,7 @@ const ProjectDetails = () => {
 
                     {/* Quick-action buttons */}
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        {user?.role === 'Site Engineer' && (
+                        {hasFeature(user, 'create_dpr') && (
                             <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
                                 <FileText size={16} /> Submit DPR
                             </button>
@@ -655,7 +657,7 @@ const ProjectDetails = () => {
                                 <AlertTriangle size={16} /> Urgent Material
                             </button>
                         )}
-                        {(user?.role === 'Super Admin' || user?.role === 'Administrator' || user?.role === 'Project Coordinator') && (
+                        {canEditProjects && (
                             <button
                                 className="btn btn-outline"
                                 onClick={() => setIsEditProjectOpen(true)}
@@ -670,7 +672,7 @@ const ProjectDetails = () => {
                 {/* ── KPI Cards ─────────────────────────────────────────────────── */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     {[
-                        ...(user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Administrator' ? [
+                        ...(hasPermission(user, 'Accounts', 'view') ? [
                             { label: 'Budget', value: fmtAmt(project.budget || project.estimated_budget), icon: Wallet, color: '#3B82F6', bg: '#EFF6FF' },
                             { label: 'Spent', value: fmtAmt(spent), icon: TrendingUp, color: '#EF4444', bg: '#FEF2F2' },
                             { label: 'Remaining', value: fmtAmt(Math.max(0, (project.budget || project.estimated_budget || 0) - spent)), icon: Wallet, color: '#10B981', bg: '#ECFDF5' }
@@ -760,7 +762,7 @@ const ProjectDetails = () => {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             {/* Budget utilisation */}
-                            {(user?.role === 'Super Admin' || user?.role === 'Manager') && (
+                            {hasPermission(user, 'Accounts', 'view') && (
                                 <div className="card" style={{ padding: '28px' }}>
                                     <h2 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px' }}>Budget Utilisation</h2>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -913,7 +915,7 @@ const ProjectDetails = () => {
                                                             </button>
                                                         )}
 
-                                                        {user?.role !== 'Site Engineer' && (
+                                                        {canDeleteProjects && (
                                                             <button
                                                                 style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '6px', color: '#EF4444', cursor: 'pointer', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                                 onClick={() => handleTaskDelete(task.id)}
@@ -966,7 +968,7 @@ const ProjectDetails = () => {
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
                                                     <h4 style={{ fontSize: '15px', fontWeight: '700' }}>{dpr.date}</h4>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        {(user?.role === 'Super Admin' || user?.role === 'Project Coordinator') ? (
+                                                        {canEditProjects && !isEngineer ? (
                                                             <DPRStatusDropdown dpr={dpr} onStatusChange={handleUpdateDPRStatus} />
                                                         ) : (
                                                             <span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>
