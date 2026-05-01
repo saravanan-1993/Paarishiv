@@ -1415,12 +1415,16 @@ const ProjectDetails = () => {
                         </div>
                         <div style={{ padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                             <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(false)}>Cancel</button>
-                            <button className="btn btn-primary" onClick={async () => {
+                            <button className="btn btn-primary" id="return-submit-btn" onClick={async () => {
+                                const btn = document.getElementById('return-submit-btn');
+                                if (btn.disabled) return;
+                                btn.disabled = true;
+                                btn.textContent = 'Submitting...';
                                 const items = siteMaterials.map((m, i) => {
                                     const qty = parseFloat(document.getElementById(`return-qty-${i}`)?.value) || 0;
                                     return qty > 0 ? { name: m.material_name, quantity: qty, unit: m.unit || 'Nos' } : null;
                                 }).filter(Boolean);
-                                if (!items.length) { alert('Select at least one material to return'); return; }
+                                if (!items.length) { alert('Select at least one material to return'); btn.disabled = false; btn.textContent = 'Submit Return Request'; return; }
                                 try {
                                     await inventoryAPI.createReturnRequest({ project_name: project.name, items, notes: '' });
                                     alert('Return request submitted for admin approval');
@@ -1428,6 +1432,8 @@ const ProjectDetails = () => {
                                     loadSiteMaterials();
                                 } catch (err) {
                                     alert(err.response?.data?.detail || 'Failed to submit return request');
+                                    btn.disabled = false;
+                                    btn.textContent = 'Submit Return Request';
                                 }
                             }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <ArrowUpFromLine size={16} /> Submit Return Request

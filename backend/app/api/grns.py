@@ -167,66 +167,75 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
             print(f"PO status update error: {e}")
 
     # Update Inventory Stock (CRITICAL-3: use net qty = received - rejected)
+    # Check if this PO's vendor is "Warehouse" (internal stock issue)
+    is_warehouse_vendor = po and (po.get("vendor_name", "") or "").strip().lower() == "warehouse"
+    # For multi-vendor POs, check per-item vendor
+    po_items_map = {}
+    if po:
+        for pit in po.get("items", []):
+            po_items_map[pit.get("name", "")] = pit
+
+    grn_ref = f"GRN-{str(result.inserted_id)[-6:].upper()}"
+
     for item in grn.items:
         net_qty = item.received_qty - item.rejected_qty
         if net_qty <= 0:
-            continue  # Skip items where everything was rejected
+            continue
 
-        # Check stock handling type of the material
-        material = await db.materials.find_one({"name": item.name})
-        handling_type = "Direct Site"
-        if material:
-            # Handle legacy 'tracking_type' if it exists or use new 'stock_handling_type'
-            handling_type = material.get("stock_handling_type") or material.get("tracking_type") or "Direct Site"
-            # Map legacy values
-            if handling_type == "Direct": handling_type = "Direct Site"
-            if handling_type == "Warehouse": handling_type = "Warehouse Controlled"
-        
-        if handling_type == "Warehouse Controlled":
-            # Add to main warehouse inventory
+        # Check if THIS item's vendor is Warehouse (multi-vendor PO)
+        po_item = po_items_map.get(item.name, {})
+        item_vendor = (po_item.get("vendor_name") or "").strip().lower()
+        is_wh_item = is_warehouse_vendor or item_vendor == "warehouse"
+
+        if is_wh_item:
+            # Warehouse vendor: DEDUCT from warehouse, ADD to site
             await db.warehouse_inventory.update_one(
-                {"material_name": item.name},
-                {
-                    "$inc": {"stock": net_qty},
-                    "$set": {"unit": item.unit}
-                },
+                {"material_name": item.name, "stock": {"$gte": net_qty}},
+                {"$inc": {"stock": -net_qty}}
+            )
+            await db.inventory.update_one(
+                {"project_name": project_name, "material_name": item.name},
+                {"$inc": {"stock": net_qty}, "$set": {"unit": item.unit}},
                 upsert=True
             )
-            # Record in Stock Ledger
+            now = datetime.now()
             await db.stock_ledger.insert_one({
-                "date": datetime.now(),
-                "material_name": item.name,
-                "project_name": "Warehouse",
-                "type": "GRN",
-                "ref": f"GRN-{str(result.inserted_id)[-6:].upper()}",
-                "in_qty": net_qty,
-                "out_qty": 0,
-                "created_at": datetime.now()
+                "date": now, "material_name": item.name, "project_name": "Warehouse",
+                "type": "Warehouse Issue", "ref": grn_ref, "in_qty": 0, "out_qty": net_qty, "created_at": now
+            })
+            await db.stock_ledger.insert_one({
+                "date": now, "material_name": item.name, "project_name": project_name,
+                "type": "GRN (Direct)", "ref": grn_ref, "in_qty": net_qty, "out_qty": 0, "created_at": now
             })
         else:
-            # Direct to site inventory
-            await db.inventory.update_one(
-                {
-                    "project_name": project_name,
-                    "material_name": item.name
-                },
-                {
-                    "$inc": {"stock": net_qty},
-                    "$set": {"unit": item.unit}
-                },
-                upsert=True
-            )
-            # Record in Stock Ledger
-            await db.stock_ledger.insert_one({
-                "date": datetime.now(),
-                "material_name": item.name,
-                "project_name": project_name,
-                "type": "GRN (Direct)",
-                "ref": f"GRN-{str(result.inserted_id)[-6:].upper()}",
-                "in_qty": net_qty,
-                "out_qty": 0,
-                "created_at": datetime.now()
-            })
+            # External vendor: check stock handling type
+            material = await db.materials.find_one({"name": item.name})
+            handling_type = "Direct Site"
+            if material:
+                handling_type = material.get("stock_handling_type") or material.get("tracking_type") or "Direct Site"
+                if handling_type == "Direct": handling_type = "Direct Site"
+                if handling_type == "Warehouse": handling_type = "Warehouse Controlled"
+
+            if handling_type == "Warehouse Controlled":
+                await db.warehouse_inventory.update_one(
+                    {"material_name": item.name},
+                    {"$inc": {"stock": net_qty}, "$set": {"unit": item.unit}},
+                    upsert=True
+                )
+                await db.stock_ledger.insert_one({
+                    "date": datetime.now(), "material_name": item.name, "project_name": "Warehouse",
+                    "type": "GRN", "ref": grn_ref, "in_qty": net_qty, "out_qty": 0, "created_at": datetime.now()
+                })
+            else:
+                await db.inventory.update_one(
+                    {"project_name": project_name, "material_name": item.name},
+                    {"$inc": {"stock": net_qty}, "$set": {"unit": item.unit}},
+                    upsert=True
+                )
+                await db.stock_ledger.insert_one({
+                    "date": datetime.now(), "material_name": item.name, "project_name": project_name,
+                    "type": "GRN (Direct)", "ref": grn_ref, "in_qty": net_qty, "out_qty": 0, "created_at": datetime.now()
+                })
 
     # ── Auto-create Purchase Bill if PO has rate data (Purchase Officer filled) ──
     try:

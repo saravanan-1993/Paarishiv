@@ -403,15 +403,11 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
                     ) : (
                         <>
                             <button className="btn btn-outline" onClick={onClose}>Close</button>
-                            {po.status === 'Pending' && (() => {
-                                const role = (user?.role || '').toLowerCase();
-                                const canApprove = ['super admin', 'administrator', 'general manager', 'manager'].includes(role);
-                                return canApprove ? (
-                                    <button className="btn btn-primary" onClick={handleApprove} disabled={isSaving} style={{ padding: '10px 32px' }}>
-                                        <CheckCircle size={18} /> {isSaving ? 'APPROVING...' : 'APPROVE PO'}
-                                    </button>
-                                ) : null;
-                            })()}
+                            {po.status === 'Pending' && (
+                                <span style={{ fontSize: 12, color: '#92400E', fontWeight: 700, padding: '8px 16px', borderRadius: 8, backgroundColor: '#FEF3C7' }}>
+                                    Awaiting Approval (via Approvals page)
+                                </span>
+                            )}
                         </>
                     )}
                 </div>

@@ -294,7 +294,9 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                         style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #bae6fd', fontSize: '14px' }}
                                     >
                                         <option value="">-- Select Site Request --</option>
-                                        {approvedRequests.map(r => (
+                                        {approvedRequests
+                                            .filter(r => !formData.project_name || r.project_name === formData.project_name)
+                                            .map(r => (
                                             <option key={r.id} value={r.id}>{r.project_name} ({r.engineer_id})</option>
                                         ))}
                                     </select>

@@ -823,18 +823,19 @@ const Finance = () => {
             const entryParty = e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense');
             if (!matchesParty(entryParty)) return;
             const amount = parseFloat(e.amount) || 0;
-            if (amount <= 0) return; // Skip ₹0 pending entries
+            if (amount === 0) return; // Skip ₹0 pending entries
 
             const desc = e.grn_id
                 ? `Payment to ${entryParty} - ${payables.find(p => p.id === e.grn_id)?.voucher_no || 'Purchase'}`
                 : `${e.category || 'Expense'}: ${e.description || 'Payment'}`;
 
+            // Negative amount = credit (e.g., Material Transfer Out)
             entries.push({
                 date: e.date || e.created_at || new Date().toISOString(),
-                type: e.source === 'labour_salary' ? 'Labour' : (e.grn_id ? 'Payment' : 'Expense'),
+                type: e.source === 'labour_salary' ? 'Labour' : (e.category?.includes('Transfer') ? 'Transfer' : (e.grn_id ? 'Payment' : 'Expense')),
                 particulars: desc,
-                debit: amount,
-                credit: 0,
+                debit: amount > 0 ? amount : 0,
+                credit: amount < 0 ? Math.abs(amount) : 0,
                 party: entryParty,
                 project: e.project
             });

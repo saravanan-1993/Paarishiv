@@ -626,7 +626,7 @@ const Workflow = () => {
                                                 </td>
                                                 <td>
                                                     {po.status === 'Pending' ? (
-                                                        <button className="btn btn-primary btn-sm" onClick={() => handlePOClick(po)} style={{ padding: '4px 8px', fontSize: '11px' }}>Approve</button>
+                                                        <span style={{ fontSize: '11px', color: '#92400E', fontWeight: '700', padding: '3px 8px', borderRadius: 6, backgroundColor: '#FEF3C7' }}>Awaiting Approval</span>
                                                     ) : (
                                                         <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '700' }}><CheckCircle2 size={14} /> Approved</span>
                                                     )}
