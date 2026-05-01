@@ -32,8 +32,6 @@ const Materials = () => {
     const availableTabs = useMemo(() => [
         { id: 'Materials', label: 'Construction Materials', icon: Package },
         { id: 'Warehouse', label: 'Warehouse & Stock Control', icon: Warehouse },
-        { id: 'Coordination', label: 'Coordination (Consolidation)', icon: ClipboardCheck },
-        { id: 'Machinery', label: 'Plant & Machinery', icon: Truck },
     ].filter(tab => hasSubTabAccess(user, 'Inventory Management', tab.id)), [user]);
 
     useEffect(() => {
@@ -229,6 +227,7 @@ const Materials = () => {
         if (mainTab === 'Warehouse') {
             if (warehouseSubTab === 'Stock') fetchWarehouseStock();
             else if (warehouseSubTab === 'Requests') fetchStockRequests();
+            else if (warehouseSubTab === 'Transfers') fetchMaterialTransfers();
             else if (warehouseSubTab === 'Ledger') fetchStockLedger();
         }
         if (mainTab === 'Coordination') {
@@ -525,9 +524,6 @@ const Materials = () => {
                                         <ArrowDownLeft size={18} /> RECORD RETURN
                                     </button>
                                 </>}
-                                <button className="btn btn-primary" onClick={() => setIsStockRequestOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
-                                    <Plus size={18} /> NEW STOCK REQUEST
-                                </button>
                             </div>
                         </div>
 
@@ -536,6 +532,7 @@ const Materials = () => {
                             {[
                                 { id: 'Stock', label: 'Central Warehouse Stock', icon: Warehouse },
                                 { id: 'Requests', label: 'Stock Requests', icon: ClipboardCheck },
+                                { id: 'Transfers', label: 'Material Transfers', icon: ArrowRightLeft },
                                 { id: 'Ledger', label: 'Stock Movement Ledger', icon: HistoryIcon },
                             ].map(tab => (
                                 <button
@@ -628,6 +625,53 @@ const Materials = () => {
                                     </tbody>
                                 </table>
                                 <Pagination currentPage={reqPage} totalItems={stockRequests.length} pageSize={MAT_PAGE_SIZE} onPageChange={setReqPage} />
+                            </>) : warehouseSubTab === 'Transfers' ? (<>
+                                {/* Material Transfers Table — moved from Coordination */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <h3 style={{ fontSize: 16, fontWeight: 700 }}>Material Transfer Requests</h3>
+                                    {canEditInventory && <button className="btn btn-primary btn-sm" onClick={() => setIsMaterialTransferOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <ArrowRightLeft size={16} /> New Transfer
+                                    </button>}
+                                </div>
+                                <table className="data-table">
+                                    <thead><tr>
+                                        <th>Date</th><th>From</th><th>To</th><th>Items</th><th>Status</th><th>Requested By</th><th>Action</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {materialTransfers.length === 0 ? (
+                                            <tr><td colSpan={7} style={{textAlign:'center',padding:'40px',color:'var(--text-muted)'}}>No transfer requests</td></tr>
+                                        ) : materialTransfers.map(t => (
+                                            <tr key={t.id}>
+                                                <td style={{fontSize:12}}>{t.created_at ? new Date(t.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
+                                                <td style={{fontWeight:700}}>{t.from_project}</td>
+                                                <td style={{fontWeight:700}}>{t.to_project}</td>
+                                                <td style={{fontSize:12}}>{(t.items||[]).map(i => `${i.name} x${i.quantity}`).join(', ')}</td>
+                                                <td>
+                                                    <span style={{padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700,
+                                                        backgroundColor: t.status==='Pending'?'#FEF3C7':t.status==='Admin Approved'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
+                                                        color: t.status==='Pending'?'#92400E':t.status==='Admin Approved'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
+                                                    }}>{t.status}</span>
+                                                </td>
+                                                <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
+                                                <td>
+                                                    {t.status === 'Pending' && isAdmin && (
+                                                        <div style={{display:'flex',gap:4}}>
+                                                            <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
+                                                                onClick={async () => { if(window.confirm('Approve this transfer?')){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>Approve</button>
+                                                            <button className="btn btn-outline btn-sm" style={{padding:'4px 10px',fontSize:11,color:'#EF4444',borderColor:'#EF4444'}}
+                                                                onClick={async () => { const r=window.prompt('Reason?'); if(r!==null){ await inventoryAPI.rejectTransfer(t.id,{reason:r}); fetchMaterialTransfers(); } }}>Reject</button>
+                                                        </div>
+                                                    )}
+                                                    {t.status === 'Admin Approved' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
+                                                        <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
+                                                            onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>Execute</button>
+                                                    )}
+                                                    {t.status === 'Pending' && !isAdmin && <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Admin</span>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </>) : (<>
                                 <table className="data-table">
                                     <thead>

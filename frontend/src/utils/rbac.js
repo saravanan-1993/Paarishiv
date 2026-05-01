@@ -33,7 +33,7 @@ export const SUB_TABS = {
     'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger', 'Quotations', 'LabourWages'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
-    'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
+    'Inventory Management': ['Materials', 'Warehouse'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
     'Fleet Management': ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],

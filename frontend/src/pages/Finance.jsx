@@ -14,7 +14,7 @@ import CreateBillModal from '../components/CreateBillModal';
 import BillDetailsModal from '../components/BillDetailsModal';
 import CustomSelect from '../components/CustomSelect';
 import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI, subcontractorBillingAPI } from '../utils/api';
-import { hasSubTabAccess } from '../utils/rbac';
+import { hasSubTabAccess, hasPermission } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
 import Pagination from '../components/Pagination';

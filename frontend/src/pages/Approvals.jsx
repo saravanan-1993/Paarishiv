@@ -64,7 +64,8 @@ const Approvals = () => {
         manpower: [],
         dprs: [],
         subcontractor_bills: [],
-        labour_payments: []
+        labour_payments: [],
+        stock_returns: []
     });
 
     const fetchData = async () => {
@@ -79,7 +80,8 @@ const Approvals = () => {
                 manpower: res.data.manpower || [],
                 dprs: res.data.dprs || [],
                 subcontractor_bills: res.data.subcontractor_bills || [],
-                labour_payments: res.data.labour_payments || []
+                labour_payments: res.data.labour_payments || [],
+                stock_returns: res.data.stock_returns || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -189,6 +191,7 @@ const Approvals = () => {
         { id: 'dprs', label: 'DPR', count: data.dprs?.length || 0, icon: FileText, color: '#6366f1' },
         { id: 'subcontractor_bills', label: 'SC Bills', count: data.subcontractor_bills?.length || 0, icon: FileText, color: '#0891b2' },
         { id: 'labour_payments', label: 'Labour Pay', count: data.labour_payments?.length || 0, icon: FileText, color: '#7C3AED' },
+        { id: 'stock_returns', label: 'Stock Returns', count: data.stock_returns?.length || 0, icon: FileText, color: '#059669' },
     ];
 
     const handleDprAction = async (dpr, action) => {
@@ -723,6 +726,42 @@ const Approvals = () => {
         </div>
     );
 
+    const renderStockReturnCard = (item) => (
+        <div key={item._id || item.id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>Stock Return</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.project_name} &bull; {item.requested_by || '—'}</p>
+                </div>
+                <span style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', backgroundColor: '#FEF3C7', color: '#92400E' }}>{item.status}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                {(item.items || []).map((it, i) => (
+                    <span key={i} style={{ padding: '2px 8px', borderRadius: '6px', backgroundColor: '#F1F5F9', fontSize: '11px', fontWeight: '600' }}>
+                        {it.name} x{it.quantity}
+                    </span>
+                ))}
+            </div>
+            {item.status === 'Pending' && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('stock_returns', item._id || item.id, 'approve')}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}>
+                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Return'}
+                    </button>
+                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('stock_returns', item._id || item.id, 'reject')}
+                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
     const renderLabourPaymentCard = (item) => (
         <div key={item._id || item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -1117,6 +1156,7 @@ const Approvals = () => {
                                 if (activeTab === 'dprs') return renderDPRCard(item);
                                 if (activeTab === 'subcontractor_bills') return renderSCBillCard(item);
                                 if (activeTab === 'labour_payments') return renderLabourPaymentCard(item);
+                                if (activeTab === 'stock_returns') return renderStockReturnCard(item);
                                 return null;
                             })}
                         </div>
