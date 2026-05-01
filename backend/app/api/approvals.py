@@ -20,7 +20,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "dprs": [],
         "subcontractor_bills": [],
         "labour_payments": [],
-        "stock_returns": []
+        "stock_returns": [],
+        "material_transfers": []
     }
     
     query = {}
@@ -172,6 +173,18 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                     sr[field] = sr[field].isoformat()
             resolve_names(sr)
             results["stock_returns"].append(sr)
+
+    # Material transfer requests (Pending for Admin, Admin Approved for Accountant)
+    if is_admin_user or status.lower() == "all":
+        mt_statuses = ["Pending", "Admin Approved"] if status.lower() != "all" else ["Pending", "Admin Approved", "Completed", "Rejected"]
+        mt_records = await db.material_transfer_requests.find({"status": {"$in": mt_statuses}}).sort("created_at", -1).to_list(100)
+        for mt in mt_records:
+            mt["_id"] = str(mt["_id"])
+            for field in ["created_at", "admin_approved_at", "executed_at"]:
+                if field in mt and hasattr(mt[field], "isoformat"):
+                    mt[field] = mt[field].isoformat()
+            resolve_names(mt)
+            results["material_transfers"].append(mt)
 
     return results
 
@@ -345,6 +358,30 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         project_name=lp_doc.get("project_name"), priority="high")
                 except Exception:
                     pass
+        elif type == "material_transfers":
+            from app.api.inventory import validate_object_id as vi2
+            mt_oid = vi2(obj_id, "material transfer")
+            mt = await db.material_transfer_requests.find_one({"_id": mt_oid})
+            if status == "Approved":
+                if mt and mt.get("status") == "Pending":
+                    approver_name = update_fields["approvedBy"]
+                    await db.material_transfer_requests.update_one({"_id": mt_oid}, {"$set": {
+                        "status": "Admin Approved",
+                        "admin_approved_by": approver_name,
+                        "admin_approved_at": datetime.now(),
+                    }})
+                    try:
+                        engineer = mt.get("requested_by") or mt.get("engineer_id", "")
+                        await notify(db, approver_name, ["Accountant", engineer], EVENT_APPROVAL,
+                            "Transfer Approved — Ready for Execution",
+                            f"Transfer {mt['from_project']} -> {mt['to_project']} approved. Accountant can execute with cost entry.",
+                            entity_type="material_transfer", entity_id=obj_id, project_name=mt.get("from_project"), priority="high")
+                    except Exception:
+                        pass
+            else:
+                await db.material_transfer_requests.update_one({"_id": mt_oid}, {"$set": {
+                    "status": "Rejected", "rejection_reason": reason, "updated_at": datetime.now()
+                }})
         elif type == "stock_returns":
             from app.api.inventory import validate_object_id as vi
             sr_oid = vi(obj_id, "stock return")

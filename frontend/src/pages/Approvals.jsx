@@ -65,7 +65,8 @@ const Approvals = () => {
         dprs: [],
         subcontractor_bills: [],
         labour_payments: [],
-        stock_returns: []
+        stock_returns: [],
+        material_transfers: []
     });
 
     const fetchData = async () => {
@@ -81,7 +82,8 @@ const Approvals = () => {
                 dprs: res.data.dprs || [],
                 subcontractor_bills: res.data.subcontractor_bills || [],
                 labour_payments: res.data.labour_payments || [],
-                stock_returns: res.data.stock_returns || []
+                stock_returns: res.data.stock_returns || [],
+                material_transfers: res.data.material_transfers || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -192,6 +194,7 @@ const Approvals = () => {
         { id: 'subcontractor_bills', label: 'SC Bills', count: data.subcontractor_bills?.length || 0, icon: FileText, color: '#0891b2' },
         { id: 'labour_payments', label: 'Labour Pay', count: data.labour_payments?.length || 0, icon: FileText, color: '#7C3AED' },
         { id: 'stock_returns', label: 'Stock Returns', count: data.stock_returns?.length || 0, icon: FileText, color: '#059669' },
+        { id: 'material_transfers', label: 'Transfers', count: data.material_transfers?.length || 0, icon: FileText, color: '#F59E0B' },
     ];
 
     const handleDprAction = async (dpr, action) => {
@@ -726,6 +729,52 @@ const Approvals = () => {
         </div>
     );
 
+    const renderTransferCard = (item) => (
+        <div key={item._id || item.id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>Material Transfer</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.from_project} {'\u2192'} {item.to_project}</p>
+                </div>
+                <span style={{
+                    padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                    backgroundColor: item.status === 'Pending' ? '#FEF3C7' : item.status?.includes('Approved') && item.status!=='Pending' ? '#DBEAFE' : '#D1FAE5',
+                    color: item.status === 'Pending' ? '#92400E' : item.status?.includes('Approved') && item.status!=='Pending' ? '#1E40AF' : '#065F46'
+                }}>{item.status}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                {(item.items || []).map((it, i) => (
+                    <span key={i} style={{ padding: '2px 8px', borderRadius: '6px', backgroundColor: '#F1F5F9', fontSize: '11px', fontWeight: '600' }}>
+                        {it.name} x{it.quantity}
+                    </span>
+                ))}
+            </div>
+            <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Requested by: {item.requested_by || item.engineer_id || '\u2014'}</p>
+            {item.status === 'Pending' && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('material_transfers', item._id || item.id, 'approve')}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}>
+                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Transfer'}
+                    </button>
+                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('material_transfers', item._id || item.id, 'reject')}
+                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                        Reject
+                    </button>
+                </div>
+            )}
+            {item.status?.includes('Approved') && item.status!=='Pending' && (
+                <div style={{ padding: '8px 12px', backgroundColor: '#DBEAFE', borderRadius: '8px', fontSize: '12px', color: '#1E40AF', fontWeight: '600' }}>
+                    Approved — Go to Warehouse {'\u2192'} Transfers to execute with cost entry
+                </div>
+            )}
+        </div>
+    );
+
     const renderStockReturnCard = (item) => (
         <div key={item._id || item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -1157,6 +1206,7 @@ const Approvals = () => {
                                 if (activeTab === 'subcontractor_bills') return renderSCBillCard(item);
                                 if (activeTab === 'labour_payments') return renderLabourPaymentCard(item);
                                 if (activeTab === 'stock_returns') return renderStockReturnCard(item);
+                                if (activeTab === 'material_transfers') return renderTransferCard(item);
                                 return null;
                             })}
                         </div>

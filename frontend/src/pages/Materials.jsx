@@ -177,7 +177,7 @@ const Materials = () => {
     const fetchStockLedger = async () => {
         setIsWarehouseLoading(true);
         try {
-            const res = await inventoryAPI.getLedger();
+            const res = await inventoryAPI.getLedger({ project_name: 'Warehouse' });
             setStockLedger(res.data || []);
         } catch (err) {
             console.error('Failed to fetch stock ledger:', err);
@@ -648,8 +648,8 @@ const Materials = () => {
                                                 <td style={{fontSize:12}}>{(t.items||[]).map(i => `${i.name} x${i.quantity}`).join(', ')}</td>
                                                 <td>
                                                     <span style={{padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700,
-                                                        backgroundColor: t.status==='Pending'?'#FEF3C7':t.status==='Admin Approved'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
-                                                        color: t.status==='Pending'?'#92400E':t.status==='Admin Approved'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
+                                                        backgroundColor: t.status==='Pending'?'#FEF3C7':t.status?.includes('Approved') && t.status!=='Pending'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
+                                                        color: t.status==='Pending'?'#92400E':t.status?.includes('Approved') && t.status!=='Pending'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
                                                     }}>{t.status}</span>
                                                 </td>
                                                 <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
@@ -662,11 +662,11 @@ const Materials = () => {
                                                                 onClick={async () => { const r=window.prompt('Reason?'); if(r!==null){ await inventoryAPI.rejectTransfer(t.id,{reason:r}); fetchMaterialTransfers(); } }}>Reject</button>
                                                         </div>
                                                     )}
-                                                    {t.status === 'Admin Approved' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
+                                                    {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
                                                         <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                             onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>Execute</button>
                                                     )}
-                                                    {t.status === 'Pending' && !isAdmin && <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Admin</span>}
+                                                    {t.status === 'Pending' && !isAdmin && <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Approval</span>}
                                                 </td>
                                             </tr>
                                         ))}
@@ -853,8 +853,8 @@ const Materials = () => {
                                                     <td>{(t.items||[]).map(i => `${i.name} x${i.quantity}`).join(', ')}</td>
                                                     <td>
                                                         <span style={{padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700,
-                                                            backgroundColor: t.status==='Pending'?'#FEF3C7':t.status==='Admin Approved'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
-                                                            color: t.status==='Pending'?'#92400E':t.status==='Admin Approved'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
+                                                            backgroundColor: t.status==='Pending'?'#FEF3C7':t.status?.includes('Approved') && t.status!=='Pending'?'#DBEAFE':t.status==='Completed'?'#D1FAE5':t.status==='Rejected'?'#FEE2E2':'#F3F4F6',
+                                                            color: t.status==='Pending'?'#92400E':t.status?.includes('Approved') && t.status!=='Pending'?'#1E40AF':t.status==='Completed'?'#065F46':t.status==='Rejected'?'#991B1B':'#374151'
                                                         }}>{t.status}</span>
                                                     </td>
                                                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
@@ -871,13 +871,7 @@ const Materials = () => {
                                                                 </button>
                                                             </div>
                                                         )}
-                                                        {t.status === 'Admin Approved' && (user?.role||'').toLowerCase() === 'accountant' && (
-                                                            <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
-                                                                onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
-                                                                Execute
-                                                            </button>
-                                                        )}
-                                                        {t.status === 'Admin Approved' && isAdmin && (
+                                                        {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                                 onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
                                                                 Execute

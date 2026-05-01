@@ -26,12 +26,10 @@ const AccountantTransferModal = ({ isOpen, onClose, transfer, onSuccess }) => {
             setLoadingRates(true);
             const materialNames = itemsList.map(i => i.name);
             const res = await inventoryAPI.checkWarehouseAvailability({ material_names: materialNames });
-            const availability = res.data || [];
+            const availability = res.data || {};
             setItems(prev => prev.map(item => {
-                const found = availability.find(a =>
-                    (a.material_name || a.name || '').toLowerCase() === item.name.toLowerCase()
-                );
-                const lastRate = found?.last_rate || found?.rate || '';
+                const found = availability[item.name] || {};
+                const lastRate = found.last_rate || found.rate || '';
                 const rate = lastRate ? parseFloat(lastRate) : '';
                 return {
                     ...item,

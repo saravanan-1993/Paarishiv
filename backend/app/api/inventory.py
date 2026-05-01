@@ -400,6 +400,11 @@ async def create_return_request(body: dict = Body(...), db = Depends(get_databas
     if not items or not project_name:
         raise HTTPException(status_code=400, detail="Project name and items are required")
 
+    # Prevent duplicate pending return requests for the same project
+    existing = await db.stock_return_requests.find_one({"project_name": project_name, "status": "Pending"})
+    if existing:
+        raise HTTPException(status_code=400, detail="A return request is already pending for this project. Wait for admin approval or cancel the existing request.")
+
     requester = current_user.get("full_name") or current_user.get("username", "")
     doc = {
         "project_name": project_name,
@@ -554,10 +559,12 @@ async def return_stock(ret: StockReturn, db = Depends(get_database)):
     return {"success": True}
 
 @router.get("/ledger")
-async def get_stock_ledger(material_name: Optional[str] = None, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+async def get_stock_ledger(material_name: Optional[str] = None, project_name: Optional[str] = None, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
     if material_name:
         query["material_name"] = material_name
+    if project_name:
+        query["project_name"] = project_name
         
     if current_user.get("role") == "Site Engineer":
         # Bug 5.2 - Check multiple fields for Site Engineer project matching
@@ -704,10 +711,8 @@ def _transfer_helper(r):
 
 @router.get("/transfers/pending")
 async def get_pending_transfers(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Get all transfer requests (not just Pending — includes Admin Approved for accountant)."""
-    requests = await db.material_transfer_requests.find(
-        {"status": {"$in": ["Pending", "Admin Approved", "Approved", "Completed", "Rejected"]}}
-    ).sort("created_at", -1).to_list(200)
+    """Get all transfer requests — all statuses."""
+    requests = await db.material_transfer_requests.find({}).sort("created_at", -1).to_list(200)
     return [_transfer_helper(r) for r in requests]
 
 async def get_lifo_rate(db, material_name, project_name):
@@ -737,10 +742,10 @@ async def get_lifo_rate(db, material_name, project_name):
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Admin approves transfer request — does NOT move stock yet. Accountant executes later."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
     user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can approve transfer requests")
+    if user_role not in allowed_roles and "coordinator" not in user_role:
+        raise HTTPException(status_code=403, detail="Only Admin/GM/Coordinator can approve transfer requests")
 
     oid = validate_object_id(transfer_id, "transfer")
     request = await db.material_transfer_requests.find_one({"_id": oid})
@@ -750,10 +755,12 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
         raise HTTPException(status_code=400, detail="Request already processed")
 
     approver = current_user.get("full_name") or current_user.get("username", "")
+    approver_role = current_user.get("role", "Admin")
+    approval_status = f"{approver_role} Approved"
     await db.material_transfer_requests.update_one(
         {"_id": oid},
         {"$set": {
-            "status": "Admin Approved",
+            "status": approval_status,
             "admin_approved_by": approver,
             "admin_approved_at": datetime.now(),
         }}
@@ -782,8 +789,8 @@ async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depend
     request = await db.material_transfer_requests.find_one({"_id": oid})
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
-    if request.get("status") != "Admin Approved":
-        raise HTTPException(status_code=400, detail="Transfer must be admin-approved before execution")
+    if not request.get("status", "").endswith("Approved"):
+        raise HTTPException(status_code=400, detail="Transfer must be approved before execution")
 
     from_proj = request["from_project"]
     to_proj = request["to_project"]
