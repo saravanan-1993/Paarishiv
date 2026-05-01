@@ -355,7 +355,10 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                             <div>
                                 <CustomSelect
                                     label="Select Vendor*"
-                                    options={vendors.map(v => ({ value: v.name, label: v.name }))}
+                                    options={[
+                                        { value: 'Warehouse', label: 'Warehouse (Internal Stock)' },
+                                        ...vendors.map(v => ({ value: v.name, label: v.name }))
+                                    ]}
                                     value={formData.vendor_name}
                                     onChange={val => setFormData({ ...formData, vendor_name: val })}
                                     placeholder="Choose a vendor..."
@@ -403,6 +406,7 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                 style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '12px' }}
                             >
                                 <option value="">-- Apply vendor to all items --</option>
+                                <option value="Warehouse">Warehouse (Internal Stock)</option>
                                 {vendors.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
                             </select>
                         </div>
@@ -477,6 +481,7 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                                     }}
                                                 >
                                                     <option value="">Select Vendor</option>
+                                                    <option value="Warehouse" style={{ fontWeight: 'bold', color: '#6366F1' }}>Warehouse (Internal Stock)</option>
                                                     {vendors.map(v => (
                                                         <option key={v.name} value={v.name}>{v.name}</option>
                                                     ))}
