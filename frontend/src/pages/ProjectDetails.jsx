@@ -38,7 +38,7 @@ import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, mate
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
-import { hasPermission, hasSubTabAccess, hasFeature } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -648,7 +648,7 @@ const ProjectDetails = () => {
 
                     {/* Quick-action buttons */}
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                        {hasFeature(user, 'create_dpr') && (
+                        {hasPermission(user, 'Projects', 'add') && (
                             <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
                                 <FileText size={16} /> Submit DPR
                             </button>

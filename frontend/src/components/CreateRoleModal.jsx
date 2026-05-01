@@ -36,7 +36,7 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
             const permObj = {};
             initialData.permissions?.forEach(p => {
                 permObj[p.name] = {
-                    actions: p.actions || { view: true, edit: false, delete: false },
+                    actions: { view: false, add: false, edit: false, delete: false, ...p.actions },
                     subTabs: p.subTabs || (SUB_TABS[p.name] ? [...SUB_TABS[p.name]] : [])
                 };
             });
@@ -52,13 +52,13 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
 
     const toggleAction = (moduleName, action) => {
         const currentPerms = permissions[moduleName] || {
-            actions: { view: false, edit: false, delete: false },
+            actions: { view: false, add: false, edit: false, delete: false },
             subTabs: SUB_TABS[moduleName] ? [...SUB_TABS[moduleName]] : []
         };
         const newActions = { ...currentPerms.actions, [action]: !currentPerms.actions[action] };
 
         // If any action is true, the module is effectively "selected"
-        if (!newActions.view && !newActions.edit && !newActions.delete) {
+        if (!newActions.view && !newActions.add && !newActions.edit && !newActions.delete) {
             const newPerms = { ...permissions };
             delete newPerms[moduleName];
             setPermissions(newPerms);
@@ -72,7 +72,7 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
 
     const toggleSubTab = (moduleName, subTab) => {
         const currentPerms = permissions[moduleName] || {
-            actions: { view: true, edit: false, delete: false },
+            actions: { view: true, add: false, edit: false, delete: false },
             subTabs: []
         };
         let newSubTabs = [...currentPerms.subTabs];
@@ -154,8 +154,9 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
                                     <h4 style={{ fontWeight: '700', fontSize: '15px' }}>Module & Sub-Tab Access</h4>
                                     <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Select modules and toggle individual sub-tabs.</p>
                                 </div>
-                                <div style={{ display: 'flex', gap: '30px', marginRight: '16px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
+                                <div style={{ display: 'flex', gap: '20px', marginRight: '16px', fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>
                                     <span style={{ width: '18px', textAlign: 'center' }}>VIEW</span>
+                                    <span style={{ width: '18px', textAlign: 'center' }}>ADD</span>
                                     <span style={{ width: '18px', textAlign: 'center' }}>EDIT</span>
                                     <span style={{ width: '18px', textAlign: 'center' }}>DELETE</span>
                                 </div>
@@ -163,7 +164,7 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {MODULES.map(module => {
-                                    const mPerms = permissions[module.name]?.actions || { view: false, edit: false, delete: false };
+                                    const mPerms = permissions[module.name]?.actions || { view: false, add: false, edit: false, delete: false };
                                     const mSubTabs = permissions[module.name]?.subTabs || [];
                                     const hasAccess = Object.values(mPerms).some(v => v);
                                     const isExpanded = expandedModule === module.name;
@@ -216,25 +217,11 @@ const CreateRoleModal = ({ isOpen, onClose, onRoleCreated, initialData }) => {
                                                     )}
                                                 </div>
 
-                                                <div style={{ display: 'flex', gap: '30px', alignItems: 'center' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={mPerms.view}
-                                                        onChange={() => toggleAction(module.name, 'view')}
-                                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                                    />
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={mPerms.edit}
-                                                        onChange={() => toggleAction(module.name, 'edit')}
-                                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                                    />
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={mPerms.delete}
-                                                        onChange={() => toggleAction(module.name, 'delete')}
-                                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                                    />
+                                                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                                    <input type="checkbox" checked={mPerms.view} onChange={() => toggleAction(module.name, 'view')} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                                                    <input type="checkbox" checked={mPerms.add || false} onChange={() => toggleAction(module.name, 'add')} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                                                    <input type="checkbox" checked={mPerms.edit} onChange={() => toggleAction(module.name, 'edit')} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
+                                                    <input type="checkbox" checked={mPerms.delete} onChange={() => toggleAction(module.name, 'delete')} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
                                                 </div>
                                             </div>
 

@@ -269,8 +269,12 @@ export const hasFeature = (user, featureId) => {
         if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
         return false;
     }
-    // Default to true if features array is missing (for legacy roles), to avoid accidental lockout
-    if (!matchedRole.features) return true;
+    // If features array is missing or empty, fall back to permission check
+    if (!matchedRole.features || matchedRole.features.length === 0) {
+        // Administrator/Super Admin bypass — always allow
+        if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
+        return false;
+    }
     return matchedRole.features.includes(featureId);
 };
 
