@@ -730,6 +730,35 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
         await trigger_workflow_event(project_id, "dpr_dept_approved", current_user, db, f"DPR {dpr_id} department approved")
     elif new_status == "Approved":
         await trigger_workflow_event(project_id, "dpr_approved", current_user, db, f"DPR {dpr_id} final approved")
+        # Deduct used materials from project inventory on final approval
+        try:
+            full_proj = await db.projects.find_one(
+                {"_id": ObjectId(project_id), "dprs.id": dpr_id},
+                {"dprs.$": 1, "name": 1}
+            )
+            if full_proj and full_proj.get("dprs"):
+                dpr_data = full_proj["dprs"][0]
+                proj_name = full_proj.get("name", "")
+                for mat in (dpr_data.get("material_rows") or []):
+                    used = float(mat.get("used") or 0)
+                    mat_name = (mat.get("name") or "").strip()
+                    if used > 0 and mat_name and proj_name:
+                        await db.inventory.update_one(
+                            {"project_name": proj_name, "material_name": mat_name, "stock": {"$gte": used}},
+                            {"$inc": {"stock": -used}}
+                        )
+                        await db.stock_ledger.insert_one({
+                            "material_name": mat_name,
+                            "project_name": proj_name,
+                            "type": "Consumed (DPR)",
+                            "quantity": used,
+                            "direction": "OUT",
+                            "reference": f"DPR {dpr_id}",
+                            "date": datetime.now().isoformat(),
+                            "created_by": user_name
+                        })
+        except Exception as e:
+            print(f"DPR stock deduction error: {e}")
 
     return {"success": True, "new_status": new_status}
 

@@ -5,9 +5,11 @@ Role-based recipient resolution ensures the right people get notified.
 """
 
 import json
+import asyncio
 from datetime import datetime
 from typing import List, Optional
 from database import get_database
+from app.utils.email import send_email
 
 # Event type constants
 EVENT_APPROVAL = "approval"
@@ -204,7 +206,71 @@ async def notify(
                 except Exception:
                     pass  # User offline, notification is in DB
 
+    # Send email to Admin for approval-worthy events
+    if event_type in _EMAIL_EVENTS and "Administrator" in recipients:
+        try:
+            await _send_admin_email(db, title, content, entity_type, project_name)
+        except Exception:
+            pass  # Don't fail notification if email fails
+
     return notifications
+
+
+def _generate_approval_email_html(title: str, content: str, entity_type: str = None, project_name: str = None):
+    """Generate a styled HTML email for approval notifications."""
+    now = datetime.now()
+    entity_label = (entity_type or "item").replace("_", " ").title()
+    project_line = f'<p style="margin: 0 0 8px 0;"><strong>Project:</strong> {project_name}</p>' if project_name else ""
+
+    return f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
+        <div style="background-color: #F59E0B; padding: 20px; text-align: center; color: white;">
+            <h1 style="margin: 0; font-size: 22px;">Approval Required</h1>
+        </div>
+        <div style="padding: 24px;">
+            <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #1E293B;">{title}</h2>
+            <p style="font-size: 15px; color: #475569; line-height: 1.6;">{content}</p>
+            <div style="background-color: #f9fafb; padding: 16px; border-radius: 6px; margin: 20px 0;">
+                <p style="margin: 0 0 8px 0;"><strong>Type:</strong> {entity_label}</p>
+                {project_line}
+                <p style="margin: 0;"><strong>Date:</strong> {now.strftime('%d %b %Y, %I:%M %p')}</p>
+            </div>
+            <p style="font-size: 14px; color: #64748B; margin-top: 20px;">
+                Please login to Civil ERP to review and take action on this request.
+            </p>
+        </div>
+        <div style="background-color: #f8fafc; padding: 15px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee;">
+            &copy; {now.year} Civil ERP Construction Management
+        </div>
+    </div>
+    """
+
+
+async def _send_admin_email(db, title: str, content: str, entity_type: str = None, project_name: str = None):
+    """Send email notification to all Admin users for approval requests."""
+    try:
+        admin_roles = ["Super Admin", "Administrator", "Admin", "Managing Director"]
+        admins = await db.employees.find(
+            {"role": {"$in": admin_roles}, "status": {"$ne": "Inactive"}},
+            {"email": 1, "fullName": 1}
+        ).to_list(50)
+
+        html = _generate_approval_email_html(title, content, entity_type, project_name)
+        subject = f"[Civil ERP] Approval Required: {title}"
+
+        for admin in admins:
+            email = admin.get("email")
+            if email:
+                try:
+                    send_email(email, subject, html, is_html=True)
+                except Exception as e:
+                    print(f"Failed to send approval email to {email}: {e}")
+    except Exception as e:
+        print(f"Admin email notification error: {e}")
+
+
+# Email-worthy event types (triggers email to admin)
+_EMAIL_EVENTS = {EVENT_APPROVAL, EVENT_MATERIAL, EVENT_FINANCE, EVENT_WORKFLOW, EVENT_HR}
 
 
 # ── Convenience helpers for common notification patterns ──
