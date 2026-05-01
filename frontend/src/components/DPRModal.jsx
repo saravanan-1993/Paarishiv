@@ -181,6 +181,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const [masterMaterials, setMasterMaterials] = useState([]);
     const [masterVehicles, setMasterVehicles] = useState([]);
     const [allVendors, setAllVendors] = useState([]);
+    const [projectStock, setProjectStock] = useState({});
     const [photos, setPhotos] = useState([]);
 
     // Derived unique labour roles from contractors' rate cards
@@ -202,16 +203,26 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
             const results = await Promise.allSettled([
                 vendorAPI.getAll(),
                 materialAPI.getAll(),
-                fleetAPI.getVehicles()
+                fleetAPI.getVehicles(),
+                project?.name ? materialAPI.getInventoryByProject(project.name) : Promise.resolve({ data: [] })
             ]);
 
             const contractorRes = results[0].status === 'fulfilled' ? results[0].value : { data: [] };
             const materialRes = results[1].status === 'fulfilled' ? results[1].value : { data: [] };
             const vehicleRes = results[2].status === 'fulfilled' ? results[2].value : { data: [] };
+            const inventoryRes = results[3].status === 'fulfilled' ? results[3].value : { data: [] };
 
             if (results[0].status === 'rejected') console.warn('Failed to fetch vendors for DPR:', results[0].reason);
             if (results[1].status === 'rejected') console.warn('Failed to fetch materials for DPR:', results[1].reason);
             if (results[2].status === 'rejected') console.warn('Failed to fetch vehicles for DPR:', results[2].reason);
+
+            // Build material name → available stock map from project inventory
+            const stockMap = {};
+            (inventoryRes.data || []).forEach(inv => {
+                const name = (inv.material_name || inv.name || '').trim();
+                if (name) stockMap[name.toLowerCase()] = parseFloat(inv.stock || 0);
+            });
+            setProjectStock(stockMap);
 
             // Filter for labour contractors (case-insensitive)
             const labourContractors = (contractorRes.data || []).filter(v => {
@@ -307,6 +318,13 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
             setRows(prev => {
                 const updated = [...prev];
                 updated[index] = { ...updated[index], [field]: value };
+                // Auto-fill opening stock from project inventory when material is selected
+                if (type === 'material' && field === 'name' && value) {
+                    const stock = projectStock[value.toLowerCase()];
+                    if (stock !== undefined) {
+                        updated[index].opening = stock;
+                    }
+                }
                 return updated;
             });
         }
@@ -478,7 +496,6 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                         <TabButton id="work" label="Work" icon={ClipboardList} />
                         <TabButton id="labour" label="Labour" icon={HardHat} />
                         <TabButton id="material" label="Materials" icon={Package} />
-                        <TabButton id="equipment" label="Machinery" icon={Truck} />
                         <TabButton id="next_day" label="Next Day" icon={Plus} />
                         <TabButton id="contractor" label="Contractors" icon={Building2} />
                         <TabButton id="checklist" label="Checklist" icon={CheckSquare} />
@@ -735,45 +752,6 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                     </div>
                                 </div>
 
-                                {/* Equipment */}
-                                <div style={{ background: 'white', padding: '24px', paddingBottom: '120px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', position: 'relative' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-                                        <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#1E293B' }}>Next Day Equipment Requests</h3>
-                                        <button className="btn-modern outline" onClick={() => addRow('nd_equipment')}><Plus size={16} /> Add Equipment</button>
-                                    </div>
-                                    <div className="mobile-table-scroll">
-                                        <table className="modern-table">
-                                            <thead><tr>
-                                                <th>Equipment Type</th>
-                                                <th>Note / Reason</th>
-                                                <th style={{ width: '40px' }}></th>
-                                            </tr></thead>
-                                            <tbody>{nextDayEquipment.map((row, i) => (
-                                                <tr key={i}>
-                                                    <td data-label="Equipment Type">
-                                                        <CustomSelect
-                                                            options={[
-                                                                { value: '', label: 'Select Equipment' },
-                                                                ...masterVehicles.map(v => ({
-                                                                    value: v.name || v.vehicle_name || v.registrationNo || `${v.make || ''} ${v.model || ''}`.trim(),
-                                                                    label: v.name || v.vehicle_name || v.registrationNo || `${v.make || ''} ${v.model || ''}`.trim()
-                                                                }))
-                                                            ]}
-                                                            value={row.equipment}
-                                                            onChange={val => updateRow('nd_equipment', i, 'equipment', val)}
-                                                            placeholder="Select Equipment"
-                                                            width="full"
-                                                            searchable={true}
-                                                            style={{ border: 'none', background: 'transparent' }}
-                                                        />
-                                                    </td>
-                                                    <td data-label="Note / Reason"><input value={row.note} onChange={e => updateRow('nd_equipment', i, 'note', e.target.value)} placeholder="Reason for request..." className="table-input-clean" /></td>
-                                                    <td className="action-cell"><button onClick={() => removeRow('nd_equipment', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
-                                                </tr>
-                                            ))}</tbody>
-                                        </table>
-                                    </div>
-                                </div>
                             </div>
                         )}
 
@@ -966,10 +944,9 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                     <table className="modern-table">
                                         <thead><tr>
                                             <th>Material</th>
-                                            <th style={{ width: '120px' }}>Opening Stock</th>
-                                            <th style={{ width: '120px' }}>Received</th>
-                                            <th style={{ width: '120px' }}>Used / Consumed</th>
-                                            <th style={{ width: '120px' }}>Closing</th>
+                                            <th style={{ width: '120px' }}>Available Stock</th>
+                                            <th style={{ width: '120px' }}>Used Stock</th>
+                                            <th style={{ width: '120px' }}>Balance Stock</th>
                                             <th style={{ width: '40px' }}></th>
                                         </tr></thead>
                                         <tbody>{materialRows.map((row, i) => (
@@ -988,11 +965,10 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                         style={{ border: 'none', background: 'transparent' }}
                                                     />
                                                 </td>
-                                                <td data-label="Opening"><input type="number" min="0" value={row.opening} onChange={e => updateRow('material', i, 'opening', e.target.value)} placeholder="0" className="table-input-clean" /></td>
-                                                <td data-label="Received"><input type="number" min="0" value={row.received} onChange={e => updateRow('material', i, 'received', e.target.value)} placeholder="0" className="table-input-clean" /></td>
-                                                <td data-label="Used"><input type="number" min="0" value={row.used} onChange={e => updateRow('material', i, 'used', e.target.value)} placeholder="0" className="table-input-clean" /></td>
-                                                <td data-label="Closing" style={{ fontWeight: '700', color: '#1E293B', textAlign: 'center' }}>
-                                                    {Math.max(0, (parseFloat(row.opening || 0) + parseFloat(row.received || 0)) - parseFloat(row.used || 0))}
+                                                <td data-label="Available Stock"><input type="number" min="0" value={row.opening} readOnly style={{ backgroundColor: '#f1f5f9', cursor: 'default' }} placeholder="0" className="table-input-clean" title="Auto-filled from project inventory" /></td>
+                                                <td data-label="Used Stock"><input type="number" min="0" value={row.used} onChange={e => updateRow('material', i, 'used', e.target.value)} placeholder="0" className="table-input-clean" /></td>
+                                                <td data-label="Balance Stock" style={{ fontWeight: '700', color: '#1E293B', textAlign: 'center' }}>
+                                                    {Math.max(0, parseFloat(row.opening || 0) - parseFloat(row.used || 0))}
                                                 </td>
                                                 <td className="action-cell"><button onClick={() => removeRow('material', i)} className="action-btn delete"><Trash2 size={16} /></button></td>
                                             </tr>

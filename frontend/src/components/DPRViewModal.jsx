@@ -260,14 +260,13 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
         if (dpr.material_rows?.length > 0) {
             autoTable(doc, {
                 startY: finalY + 10,
-                head: [['Material Name', 'UOM', 'Opening', 'Received', 'Used', 'Closing']],
+                head: [['Material Name', 'UOM', 'Available Stock', 'Used Stock', 'Balance Stock']],
                 body: dpr.material_rows.map(r => [
                     r.name,
                     r.uom || r.unit || '-',
                     r.opening,
-                    r.received,
                     r.used,
-                    (Number(r.opening || 0) + Number(r.received || 0)) - Number(r.used || 0)
+                    Number(r.opening || 0) - Number(r.used || 0)
                 ]),
                 theme: 'grid',
                 headStyles: { fillColor: [30, 58, 95] }
@@ -603,22 +602,20 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
                                 <thead style={{ backgroundColor: '#f1f5f9' }}>
                                     <tr>
                                         <th style={{ textAlign: 'left', padding: '10px', fontSize: '12px' }}>Material</th>
-                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Opening</th>
-                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Received</th>
-                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Used</th>
-                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Closing</th>
+                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Available Stock</th>
+                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Used Stock</th>
+                                        <th style={{ textAlign: 'center', padding: '10px', fontSize: '12px' }}>Balance Stock</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {dpr.material_rows?.map((row, i) => {
-                                        const closing = (Number(row.opening) + Number(row.received)) - Number(row.used);
+                                        const balance = Number(row.opening) - Number(row.used);
                                         return (
                                             <tr key={i}>
                                                 <td data-label="Material" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', fontWeight: '600', fontSize: '13px' }}>{row.name}</td>
-                                                <td data-label="Opening" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{row.opening}</td>
-                                                <td data-label="Received" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#10B981' }}>{row.received}</td>
-                                                <td data-label="Used" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#EF4444' }}>{row.used}</td>
-                                                <td data-label="Closing" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', fontWeight: '700', color: 'var(--primary)' }}>{closing}</td>
+                                                <td data-label="Available Stock" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>{row.opening}</td>
+                                                <td data-label="Used Stock" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#EF4444' }}>{row.used}</td>
+                                                <td data-label="Balance Stock" style={{ padding: '10px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', fontWeight: '700', color: 'var(--primary)' }}>{balance}</td>
                                             </tr>
                                         );
                                     })}
