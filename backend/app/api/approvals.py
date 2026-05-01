@@ -19,7 +19,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "manpower": [],
         "dprs": [],
         "subcontractor_bills": [],
-        "labour_payments": []
+        "labour_payments": [],
+        "stock_returns": []
     }
     
     query = {}
@@ -159,6 +160,18 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             lp_entry["_id"] = str(lp["_id"])
             resolve_names(lp_entry)
             results["labour_payments"].append(lp_entry)
+
+    # Stock return requests
+    sr_query = {"status": "Pending"} if status.lower() != "all" else {}
+    if is_admin_user or status.lower() == "all":
+        sr_records = await db.stock_return_requests.find(sr_query).sort("created_at", -1).to_list(100)
+        for sr in sr_records:
+            sr["_id"] = str(sr["_id"])
+            for field in ["created_at", "approved_at"]:
+                if field in sr and hasattr(sr[field], "isoformat"):
+                    sr[field] = sr[field].isoformat()
+            resolve_names(sr)
+            results["stock_returns"].append(sr)
 
     return results
 
@@ -332,6 +345,30 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         project_name=lp_doc.get("project_name"), priority="high")
                 except Exception:
                     pass
+        elif type == "stock_returns":
+            from app.api.inventory import validate_object_id as vi
+            sr_oid = vi(obj_id, "stock return")
+            if status == "Approved":
+                # Import and call the approve function logic
+                sr = await db.stock_return_requests.find_one({"_id": sr_oid})
+                if sr and sr.get("status") == "Pending":
+                    # Move stock: site → warehouse
+                    for item in sr.get("items", []):
+                        qty = float(item.get("quantity", 0))
+                        await db.inventory.update_one(
+                            {"project_name": sr["project_name"], "material_name": item["name"], "stock": {"$gte": qty}},
+                            {"$inc": {"stock": -qty}}
+                        )
+                        await db.warehouse_inventory.update_one(
+                            {"material_name": item["name"]}, {"$inc": {"stock": qty}}, upsert=True
+                        )
+                        now = datetime.now()
+                        ref = f"RET-{obj_id[-6:].upper()}"
+                        await db.stock_ledger.insert_one({"date": now, "material_name": item["name"], "project_name": sr["project_name"], "type": "Stock Return", "ref": ref, "in_qty": 0, "out_qty": qty, "created_at": now})
+                        await db.stock_ledger.insert_one({"date": now, "material_name": item["name"], "project_name": "Warehouse", "type": "Stock Return", "ref": ref, "in_qty": qty, "out_qty": 0, "created_at": now})
+                    await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Approved", "approved_by": update_fields["approvedBy"], "approved_at": datetime.now()}})
+            else:
+                await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Rejected", "rejection_reason": reason}})
         elif type == "dprs":
             # Bug 26 - Multi-stage DPR approval workflow
             # Workflow: Pending → Coordinator Approved → Dept Approved → Approved

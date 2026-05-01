@@ -390,6 +390,124 @@ class StockReturn(BaseModel):
     project_name: str
     items: List[dict] # [{"name": "Switch", "quantity": 10, "unit": "Nos"}]
 
+# ── Return to Warehouse Request Flow ──────────────────────────────────────────
+
+@router.post("/return-requests")
+async def create_return_request(body: dict = Body(...), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Site Engineer requests to return materials from site to warehouse."""
+    items = body.get("items", [])
+    project_name = body.get("project_name", "")
+    if not items or not project_name:
+        raise HTTPException(status_code=400, detail="Project name and items are required")
+
+    requester = current_user.get("full_name") or current_user.get("username", "")
+    doc = {
+        "project_name": project_name,
+        "items": items,
+        "notes": body.get("notes", ""),
+        "status": "Pending",
+        "requested_by": requester,
+        "engineer_id": current_user.get("username", ""),
+        "created_at": datetime.now(),
+    }
+    result = await db.stock_return_requests.insert_one(doc)
+
+    try:
+        items_str = ", ".join(f"{i['name']} x{i['quantity']}" for i in items[:3])
+        await notify(db, requester, ["Administrator", "General Manager"], EVENT_MATERIAL,
+            "Stock Return Request",
+            f"Return requested from {project_name}: {items_str}. Awaiting approval.",
+            entity_type="stock_return", entity_id=str(result.inserted_id),
+            project_name=project_name, priority="high")
+    except Exception:
+        pass
+
+    return {"id": str(result.inserted_id), "success": True}
+
+
+@router.get("/return-requests")
+async def get_return_requests(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    requests = await db.stock_return_requests.find({}).sort("created_at", -1).to_list(200)
+    return [{
+        "id": str(r["_id"]),
+        **{k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in r.items() if k != "_id"}
+    } for r in requests]
+
+
+@router.put("/return-requests/{req_id}/approve")
+async def approve_return_request(req_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Admin approves return — stock moves from site to warehouse."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can approve return requests")
+
+    oid = validate_object_id(req_id, "return request")
+    req = await db.stock_return_requests.find_one({"_id": oid})
+    if not req:
+        raise HTTPException(status_code=404, detail="Return request not found")
+    if req.get("status") != "Pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+
+    project_name = req["project_name"]
+    for item in req.get("items", []):
+        qty = float(item.get("quantity", 0))
+        # Deduct from site inventory (atomic)
+        deduct = await db.inventory.update_one(
+            {"project_name": project_name, "material_name": item["name"], "stock": {"$gte": qty}},
+            {"$inc": {"stock": -qty}}
+        )
+        if deduct.matched_count == 0:
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for {item['name']} at {project_name}")
+
+        # Add to warehouse
+        await db.warehouse_inventory.update_one(
+            {"material_name": item["name"]},
+            {"$inc": {"stock": qty}},
+            upsert=True
+        )
+
+        # Stock ledger entries
+        now = datetime.now()
+        ref = f"RET-{req_id[-6:].upper()}"
+        await db.stock_ledger.insert_one({
+            "date": now, "material_name": item["name"], "project_name": project_name,
+            "type": "Stock Return", "ref": ref, "in_qty": 0, "out_qty": qty, "created_at": now
+        })
+        await db.stock_ledger.insert_one({
+            "date": now, "material_name": item["name"], "project_name": "Warehouse",
+            "type": "Stock Return", "ref": ref, "in_qty": qty, "out_qty": 0, "created_at": now
+        })
+
+    approver = current_user.get("full_name") or current_user.get("username", "")
+    await db.stock_return_requests.update_one(
+        {"_id": oid},
+        {"$set": {"status": "Approved", "approved_by": approver, "approved_at": datetime.now()}}
+    )
+
+    try:
+        engineer = req.get("requested_by") or req.get("engineer_id", "")
+        await notify(db, approver, [engineer, "Accountant"], EVENT_MATERIAL,
+            "Stock Return Approved",
+            f"Return from {project_name} approved by {approver}. Stock moved to warehouse.",
+            entity_type="stock_return", entity_id=req_id, project_name=project_name, priority="normal")
+    except Exception:
+        pass
+
+    return {"success": True, "message": "Return approved — stock moved to warehouse"}
+
+
+@router.put("/return-requests/{req_id}/reject")
+async def reject_return_request(req_id: str, body: dict = Body(default={}), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    oid = validate_object_id(req_id, "return request")
+    reason = body.get("reason", "")
+    rejector = current_user.get("full_name") or current_user.get("username", "")
+    await db.stock_return_requests.update_one(
+        {"_id": oid}, {"$set": {"status": "Rejected", "rejection_reason": reason, "processed_by": rejector}}
+    )
+    return {"success": True}
+
+
 @router.post("/return")
 async def return_stock(ret: StockReturn, db = Depends(get_database)):
     for item in ret.items:

@@ -83,10 +83,8 @@ const menuItems = [
         label: 'Inventory Management',
         path: '/materials',
         subItems: [
-            { label: 'Materials', tabId: 'Materials' },
-            { label: 'Warehouse', tabId: 'Warehouse' },
-            { label: 'Coordination', tabId: 'Coordination' },
-            { label: 'Machinery', tabId: 'Machinery' },
+            { label: 'Construction Materials', tabId: 'Materials' },
+            { label: 'Warehouse & Stock Control', tabId: 'Warehouse' },
         ]
     },
     {

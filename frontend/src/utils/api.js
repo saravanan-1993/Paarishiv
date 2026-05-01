@@ -252,6 +252,10 @@ export const inventoryAPI = {
     approveTransfer: (id) => api.put(`/inventory/transfers/${id}/approve`),
     executeTransfer: (id, data) => api.put(`/inventory/transfers/${id}/execute`, data),
     rejectTransfer: (id, data) => api.put(`/inventory/transfers/${id}/reject`, data),
+    createReturnRequest: (data) => api.post('/inventory/return-requests', data),
+    getReturnRequests: () => api.get('/inventory/return-requests'),
+    approveReturnRequest: (id) => api.put(`/inventory/return-requests/${id}/approve`),
+    rejectReturnRequest: (id, data) => api.put(`/inventory/return-requests/${id}/reject`, data),
     getConsolidated: () => api.get('/inventory/consolidated'),
     consolidateRequests: (data) => api.post('/inventory/requests/consolidate', data),
     // Warehouse-aware PO flow

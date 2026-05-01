@@ -23,7 +23,8 @@ import {
     Bell,
     Settings,
     Activity,
-    Package
+    Package,
+    ArrowUpFromLine
 } from 'lucide-react';
 import WorkflowTracking from '../components/WorkflowTracking';
 import AddTaskModal from '../components/AddTaskModal';
@@ -33,7 +34,7 @@ import DPRModal from '../components/DPRModal';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import EditProjectModal from '../components/EditProjectModal';
 import { useAuth } from '../context/AuthContext';
-import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, materialAPI } from '../utils/api';
+import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, materialAPI, inventoryAPI } from '../utils/api';
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
@@ -407,6 +408,7 @@ const ProjectDetails = () => {
     const [editingLabourRecord, setEditingLabourRecord] = useState(null);
     const [labourSummary, setLabourSummary] = useState(null);
     const [isUrgentMaterialOpen, setIsUrgentMaterialOpen] = useState(false);
+    const [isReturnWarehouseOpen, setIsReturnWarehouseOpen] = useState(false);
     const [siteMaterials, setSiteMaterials] = useState([]);
     const [siteMaterialsLoading, setSiteMaterialsLoading] = useState(false);
 
@@ -1214,11 +1216,16 @@ const ProjectDetails = () => {
                 {/* Site Materials Tab */}
                 {activeTab === 'Site Materials' && (
                     <div className="card animate-fade-in">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                             <div>
                                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Site Materials</h2>
                                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Materials currently at this project site</p>
                             </div>
+                            {canEditProjects && siteMaterials.length > 0 && (
+                                <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <ArrowUpFromLine size={16} /> Return to Warehouse
+                                </button>
+                            )}
                         </div>
                         {siteMaterialsLoading ? (
                             <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
@@ -1370,6 +1377,65 @@ const ProjectDetails = () => {
                 onSuccess={() => setIsUrgentMaterialOpen(false)}
                 project={project}
             />
+            {/* Return to Warehouse Modal */}
+            {isReturnWarehouseOpen && (
+                <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setIsReturnWarehouseOpen(false); }}>
+                    <div className="card animate-fade-in" style={{ width: '95%', maxWidth: 650, maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                        <div style={{ padding: '18px 22px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h3 style={{ fontSize: 17, fontWeight: 800 }}>Return Materials to Warehouse</h3>
+                                <p style={{ fontSize: 12, color: '#64748B' }}>{project?.name} — select materials and quantities</p>
+                            </div>
+                            <button onClick={() => setIsReturnWarehouseOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', fontSize: 20 }}>&times;</button>
+                        </div>
+                        <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                <thead>
+                                    <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                        <th style={{ padding: 10, textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Material</th>
+                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Available</th>
+                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Return Qty</th>
+                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Unit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {siteMaterials.map((m, i) => (
+                                        <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                            <td style={{ padding: 10, fontWeight: 600 }}>{m.material_name}</td>
+                                            <td style={{ padding: 10, textAlign: 'center', fontWeight: 700 }}>{m.stock}</td>
+                                            <td style={{ padding: 10, textAlign: 'center' }}>
+                                                <input type="number" min="0" max={m.stock} defaultValue={0} id={`return-qty-${i}`}
+                                                    style={{ width: 70, padding: 6, borderRadius: 6, border: '1px solid #E2E8F0', textAlign: 'center', fontSize: 13 }} />
+                                            </td>
+                                            <td style={{ padding: 10, textAlign: 'center', color: '#64748B' }}>{m.unit || 'Nos'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style={{ padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                            <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(false)}>Cancel</button>
+                            <button className="btn btn-primary" onClick={async () => {
+                                const items = siteMaterials.map((m, i) => {
+                                    const qty = parseFloat(document.getElementById(`return-qty-${i}`)?.value) || 0;
+                                    return qty > 0 ? { name: m.material_name, quantity: qty, unit: m.unit || 'Nos' } : null;
+                                }).filter(Boolean);
+                                if (!items.length) { alert('Select at least one material to return'); return; }
+                                try {
+                                    await inventoryAPI.createReturnRequest({ project_name: project.name, items, notes: '' });
+                                    alert('Return request submitted for admin approval');
+                                    setIsReturnWarehouseOpen(false);
+                                    loadSiteMaterials();
+                                } catch (err) {
+                                    alert(err.response?.data?.detail || 'Failed to submit return request');
+                                }
+                            }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <ArrowUpFromLine size={16} /> Submit Return Request
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <LabourAttendanceModal
                 isOpen={isLabourModalOpen}
                 onClose={() => { setIsLabourModalOpen(false); setEditingLabourRecord(null); }}
