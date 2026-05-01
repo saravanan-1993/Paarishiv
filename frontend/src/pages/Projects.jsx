@@ -8,7 +8,7 @@ import CreateProjectModal from '../components/CreateProjectModal';
 import Pagination from '../components/Pagination';
 import { useAuth } from '../context/AuthContext';
 import { projectAPI } from '../utils/api';
-import { hasPermission, hasFeature } from '../utils/rbac';
+import { hasPermission } from '../utils/rbac';
 
 // Helper: format budget number → "₹2.5 Cr" or "₹85 L"
 const formatBudget = (amount) => {
@@ -105,7 +105,7 @@ const Projects = () => {
                         <button className="btn btn-outline" onClick={fetchProjects} title="Refresh">
                             <RefreshCw size={16} />
                         </button>
-                        {hasFeature(user, 'add_project') && (
+                        {hasPermission(user, 'Projects', 'add') && (
                             <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
                                 <Plus size={18} /> Create New Project
                             </button>
@@ -204,7 +204,7 @@ const Projects = () => {
                         <p style={{ marginBottom: '24px' }}>
                             {searchTerm ? 'Try a different search term.' : 'Click "Create New Project" to get started.'}
                         </p>
-                        {!searchTerm && hasFeature(user, 'add_project') && (
+                        {!searchTerm && hasPermission(user, 'Projects', 'add') && (
                             <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
                                 <Plus size={18} /> Create First Project
                             </button>
