@@ -618,13 +618,28 @@ const Fleet = () => {
                             });
                             const reportData = (reportStartDate || reportEndDate) ? Object.values(vehicleSummary) : (stats.vehicleStats || []);
 
+                            // Totals for summary row
+                            const totalCredit = reportData.reduce((s, v) => s + (v.revenue || 0), 0);
+                            const totalDebit = reportData.reduce((s, v) => s + (v.expense || 0), 0);
+                            const totalProfit = totalCredit - totalDebit;
+                            const totalTrips = reportData.reduce((s, v) => s + (v.trips || 0), 0);
+
                             const handleExportCSV = () => {
                                 const dateLabel = reportStartDate || reportEndDate ? `${reportStartDate || 'Start'} to ${reportEndDate || 'End'}` : 'All Time';
-                                let csv = `Fleet Performance Report - ${dateLabel}\n`;
-                                csv += 'Vehicle,Trips,Revenue (₹),Expense (₹),Net Profit (₹),Efficiency %\n';
+                                let csv = `Fleet Performance Report - ${dateLabel}\n\n`;
+                                csv += 'Vehicle Summary\n';
+                                csv += 'Vehicle,Trips,Credit/Revenue (₹),Debit/Expense (₹),Net Profit (₹),Efficiency %\n';
                                 reportData.forEach(v => {
                                     const eff = v.revenue > 0 ? ((v.profit / v.revenue) * 100).toFixed(1) : '0';
                                     csv += `${v.vehicle},${v.trips},${v.revenue},${v.expense},${v.profit},${eff}%\n`;
+                                });
+                                csv += `TOTAL,${totalTrips},${totalCredit},${totalDebit},${totalProfit},${totalCredit > 0 ? ((totalProfit / totalCredit) * 100).toFixed(1) : '0'}%\n`;
+                                csv += '\nTrip Details\n';
+                                csv += 'Date,Trip ID,Vehicle,Driver,Type,From,To,Load,Revenue (₹),Expense (₹),Profit (₹),Status,Payment\n';
+                                filteredTrips.sort((a, b) => new Date(b.date || b.createdAt || b.created_at) - new Date(a.date || a.createdAt || a.created_at)).forEach(t => {
+                                    const d = t.date || t.createdAt || t.created_at;
+                                    const dt = d ? new Date(d).toLocaleDateString('en-IN') : '—';
+                                    csv += `${dt},${t.tripId || '—'},${t.vehicleNumber || '—'},${t.driverName || '—'},${t.tripType || '—'},"${t.fromLocation || '—'}","${t.toLocation || '—'}",${t.loadType || '—'},${t.totalRevenue || 0},${t.totalExpense || 0},${(t.totalRevenue || 0) - (t.totalExpense || 0)},${t.status || '—'},${t.paymentStatus || '—'}\n`;
                                 });
                                 const blob = new Blob([csv], { type: 'text/csv' });
                                 const url = URL.createObjectURL(blob);
@@ -635,7 +650,7 @@ const Fleet = () => {
                                 URL.revokeObjectURL(url);
                             };
 
-                            return (
+                            return (<>
                             <div className="animate-fade-in card">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                                     <div>
@@ -686,9 +701,124 @@ const Fleet = () => {
                                             <tr><td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>No data for selected period</td></tr>
                                         )}
                                     </tbody>
+                                    {reportData.length > 0 && (
+                                        <tfoot>
+                                            <tr style={{ backgroundColor: '#F1F5F9', fontWeight: '800', borderTop: '2px solid var(--border)' }}>
+                                                <td colSpan={2} style={{ fontSize: '14px' }}>TOTAL</td>
+                                                <td style={{ fontSize: '14px' }}>{totalTrips}</td>
+                                                <td style={{ fontSize: '14px', color: '#10B981' }}>₹{totalCredit.toLocaleString()}</td>
+                                                <td style={{ fontSize: '14px', color: '#EF4444' }}>₹{totalDebit.toLocaleString()}</td>
+                                                <td style={{ fontSize: '14px', fontWeight: '900', color: totalProfit >= 0 ? '#10B981' : '#EF4444' }}>
+                                                    ₹{totalProfit.toLocaleString()}
+                                                </td>
+                                                <td style={{ fontSize: '14px', fontWeight: '700' }}>
+                                                    {totalCredit > 0 ? ((totalProfit / totalCredit) * 100).toFixed(1) + '%' : '0%'}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
                                 </table>
+
+                                {/* Summary Cards */}
+                                {reportData.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '16px', marginTop: '20px', flexWrap: 'wrap' }}>
+                                        <div style={{ flex: 1, minWidth: '180px', padding: '16px 20px', borderRadius: '12px', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                                            <p style={{ fontSize: '12px', fontWeight: '700', color: '#15803D', textTransform: 'uppercase', marginBottom: '4px' }}>Total Credit (Revenue)</p>
+                                            <p style={{ fontSize: '22px', fontWeight: '800', color: '#166534' }}>₹{totalCredit.toLocaleString()}</p>
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: '180px', padding: '16px 20px', borderRadius: '12px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA' }}>
+                                            <p style={{ fontSize: '12px', fontWeight: '700', color: '#DC2626', textTransform: 'uppercase', marginBottom: '4px' }}>Total Debit (Expense)</p>
+                                            <p style={{ fontSize: '22px', fontWeight: '800', color: '#991B1B' }}>₹{totalDebit.toLocaleString()}</p>
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: '180px', padding: '16px 20px', borderRadius: '12px', backgroundColor: totalProfit >= 0 ? '#EFF6FF' : '#FEF2F2', border: `1px solid ${totalProfit >= 0 ? '#BFDBFE' : '#FECACA'}` }}>
+                                            <p style={{ fontSize: '12px', fontWeight: '700', color: totalProfit >= 0 ? '#1D4ED8' : '#DC2626', textTransform: 'uppercase', marginBottom: '4px' }}>Net Profit / Loss</p>
+                                            <p style={{ fontSize: '22px', fontWeight: '800', color: totalProfit >= 0 ? '#1E40AF' : '#991B1B' }}>₹{totalProfit.toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            );
+
+                            {/* Trip Detail Report */}
+                            {filteredTrips.length > 0 && (
+                            <div className="card" style={{ marginTop: '24px' }}>
+                                <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Trip Detail Report</h3>
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>Individual trip-wise breakdown for tracking and analysis</p>
+                                <div style={{ overflowX: 'auto' }}>
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Trip ID</th>
+                                            <th>Vehicle</th>
+                                            <th>Driver</th>
+                                            <th>Type</th>
+                                            <th>From → To</th>
+                                            <th>Load</th>
+                                            <th style={{ textAlign: 'right' }}>Credit (₹)</th>
+                                            <th style={{ textAlign: 'right' }}>Debit (₹)</th>
+                                            <th style={{ textAlign: 'right' }}>Profit (₹)</th>
+                                            <th>Status</th>
+                                            <th>Payment</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredTrips
+                                            .sort((a, b) => new Date(b.date || b.createdAt || b.created_at) - new Date(a.date || a.createdAt || a.created_at))
+                                            .map((t, i) => {
+                                            const tripDate = t.date || t.createdAt || t.created_at;
+                                            const revenue = t.totalRevenue || 0;
+                                            const expense = t.totalExpense || 0;
+                                            const profit = revenue - expense;
+                                            return (
+                                            <tr key={t._id || t.id || i}>
+                                                <td style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                                    {tripDate ? new Date(tripDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                                </td>
+                                                <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{t.tripId || '—'}</td>
+                                                <td style={{ fontWeight: '700', fontSize: '13px' }}>{t.vehicleNumber || '—'}</td>
+                                                <td style={{ fontSize: '13px' }}>{t.driverName || '—'}</td>
+                                                <td>
+                                                    <span className={`badge ${t.tripType === 'Project Trip' ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
+                                                        {t.tripType === 'Project Trip' ? t.projectName || 'Project' : t.customerName || 'Private'}
+                                                    </span>
+                                                </td>
+                                                <td style={{ fontSize: '13px', maxWidth: '200px' }}>
+                                                    {t.fromLocation || '—'} → {t.toLocation || '—'}
+                                                </td>
+                                                <td style={{ fontSize: '13px' }}>{t.loadType || '—'}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: '700', color: '#10B981' }}>₹{revenue.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: '700', color: '#EF4444' }}>₹{expense.toLocaleString()}</td>
+                                                <td style={{ textAlign: 'right', fontWeight: '800', color: profit >= 0 ? '#10B981' : '#EF4444' }}>
+                                                    ₹{profit.toLocaleString()}
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${t.status === 'Closed' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
+                                                        {t.status || 'Open'}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${t.paymentStatus === 'Paid' ? 'badge-success' : t.paymentStatus === 'Partial' ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
+                                                        {t.paymentStatus || 'Pending'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ backgroundColor: '#F1F5F9', fontWeight: '800', borderTop: '2px solid var(--border)' }}>
+                                            <td colSpan={7} style={{ fontSize: '14px' }}>TOTAL ({filteredTrips.length} trips)</td>
+                                            <td style={{ textAlign: 'right', fontSize: '14px', color: '#10B981' }}>₹{totalCredit.toLocaleString()}</td>
+                                            <td style={{ textAlign: 'right', fontSize: '14px', color: '#EF4444' }}>₹{totalDebit.toLocaleString()}</td>
+                                            <td style={{ textAlign: 'right', fontSize: '14px', fontWeight: '900', color: totalProfit >= 0 ? '#10B981' : '#EF4444' }}>₹{totalProfit.toLocaleString()}</td>
+                                            <td colSpan={2}></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                                </div>
+                            </div>
+                            )}
+                            </>);
                         })()}
                     </>
                 )}

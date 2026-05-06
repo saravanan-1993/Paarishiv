@@ -66,7 +66,8 @@ const Approvals = () => {
         subcontractor_bills: [],
         labour_payments: [],
         stock_returns: [],
-        material_transfers: []
+        material_transfers: [],
+        payment_requests: []
     });
 
     const fetchData = async () => {

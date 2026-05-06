@@ -139,16 +139,19 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 mark_as_paid: !isPending && (paymentType === 'Full' || (Math.abs(remainingBalance - paymentAmountToSend) < 0.01)),
                 items: items,
                 total_amount: totalAmount,
+                payment_type: paymentType,
                 status: isPending ? 'Pending' : 'Paid'
             };
 
-            await financeAPI.createExpense(payload);
-            alert(isPending ? 'Invoice recorded successfully (payment pending).' : 'Invoice recorded and payment processed successfully!');
+            await financeAPI.createPaymentRequest(payload);
+            alert(isPending
+                ? 'Invoice recorded and sent for admin approval.'
+                : 'Payment request submitted for admin approval. Payment will be processed after approval.');
             onPaymentProcessed?.();
             onClose();
         } catch (err) {
-            console.error('Payment error:', err);
-            alert(`Failed to process: ${err.response?.data?.detail || err.message}`);
+            console.error('Payment request error:', err);
+            alert(`Failed to submit: ${err.response?.data?.detail || err.message}`);
         } finally {
             setLoading(false);
         }
@@ -383,7 +386,7 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
                     <button className="btn btn-outline" onClick={onClose} style={{ padding: '8px 20px' }}>Cancel</button>
                     <button className="btn btn-primary" onClick={handleProcess} style={{ padding: '10px 32px' }} disabled={loading}>
-                        {loading ? 'Processing...' : <><CheckCircle2 size={18} /> {paymentType === 'Pending' ? 'Record Invoice' : 'Record & Pay'}</>}
+                        {loading ? 'Submitting...' : <><CheckCircle2 size={18} /> {paymentType === 'Pending' ? 'Submit for Approval' : 'Submit for Approval'}</>}
                     </button>
                 </div>
             </div>

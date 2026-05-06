@@ -65,19 +65,56 @@ const PaymentHistoryModal = ({ isOpen, onClose, invoice }) => {
                     </button>
                 </div>
 
-                {/* Items Summary */}
-                <div style={{ padding: '12px 24px', backgroundColor: '#F8FAFC', borderBottom: '1px solid var(--border)' }}>
-                    <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Items Received in this GRN:</p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {invoice.items?.map((item, idx) => (
-                            <div key={idx} style={{ padding: '4px 10px', backgroundColor: 'white', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px' }}>
-                                <span style={{ fontWeight: '600' }}>{item.name}</span>: {item.received_qty} {item.unit}
-                            </div>
-                        ))}
-                        {(!invoice.items || invoice.items.length === 0) && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No item details available</span>
-                        )}
-                    </div>
+                {/* Items Details */}
+                <div style={{ padding: '16px 24px', backgroundColor: '#F8FAFC', borderBottom: '1px solid var(--border)' }}>
+                    <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase' }}>Items Received in this GRN:</p>
+                    {invoice.items && invoice.items.length > 0 ? (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                                <thead>
+                                    <tr style={{ backgroundColor: '#E2E8F0' }}>
+                                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>#</th>
+                                        <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>Material</th>
+                                        <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>Qty</th>
+                                        <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>Unit</th>
+                                        <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>Rate (₹)</th>
+                                        <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase', color: '#475569' }}>Amount (₹)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invoice.items.map((item, idx) => {
+                                        const qty = item.received_qty || item.qty || 0;
+                                        const rate = item.price || item.rate || 0;
+                                        const amount = item.amount || (qty * rate);
+                                        return (
+                                            <tr key={idx} style={{ borderBottom: '1px solid #E2E8F0', backgroundColor: idx % 2 === 0 ? 'white' : '#F8FAFC' }}>
+                                                <td style={{ padding: '8px 10px', color: '#64748B' }}>{idx + 1}</td>
+                                                <td style={{ padding: '8px 10px', fontWeight: '600' }}>{item.name || '—'}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '600' }}>{qty}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748B' }}>{item.unit || '—'}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right' }}>{rate > 0 ? `₹${rate.toLocaleString()}` : '—'}</td>
+                                                <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '700' }}>{amount > 0 ? `₹${amount.toLocaleString()}` : '—'}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot>
+                                    <tr style={{ backgroundColor: '#E2E8F0', fontWeight: '800' }}>
+                                        <td colSpan={5} style={{ padding: '8px 10px', textAlign: 'right', fontSize: '12px' }}>Total</td>
+                                        <td style={{ padding: '8px 10px', textAlign: 'right', fontSize: '14px', color: '#1E40AF' }}>
+                                            ₹{invoice.items.reduce((s, item) => {
+                                                const qty = item.received_qty || item.qty || 0;
+                                                const rate = item.price || item.rate || 0;
+                                                return s + (item.amount || (qty * rate));
+                                            }, 0).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    ) : (
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No item details available</span>
+                    )}
                 </div>
 
                 {/* Body */}

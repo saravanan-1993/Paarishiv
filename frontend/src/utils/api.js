@@ -101,6 +101,7 @@ export const financeAPI = {
     getReceipts: () => api.get('/finance/receipts'),
     createReceipt: (data) => api.post('/finance/receipts', data),
     getProjectSummary: (projectName) => api.get(`/finance/project-summary/${encodeURIComponent(projectName)}`),
+    createPaymentRequest: (data) => api.post('/finance/payment-requests', data),
 };
 
 // ── Labour ────────────────────────────────────────────────────────────────────
