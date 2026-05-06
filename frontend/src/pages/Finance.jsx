@@ -349,7 +349,11 @@ const Finance = () => {
         setSelectedInvoice({
             id: invoice.id,
             voucher_no: invoice.voucher_no,
-            vendor: invoice.vendor
+            vendor: invoice.vendor,
+            items: invoice.items,
+            total_amount: invoice.total_amount,
+            paid_amount: invoice.paid_amount,
+            project: invoice.project
         });
         setIsHistoryModalOpen(true);
     };
@@ -667,13 +671,18 @@ const Finance = () => {
         .reduce((s, sb) => s + (sb.balance || 0), 0);
     const totalPurchases = filteredPayables.reduce((s, p) => s + (p.total_amount || 0), 0);
 
+    // Outstanding from purchase bills (Pending/Partially Paid bills = vendor payables)
+    const purchaseBillOutstanding = filteredPurchaseBills
+        .filter(pb => ['Pending', 'Unpaid', 'Partially Paid'].includes(pb.status))
+        .reduce((s, pb) => s + (pb.total_amount || 0), 0);
+
     // Calculate 5% retention on total billed if not specifically tracked
     const totalRetention = filteredBills.reduce((s, b) => s + (b.retention_amount || (b.total_amount * 0.05)), 0);
 
     const kpiCards = [
         { label: 'PROJECT VALUE', value: fmt(totalProjectValue), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
         { label: 'TOTAL BILLED', value: fmt(totalBilled), icon: Receipt, color: '#6366F1', bgColor: '#EEF2FF' },
-        { label: 'OUTSTANDING', value: fmt(totalBilled - totalCollected), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
+        { label: 'OUTSTANDING', value: fmt((totalBilled - totalCollected) + purchaseBillOutstanding), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
         { label: 'COLLECTION (MTD)', value: fmt(collectionThisMonth), icon: Calendar, color: '#0EA5E9', bgColor: '#F0F9FF' },
         { label: 'COLLECTION (TODAY)', value: fmt(collectionToday), icon: TrendingUp, color: '#10B981', bgColor: '#F0FDF4' },
         { label: 'PAYMENTS (MTD)', value: fmt(paymentsThisMonth), icon: ArrowDownRight, color: '#F43F5E', bgColor: '#FFF1F2' },
@@ -903,9 +912,9 @@ const Finance = () => {
                         <button className="btn btn-outline" onClick={() => setIsExpenseModalOpen(true)}>
                             <Plus size={18} /> New Payment
                         </button>
-                        <button className="btn btn-outline" onClick={() => setIsPurchaseBillModalOpen(true)}>
+                        {/* <button className="btn btn-outline" onClick={() => setIsPurchaseBillModalOpen(true)}>
                             <Plus size={18} /> Record Purchase Bill
-                        </button>
+                        </button> */}
                         <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
                             <Plus size={18} /> New Sales Bill
                         </button>
@@ -1276,7 +1285,7 @@ const Finance = () => {
                                             <td>{pb.project_name}</td>
                                             <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(pb.total_amount || 0)}</td>
                                             <td>
-                                                <span className={`badge ${pb.status === 'Paid' ? 'badge-success' : pb.status === 'Partially Paid' ? 'badge-info' : 'badge-warning'}`}>
+                                                <span className={`badge ${pb.status === 'Paid' ? 'badge-success' : pb.status === 'Partially Paid' ? 'badge-info' : pb.status === 'Draft' ? 'badge-secondary' : 'badge-warning'}`}>
                                                     {pb.status || 'Pending'}
                                                 </span>
                                             </td>

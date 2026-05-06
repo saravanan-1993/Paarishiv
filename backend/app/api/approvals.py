@@ -21,7 +21,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "subcontractor_bills": [],
         "labour_payments": [],
         "stock_returns": [],
-        "material_transfers": []
+        "material_transfers": [],
+        "payment_requests": []
     }
     
     query = {}
@@ -185,6 +186,17 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                     mt[field] = mt[field].isoformat()
             resolve_names(mt)
             results["material_transfers"].append(mt)
+
+    # Payment requests (purchase payment approvals)
+    pr_query = query.copy() if query else {}
+    pr_records = await db.payment_requests.find(pr_query).sort("created_at", -1).to_list(100)
+    for pr in pr_records:
+        pr["_id"] = str(pr["_id"])
+        resolve_names(pr)
+        for k, v in pr.items():
+            if hasattr(v, "isoformat"):
+                pr[k] = str(v)
+    results["payment_requests"] = pr_records
 
     return results
 
@@ -406,6 +418,53 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Approved", "approved_by": update_fields["approvedBy"], "approved_at": datetime.now()}})
             else:
                 await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Rejected", "rejection_reason": reason}})
+        elif type == "payment_requests":
+            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+            user_role_check = (current_user.get("role") or "").strip().lower()
+            if user_role_check not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject payment requests")
+            pr_doc = await db.payment_requests.find_one({"_id": oid})
+            if not pr_doc:
+                raise HTTPException(status_code=404, detail="Payment request not found")
+            if pr_doc.get("status") != "Pending":
+                raise HTTPException(status_code=400, detail="Payment request is not pending")
+            approver_name = update_fields["approvedBy"]
+
+            if status == "Approved":
+                # Execute the actual payment by creating an expense
+                from app.api.finance import create_expense_from_payment_request
+                await create_expense_from_payment_request(pr_doc, db, current_user)
+                await db.payment_requests.update_one({"_id": oid}, {"$set": {
+                    "status": "Approved",
+                    "approved_by": approver_name,
+                    "approved_at": datetime.now(),
+                }})
+                # Notify requester
+                try:
+                    requester = pr_doc.get("requested_by", "")
+                    await notify(db, approver_name, [requester, "Accountant"], EVENT_APPROVAL,
+                        "Payment Approved & Processed",
+                        f"Payment of ₹{pr_doc.get('amount', 0):,.0f} for {pr_doc.get('payee', '')} ({pr_doc.get('voucher_no', '')}) approved by {approver_name}. Payment has been recorded.",
+                        entity_type="payment_request", entity_id=obj_id,
+                        project_name=pr_doc.get("project"), priority="high")
+                except Exception:
+                    pass
+            else:
+                await db.payment_requests.update_one({"_id": oid}, {"$set": {
+                    "status": "Rejected",
+                    "rejected_by": approver_name,
+                    "rejection_reason": reason,
+                    "rejected_at": datetime.now(),
+                }})
+                try:
+                    requester = pr_doc.get("requested_by", "")
+                    await notify(db, approver_name, [requester], EVENT_APPROVAL,
+                        "Payment Request Rejected",
+                        f"Payment of ₹{pr_doc.get('amount', 0):,.0f} for {pr_doc.get('payee', '')} ({pr_doc.get('voucher_no', '')}) rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
+                        entity_type="payment_request", entity_id=obj_id,
+                        project_name=pr_doc.get("project"), priority="high")
+                except Exception:
+                    pass
         elif type == "dprs":
             # Bug 26 - Multi-stage DPR approval workflow
             # Workflow: Pending → Coordinator Approved → Dept Approved → Approved

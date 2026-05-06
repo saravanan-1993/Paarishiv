@@ -296,7 +296,7 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                         "tax_amount": 0,
                         "notes": f"Auto-generated from GRN-{str(result.inserted_id)[-6:].upper()}",
                         "created_at": datetime.now(),
-                        "status": "Unpaid" if has_rates else "Draft",
+                        "status": "Pending" if has_rates else "Draft",
                         "auto_generated": True,
                         "has_rates": has_rates,
                     }

@@ -10,7 +10,7 @@ from datetime import datetime
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
 from app.utils.rbac import RBACPermission
-from app.utils.notifications import notify, get_project_stakeholders, EVENT_FINANCE
+from app.utils.notifications import notify, get_project_stakeholders, EVENT_FINANCE, EVENT_APPROVAL
 
 router = APIRouter(prefix="/finance", tags=["finance"])
 
@@ -198,6 +198,33 @@ async def get_payables(db = Depends(get_database)):
         })
         
     return payables
+
+async def create_expense_from_payment_request(pr_doc: dict, db, current_user: dict):
+    """Execute actual expense creation from an approved payment request.
+    Called by the approvals handler when a payment request is approved."""
+    is_pending = pr_doc.get("payment_type") == "Pending"
+    expense_data = ExpenseBase(
+        date=pr_doc.get("date"),
+        project=pr_doc.get("project", "General"),
+        category=pr_doc.get("category", "Material Purchase"),
+        amount=float(pr_doc.get("amount", 0)),
+        base_amount=float(pr_doc.get("base_amount", 0)),
+        gst_amount=float(pr_doc.get("gst_amount", 0)),
+        invoice_no=pr_doc.get("invoice_no"),
+        paymentMode="Pending" if is_pending else pr_doc.get("paymentMode"),
+        payee=pr_doc.get("payee"),
+        description=pr_doc.get("description", ""),
+        reference=pr_doc.get("reference", ""),
+        grn_id=pr_doc.get("grn_id"),
+        voucher_no=pr_doc.get("voucher_no"),
+        receipt_url=pr_doc.get("receipt_url"),
+        mark_as_paid=pr_doc.get("mark_as_paid", False),
+        items=pr_doc.get("items", []),
+        total_amount=float(pr_doc.get("total_amount", 0)),
+        status="Pending" if is_pending else "Paid",
+    )
+    await create_expense(expense_data, db, current_user)
+
 
 @router.post("/expenses", dependencies=[Depends(RBACPermission("Accounts", "edit", "Payments"))])
 async def create_expense(expense: ExpenseBase, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
@@ -508,7 +535,7 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
         item["rate"] = float(item.get("rate", 0) or 0)
         item["amount"] = float(item.get("amount", 0) or 0)
     bill_dict["created_at"] = datetime.now()
-    bill_dict["status"] = "Unpaid"
+    bill_dict["status"] = "Pending"
     
     result = await db.purchase_bills.insert_one(bill_dict)
     
@@ -560,7 +587,7 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
 
 @router.delete("/purchase-bills/{bill_id}", dependencies=[Depends(RBACPermission("Accounts", "delete"))])
 async def delete_purchase_bill(bill_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Delete a purchase bill. Only Draft/Unpaid bills can be deleted."""
+    """Delete a purchase bill. Only Draft/Pending/Unpaid bills can be deleted."""
     oid = validate_object_id(bill_id, "purchase bill")
     bill = await db.purchase_bills.find_one({"_id": oid})
     if not bill:
@@ -668,3 +695,47 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
             "outstanding": total_sales - actual_received
         }
     }
+
+# ── Payment Requests (Approval Workflow) ─────────────────────────────────────
+
+@router.post("/payment-requests", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+async def create_payment_request(data: dict, db=Depends(get_database), current_user=Depends(get_current_user)):
+    """Create a payment request that requires admin approval before processing."""
+    request_doc = {
+        "date": data.get("date"),
+        "project": data.get("project", "General"),
+        "category": data.get("category", "Material Purchase"),
+        "amount": float(data.get("amount", 0)),
+        "base_amount": float(data.get("base_amount", 0)),
+        "gst_amount": float(data.get("gst_amount", 0)),
+        "invoice_no": data.get("invoice_no"),
+        "paymentMode": data.get("paymentMode"),
+        "payee": data.get("payee"),
+        "description": data.get("description", ""),
+        "reference": data.get("reference", ""),
+        "grn_id": data.get("grn_id"),
+        "voucher_no": data.get("voucher_no"),
+        "receipt_url": data.get("receipt_url"),
+        "mark_as_paid": data.get("mark_as_paid", False),
+        "items": data.get("items", []),
+        "total_amount": float(data.get("total_amount", 0)),
+        "payment_type": data.get("payment_type", "Full"),
+        "status": "Pending",
+        "requested_by": current_user.get("full_name") or current_user.get("username", ""),
+        "requested_by_id": str(current_user.get("_id", "")),
+        "created_at": datetime.now(),
+    }
+    result = await db.payment_requests.insert_one(request_doc)
+
+    # Notify admins about the new payment request
+    try:
+        sender = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, sender, ["Administrator"], EVENT_APPROVAL,
+            "Payment Request",
+            f"Payment request of ₹{request_doc['amount']:,.0f} for {request_doc['payee']} ({request_doc['voucher_no']}) requires approval.",
+            entity_type="payment_request", entity_id=str(result.inserted_id),
+            project_name=request_doc["project"], priority="high")
+    except Exception:
+        pass
+
+    return {"id": str(result.inserted_id), "status": "Pending", "message": "Payment request submitted for admin approval."}
