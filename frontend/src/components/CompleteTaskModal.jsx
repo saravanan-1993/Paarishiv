@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Camera, Loader2, CheckCircle } from 'lucide-react';
-import { projectAPI, chatAPI } from '../utils/api';
+import { projectAPI } from '../utils/api';
 
 const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
     const [loading, setLoading] = useState(false);
@@ -23,11 +23,11 @@ const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
         try {
             let photoUrl = null;
             if (photo) {
-                // 1. Upload photo to Cloudinary
+                // 1. Upload photo via projects endpoint
                 const formData = new FormData();
                 formData.append('file', photo);
-                const uploadRes = await chatAPI.uploadFile(formData);
-                photoUrl = uploadRes.data.url;
+                const uploadRes = await projectAPI.uploadPhoto(formData);
+                photoUrl = uploadRes.data?.url || uploadRes.data?.secure_url || null;
             }
 
             // 2. Update task status
@@ -49,7 +49,8 @@ const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
             onClose();
         } catch (err) {
             console.error(err);
-            alert('Failed to complete task. Please try again.');
+            const msg = err?.response?.data?.detail || err?.message || 'Unknown error';
+            alert(`Failed to complete task: ${msg}`);
         } finally {
             setLoading(false);
         }

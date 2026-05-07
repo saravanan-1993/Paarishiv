@@ -9,7 +9,7 @@ const CreateMaterialModal = ({ isOpen, onClose, onSuccess }) => {
         name: '',
         category: 'Construction',
         unit: 'Nos',
-        stock_handling_type: 'Direct Site'
+        stock_handling_type: 'Warehouse Controlled'
     });
 
     if (!isOpen) return null;
@@ -20,7 +20,7 @@ const CreateMaterialModal = ({ isOpen, onClose, onSuccess }) => {
         try {
             const res = await materialAPI.create(formData);
             if (onSuccess) onSuccess(res.data || formData);
-            setFormData({ name: '', category: 'Construction', unit: 'Nos', stock_handling_type: 'Direct Site' });
+            setFormData({ name: '', category: 'Construction', unit: 'Nos', stock_handling_type: 'Warehouse Controlled' });
             onClose();
         } catch (err) {
             console.error('Failed to create material:', err);
