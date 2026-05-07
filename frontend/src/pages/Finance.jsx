@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
     Wallet, DollarSign, Download, Plus, FileText,
     CheckCircle, Clock, RotateCw,
     Calculator, ShieldCheck, Filter, Loader2, RefreshCw, Eye, Trash2, Briefcase, ClipboardCheck,
     Search, Calendar, Building2, User, ChevronDown, AlertCircle, TrendingUp, ArrowDownRight, ArrowUpRight, Edit3, CreditCard, Receipt, Building,
-    IndianRupee
+    IndianRupee, Share2, MessageCircle, Mail
 } from 'lucide-react';
 import ProcessPaymentModal from '../components/ProcessPaymentModal';
 import RecordExpenseModal from '../components/RecordExpenseModal';
@@ -26,6 +26,210 @@ const fmt = (n) => {
     if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
     if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
     return `₹${Number(n).toLocaleString('en-IN')}`;
+};
+
+const generateSalesInvoicePDF = (data, companyInfo) => {
+    const doc = new jsPDF();
+    const compName = companyInfo?.companyName || 'CIVIL ERP';
+    const compAddr = companyInfo?.address || '';
+    const compPhone = companyInfo?.phone || '';
+    const compEmail = companyInfo?.email || '';
+    const compGst = companyInfo?.gst || companyInfo?.gstin || '';
+    const M = 14;
+
+    // ── Header Band ──
+    doc.setFillColor(26, 54, 107);
+    doc.rect(0, 0, 210, 36, 'F');
+    doc.setFontSize(18);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text(compName, M, 14);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 215, 240);
+    if (compAddr) doc.text(compAddr, M, 21);
+    const contactLine = [compPhone, compEmail].filter(Boolean).join('  |  ');
+    if (contactLine) doc.text(contactLine, M, 27);
+
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SALES INVOICE', 196, 12, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 215, 240);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 196, 20, { align: 'right' });
+    if (compGst) doc.text(`GSTIN: ${compGst}`, 196, 27, { align: 'right' });
+
+    let y = 44;
+
+    // ── Two-column Info Boxes ──
+    // Left: Bill To
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(220, 228, 240);
+    doc.roundedRect(M, y, 87, 36, 2, 2, 'FD');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BILL TO / PROJECT', M + 4, y + 7);
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    const projLines = doc.splitTextToSize(data.project || '-', 78);
+    doc.text(projLines.slice(0, 2), M + 4, y + 16);
+
+    // Right: Invoice Details
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(109, y, 87, 36, 2, 2, 'FD');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INVOICE DETAILS', 113, y + 7);
+
+    const detailPair = (label, value, dy) => {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(label, 113, y + dy);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(30, 41, 59);
+        doc.text(String(value || '-'), 147, y + dy);
+    };
+    detailPair('Invoice No :', data.no, 15);
+    detailPair('Date       :', data.date ? new Date(data.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-', 22);
+    if (data.due_date) {
+        detailPair('Due Date   :', new Date(data.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }), 29);
+    } else {
+        detailPair('Bill Type  :', data.bill_type || '-', 29);
+    }
+    y += 42;
+
+    // ── Bill Type & Description Band ──
+    if (data.bill_type || data.description) {
+        const bandH = data.description ? 20 : 12;
+        doc.setFillColor(239, 246, 255);
+        doc.setDrawColor(191, 219, 254);
+        doc.rect(M, y, 182, bandH, 'FD');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'bold');
+        doc.text('BILL TYPE:', M + 4, y + 6);
+        doc.setTextColor(37, 99, 235);
+        doc.setFontSize(8.5);
+        doc.text(data.bill_type || '-', M + 30, y + 6);
+        if (data.description) {
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(60, 80, 120);
+            const descLine = doc.splitTextToSize(data.description, 170);
+            doc.text(descLine[0], M + 4, y + 14);
+        }
+        y += bandH + 6;
+    }
+
+    // ── Divider ──
+    doc.setDrawColor(226, 232, 240);
+    doc.line(M, y, 196, y);
+    y += 10;
+
+    // ── Financial Summary ──
+    doc.setFontSize(10);
+    doc.setTextColor(26, 54, 107);
+    doc.setFont('helvetica', 'bold');
+    doc.text('FINANCIAL SUMMARY', M, y);
+    y += 5;
+
+    const gstRate = parseFloat(data.gst_rate || 0);
+    const baseAmt = parseFloat(data.base_amount || 0);
+    const gstAmt = parseFloat(data.gst_amount || 0);
+    const totalAmt = parseFloat(data.amount || 0);
+    const halfRate = gstRate / 2;
+
+    const sumRows = [[
+        { content: 'Taxable Amount (Base)', styles: { fontStyle: 'normal', textColor: [60, 80, 120] } },
+        { content: `Rs. ${baseAmt.toLocaleString('en-IN')}`, styles: { halign: 'right', fontStyle: 'bold', textColor: [30, 41, 59] } }
+    ]];
+    if (gstRate > 0 && gstAmt > 0) {
+        sumRows.push([
+            { content: `CGST @ ${halfRate}%`, styles: { fontStyle: 'normal', textColor: [80, 100, 130] } },
+            { content: `Rs. ${(gstAmt / 2).toLocaleString('en-IN')}`, styles: { halign: 'right', textColor: [80, 100, 130] } }
+        ]);
+        sumRows.push([
+            { content: `SGST @ ${halfRate}%`, styles: { fontStyle: 'normal', textColor: [80, 100, 130] } },
+            { content: `Rs. ${(gstAmt / 2).toLocaleString('en-IN')}`, styles: { halign: 'right', textColor: [80, 100, 130] } }
+        ]);
+    } else if (gstAmt > 0) {
+        sumRows.push([
+            { content: 'GST', styles: { fontStyle: 'normal', textColor: [80, 100, 130] } },
+            { content: `Rs. ${gstAmt.toLocaleString('en-IN')}`, styles: { halign: 'right', textColor: [80, 100, 130] } }
+        ]);
+    }
+
+    autoTable(doc, {
+        startY: y,
+        body: sumRows,
+        theme: 'plain',
+        styles: { fontSize: 9.5, cellPadding: { top: 4, bottom: 4, left: 4, right: 4 } },
+        columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 52 } },
+        margin: { left: M, right: M },
+    });
+    y = (doc.lastAutoTable?.finalY || y) + 2;
+
+    // Total band
+    doc.setFillColor(26, 54, 107);
+    doc.rect(M, y, 182, 13, 'F');
+    doc.setFontSize(11);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL AMOUNT', M + 4, y + 9);
+    doc.text(`Rs. ${totalAmt.toLocaleString('en-IN')}`, 196, y + 9, { align: 'right' });
+    y += 18;
+
+    // Status row
+    const isPaid = data.status === 'Paid';
+    const isPartial = data.status === 'Partial' || data.status === 'Partially Paid';
+    const statusColor = isPaid ? [16, 185, 129] : isPartial ? [59, 130, 246] : [245, 158, 11];
+    const statusBg = isPaid ? [240, 253, 244] : isPartial ? [239, 246, 255] : [255, 251, 235];
+    doc.setFillColor(...statusBg);
+    doc.rect(M, y, 182, 11, 'F');
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text('Payment Status:', M + 4, y + 7.5);
+    if (data.collection_amount !== undefined && data.collection_amount > 0) {
+        doc.text(`Collected: Rs. ${parseFloat(data.collection_amount).toLocaleString('en-IN')}`, M + 45, y + 7.5);
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...statusColor);
+    doc.text((data.status || 'Pending').toUpperCase(), 196, y + 7.5, { align: 'right' });
+    y += 16;
+
+    // PAID watermark (light background text)
+    if (isPaid) {
+        doc.setFontSize(68);
+        doc.setTextColor(220, 252, 231);
+        doc.setFont('helvetica', 'bold');
+        doc.text('PAID', 105, 200, { align: 'center', angle: 35 });
+    }
+
+    // ── Signatory ──
+    const sigY = Math.max(y + 20, 248);
+    doc.setDrawColor(160, 174, 192);
+    doc.line(136, sigY, 196, sigY);
+    doc.setFontSize(9);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Authorized Signatory', 196, sigY + 5, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(compName, 196, sigY + 11, { align: 'right' });
+
+    // ── Footer ──
+    doc.setFontSize(7);
+    doc.setTextColor(180, 180, 180);
+    doc.text('This is a computer-generated document and does not require a physical signature.', 105, 290, { align: 'center' });
+
+    return doc;
 };
 
 const Finance = () => {
@@ -112,6 +316,8 @@ const Finance = () => {
 
     const [ledgerType, setLedgerType] = useState('All'); // 'All', 'Client', 'Vendor'
     const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
+    const [shareDropdownId, setShareDropdownId] = useState(null);
+    const shareDropdownRef = useRef(null);
 
     const loadData = async () => {
         setLoading(true);
@@ -166,7 +372,67 @@ const Finance = () => {
         return () => window.removeEventListener('companyInfoUpdated', fetchCompanyInfo);
     }, []);
 
+    useEffect(() => {
+        if (shareDropdownId === null) return;
+        const handler = (e) => {
+            if (shareDropdownRef.current && !shareDropdownRef.current.contains(e.target)) {
+                setShareDropdownId(null);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [shareDropdownId]);
+
+    const handleShareInvoice = async (bill, paymentStatus, collected, platform) => {
+        const totalAmt = bill.total_amount || 0;
+        const data = {
+            no: bill.bill_no,
+            date: bill.date,
+            party: bill.project,
+            project: bill.project,
+            amount: totalAmt,
+            base_amount: parseFloat(bill.amount || 0),
+            gst_amount: parseFloat(bill.gst_amount || 0),
+            gst_rate: bill.gst_rate || 0,
+            status: paymentStatus,
+            description: bill.description,
+            due_date: bill.due_date,
+            bill_type: bill.bill_type,
+            collection_amount: collected
+        };
+        const doc = generateSalesInvoicePDF(data, companyInfo);
+        const pdfBlob = doc.output('blob');
+        const fileName = `Sales_Invoice_${bill.bill_no}.pdf`;
+        const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+        const summaryText = `Sales Invoice - ${bill.bill_no}\nProject: ${bill.project}\nBill Type: ${bill.bill_type || '-'}\nDate: ${bill.date ? new Date(bill.date).toLocaleDateString('en-IN') : '-'}\nTotal Amount: Rs. ${totalAmt.toLocaleString('en-IN')}\nStatus: ${paymentStatus}\n\n${companyInfo?.companyName || 'Civil ERP'}`;
+
+        if (platform === 'whatsapp') {
+            if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                try { await navigator.share({ files: [pdfFile], title: `Sales Invoice ${bill.bill_no}`, text: summaryText }); }
+                catch (e) { if (e.name !== 'AbortError') { doc.save(fileName); window.open(`https://wa.me/?text=${encodeURIComponent(summaryText)}`, '_blank'); } }
+            } else {
+                doc.save(fileName);
+                window.open(`https://wa.me/?text=${encodeURIComponent(summaryText)}`, '_blank');
+            }
+        } else if (platform === 'email') {
+            const subject = encodeURIComponent(`Sales Invoice - ${bill.bill_no} | ${bill.project}`);
+            const body = encodeURIComponent(`Dear Sir/Madam,\n\nPlease find the sales invoice details below:\n\n${summaryText}\n\nKindly find the attached PDF for the complete invoice.\n\nRegards,\n${companyInfo?.companyName || 'Civil ERP'}`);
+            if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                try { await navigator.share({ files: [pdfFile], title: `Sales Invoice ${bill.bill_no}` }); }
+                catch (e) { if (e.name !== 'AbortError') window.open(`mailto:?subject=${subject}&body=${body}`, '_blank'); }
+            } else {
+                window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+            }
+        }
+        setShareDropdownId(null);
+    };
+
     const handleDownloadVoucher = (type, data) => {
+        if (type === 'Sales Invoice') {
+            const doc = generateSalesInvoicePDF(data, companyInfo);
+            doc.save(`Sales_Invoice_${(data.no || 'invoice').replace(/\s+/g, '_')}.pdf`);
+            return;
+        }
         try {
             const doc = new jsPDF();
             const compName = companyInfo.companyName || 'CIVIL ERP';
@@ -687,7 +953,6 @@ const Finance = () => {
         { label: 'COLLECTION (TODAY)', value: fmt(collectionToday), icon: TrendingUp, color: '#10B981', bgColor: '#F0FDF4' },
         { label: 'PAYMENTS (MTD)', value: fmt(paymentsThisMonth), icon: ArrowDownRight, color: '#F43F5E', bgColor: '#FFF1F2' },
         { label: 'PAYMENTS (TODAY)', value: fmt(paymentsToday), icon: Clock, color: '#F59E0B', bgColor: '#FEF3C7' },
-        { label: 'RETENTION MONEY', value: fmt(totalRetention), icon: ShieldCheck, color: '#8B5CF6', bgColor: '#F5F3FF' },
         { label: 'TOTAL RECEIVED', value: fmt(totalCollected), icon: IndianRupee, color: '#065F46', bgColor: '#D1FAE5' },
     ];
 
@@ -1149,26 +1414,53 @@ const Finance = () => {
                                                             paymentStatus === 'Pending' ? 'badge-warning' : 'badge-danger'
                                                         }`}>{paymentStatus}</span>
                                                 </td>
-                                                <td style={{ width: '180px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <td style={{ width: '200px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} ref={shareDropdownId === (bill.id || i) ? shareDropdownRef : null}>
                                                         <button
                                                             className="btn btn-outline btn-sm"
-                                                            onClick={() => {
-                                                                setSelectedBill(bill);
-                                                                setIsBillDetailsOpen(true);
-                                                            }}
+                                                            onClick={() => { setSelectedBill(bill); setIsBillDetailsOpen(true); }}
                                                             style={{ border: 'none', padding: '6px', background: 'transparent' }}
                                                             title="View"
                                                         >
                                                             <Eye size={18} color="#3B82F6" />
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, base_amount: parseFloat(bill.amount || 0), gst_amount: parseFloat(bill.gst_amount || 0), status: paymentStatus })}
+                                                            onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, base_amount: parseFloat(bill.amount || 0), gst_amount: parseFloat(bill.gst_amount || 0), gst_rate: bill.gst_rate || 0, status: paymentStatus, description: bill.description, due_date: bill.due_date, bill_type: bill.bill_type, collection_amount: collected })}
                                                             style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }}
-                                                            title="Download"
+                                                            title="Download PDF"
                                                         >
                                                             <Download size={18} color="#10B981" />
                                                         </button>
+                                                        {/* Share dropdown */}
+                                                        <div style={{ position: 'relative' }}>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setShareDropdownId(shareDropdownId === (bill.id || i) ? null : (bill.id || i)); }}
+                                                                style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer', borderRadius: '6px' }}
+                                                                title="Share Invoice"
+                                                            >
+                                                                <Share2 size={18} color="#8B5CF6" />
+                                                            </button>
+                                                            {shareDropdownId === (bill.id || i) && (
+                                                                <div style={{ position: 'absolute', top: '110%', right: 0, background: 'white', border: '1px solid #E2E8F0', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 200, minWidth: '148px', padding: '6px', overflow: 'hidden' }}>
+                                                                    <button
+                                                                        onClick={() => handleShareInvoice(bill, paymentStatus, collected, 'whatsapp')}
+                                                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: '#16A34A' }}
+                                                                        onMouseEnter={e => e.currentTarget.style.background = '#F0FDF4'}
+                                                                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                                    >
+                                                                        <MessageCircle size={14} /> WhatsApp
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleShareInvoice(bill, paymentStatus, collected, 'email')}
+                                                                        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 10px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '6px', fontSize: '13px', fontWeight: '600', color: '#2563EB' }}
+                                                                        onMouseEnter={e => e.currentTarget.style.background = '#EFF6FF'}
+                                                                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                                                                    >
+                                                                        <Mail size={14} /> Email
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                         {canEditAccounts && bill.status !== 'Paid' && (
                                                             <button
                                                                 className="btn btn-primary"
@@ -1993,6 +2285,26 @@ const Finance = () => {
                 isOpen={isBillDetailsOpen}
                 onClose={() => setIsBillDetailsOpen(false)}
                 bill={selectedBill}
+                onDownload={() => {
+                    if (!selectedBill) return;
+                    const totalAmt = selectedBill.total_amount || 0;
+                    const collected = selectedBill.collection_amount || 0;
+                    let paymentStatus = 'Pending';
+                    if (collected >= totalAmt && totalAmt > 0) paymentStatus = 'Paid';
+                    else if (collected > 0) paymentStatus = 'Partial';
+                    if (selectedBill.due_date && new Date(selectedBill.due_date) < new Date() && paymentStatus !== 'Paid') paymentStatus = 'Overdue';
+                    handleDownloadVoucher('Sales Invoice', { no: selectedBill.bill_no, date: selectedBill.date, party: selectedBill.project, project: selectedBill.project, amount: totalAmt, base_amount: parseFloat(selectedBill.amount || 0), gst_amount: parseFloat(selectedBill.gst_amount || 0), gst_rate: selectedBill.gst_rate || 0, status: paymentStatus, description: selectedBill.description, due_date: selectedBill.due_date, bill_type: selectedBill.bill_type, collection_amount: collected });
+                }}
+                onShare={(platform) => {
+                    if (!selectedBill) return;
+                    const totalAmt = selectedBill.total_amount || 0;
+                    const collected = selectedBill.collection_amount || 0;
+                    let paymentStatus = 'Pending';
+                    if (collected >= totalAmt && totalAmt > 0) paymentStatus = 'Paid';
+                    else if (collected > 0) paymentStatus = 'Partial';
+                    if (selectedBill.due_date && new Date(selectedBill.due_date) < new Date() && paymentStatus !== 'Paid') paymentStatus = 'Overdue';
+                    handleShareInvoice(selectedBill, paymentStatus, collected, platform);
+                }}
             />
             <PurchaseBillModal
                 isOpen={isPurchaseBillModalOpen}

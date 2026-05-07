@@ -51,18 +51,16 @@ const Tasks = () => {
     const [openStatusId, setOpenStatusId] = useState(null);
     const [notifiedTaskIds, setNotifiedTaskIds] = useState(new Set());
 
-    // Options for CustomSelect
-    const projectOptions = [
-        { value: 'All', label: 'All Projects' },
-        ...projectsData.map(p => ({ value: getStringId(p._id || p.id), label: p.name }))
-    ];
-
     const statusOptions = [
         { value: 'All', label: 'All Statuses' },
         { value: 'Pending', label: 'Pending' },
         { value: 'In Progress', label: 'In Progress' },
         { value: 'Completed', label: 'Completed' }
     ];
+
+    // Same permission logic used by Projects.jsx
+    const canSeeAllProjects = hasPermission(user, 'Projects', 'delete');
+    const uid = user?.username || user?.employeeCode || user?.id || '';
 
     const fetchTasks = async () => {
         setLoading(true);
@@ -75,7 +73,6 @@ const Tasks = () => {
             projects.forEach(project => {
                 const projectTasks = project.tasks || [];
                 projectTasks.forEach(t => {
-                    // Show all tasks from the projects that the backend allowed us to see
                     allTasks.push({ ...t, pId: getStringId(project._id || project.id), projectName: project.name });
                 });
             });
@@ -114,8 +111,30 @@ const Tasks = () => {
         fetchEmployees();
     }, [user]);
 
-    // Derived Data
-    const filteredTasks = tasks.filter(t => {
+    // Mirror the exact same project-level filter as Projects.jsx:
+    // admins (Projects:delete) see all; others see only projects where they are engineer/coordinator
+    const assignedProjects = canSeeAllProjects
+        ? projectsData
+        : projectsData.filter(p =>
+            p.engineer_id === uid ||
+            p.coordinator_id === uid ||
+            p.site_engineer === uid ||
+            p.assigned_to === uid
+        );
+    const assignedProjectIds = new Set(assignedProjects.map(p => getStringId(p._id || p.id)));
+
+    // Derived Data — keep only tasks from the user's assigned projects
+    const myTasks = canSeeAllProjects
+        ? tasks
+        : tasks.filter(t => assignedProjectIds.has(t.pId));
+
+    // Project filter dropdown — only show the user's assigned projects
+    const projectOptions = [
+        { value: 'All', label: 'All Projects' },
+        ...assignedProjects.map(p => ({ value: getStringId(p._id || p.id), label: p.name }))
+    ];
+
+    const filteredTasks = myTasks.filter(t => {
         const matchesSearch = t.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.projectName?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'All' || t.status === statusFilter;
@@ -123,9 +142,9 @@ const Tasks = () => {
         return matchesSearch && matchesStatus && matchesProject;
     });
 
-    const pendingCount = tasks.filter(t => t.status === 'Pending').length;
-    const inProgressCount = tasks.filter(t => t.status === 'In Progress').length;
-    const completedCount = tasks.filter(t => t.status === 'Completed').length;
+    const pendingCount = myTasks.filter(t => t.status === 'Pending').length;
+    const inProgressCount = myTasks.filter(t => t.status === 'In Progress').length;
+    const completedCount = myTasks.filter(t => t.status === 'Completed').length;
 
     // Actions
     const handleStatusChange = async (task, newStatus) => {
@@ -233,7 +252,7 @@ const Tasks = () => {
                     </div>
                     <div>
                         <p style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', marginBottom: '2px' }}>Total Tasks</p>
-                        <h4 style={{ fontSize: '28px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>{tasks.length}</h4>
+                        <h4 style={{ fontSize: '28px', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>{myTasks.length}</h4>
                     </div>
                 </div>
 

@@ -77,6 +77,7 @@ const Materials = () => {
     const [stockRequests, setStockRequests] = useState([]);
     const [stockLedger, setStockLedger] = useState([]);
     const [isCreateMaterialOpen, setIsCreateMaterialOpen] = useState(false);
+    const [addedMaterialName, setAddedMaterialName] = useState(null);
     const [isStockRequestOpen, setIsStockRequestOpen] = useState(false);
     const [isStockIssueOpen, setIsStockIssueOpen] = useState(false);
     const [isStockReturnOpen, setIsStockReturnOpen] = useState(false);
@@ -553,6 +554,15 @@ const Materials = () => {
                             ))}
                         </div>
 
+                        {addedMaterialName && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#F0FDF4', border: '1px solid #10B981', borderRadius: '10px', padding: '12px 16px', marginBottom: '12px' }}>
+                                <CheckCircle size={18} color="#059669" />
+                                <span style={{ fontWeight: '700', color: '#047857', fontSize: '14px' }}>
+                                    "{addedMaterialName}" added — visible in warehouse stock below with 0 stock.
+                                </span>
+                            </div>
+                        )}
+
                         <div className="card" style={{ padding: 0 }}>
                             {isWarehouseLoading ? (
                                 <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -572,7 +582,12 @@ const Materials = () => {
                                         {warehouseStock.slice((whPage - 1) * MAT_PAGE_SIZE, whPage * MAT_PAGE_SIZE).map((item, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontWeight: '700' }}>{item.material_name}</td>
-                                                <td style={{ fontSize: '16px', fontWeight: '800' }}>{item.stock}</td>
+                                                <td>
+                                                    <span style={{ fontSize: '15px', fontWeight: '800', color: item.stock > 0 ? '#059669' : '#94A3B8' }}>
+                                                        {item.stock}
+                                                    </span>
+                                                    {item.stock === 0 && <span style={{ marginLeft: '8px', fontSize: '11px', color: '#94A3B8', fontWeight: '600' }}>No stock yet</span>}
+                                                </td>
                                                 <td>{item.unit}</td>
                                                 <td><span className="badge badge-outline">Enabled</span></td>
                                             </tr>
@@ -1061,7 +1076,7 @@ const Materials = () => {
                 }}
             />
 
-            <CreateMaterialModal isOpen={isCreateMaterialOpen} onClose={() => setIsCreateMaterialOpen(false)} onSuccess={() => { fetchWarehouseStock(); setIsCreateMaterialOpen(false); }} />
+            <CreateMaterialModal isOpen={isCreateMaterialOpen} onClose={() => setIsCreateMaterialOpen(false)} onSuccess={(mat) => { fetchWarehouseStock(); setIsCreateMaterialOpen(false); setAddedMaterialName(mat?.name || 'Material'); setTimeout(() => setAddedMaterialName(null), 4000); }} />
             <StockRequestModal isOpen={isStockRequestOpen} onClose={() => setIsStockRequestOpen(false)} onSuccess={() => { fetchStockRequests(); setIsStockRequestOpen(false); }} />
             {selectedRequest && <StockIssueModal isOpen={isStockIssueOpen} onClose={() => setIsStockIssueOpen(false)} request={selectedRequest} onSuccess={() => { fetchStockRequests(); fetchWarehouseStock(); setIsStockIssueOpen(false); }} />}
             <StockReturnModal isOpen={isStockReturnOpen} onClose={() => setIsStockReturnOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsStockReturnOpen(false); }} />

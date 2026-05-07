@@ -11,13 +11,13 @@ from app.utils.cloudinary import upload_file
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, _resolve_v2
 from app.utils.sanitize import sanitize_string, sanitize_list
 from app.utils.notifications import notify, EVENT_PROJECT, EVENT_TASK, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-@router.post("/upload-photo", dependencies=[Depends(RBACPermission("Projects", "edit"))])
+@router.post("/upload-photo", dependencies=[Depends(get_current_user)])
 async def upload_project_photo(file: UploadFile = File(...)):
     """Upload a photo and return its URL."""
     content = await file.read()
@@ -41,6 +41,29 @@ class TaskUpdate(BaseModel):
     status: str
     completionPhoto: Optional[str] = None
     remarks: Optional[str] = ""
+
+async def _has_permission(db, role_name: str, module: str, action: str) -> bool:
+    """Check if a role has a given permission by querying the DB global_roles doc."""
+    if role_name in ("Super Admin", "Administrator"):
+        return True
+    roles_doc = await db.roles.find_one({"_id": "global_roles"})
+    if not roles_doc:
+        return False
+    roles = roles_doc.get("roles", [])
+    role = next((r for r in roles if r.get("name") == role_name), None)
+    if not role:
+        return False
+    permissions = role.get("permissions", [])
+    if isinstance(permissions, dict):
+        result = _resolve_v2(permissions, module, action, None)
+        return bool(result)
+    if isinstance(permissions, list):
+        module_perm = next((p for p in permissions if isinstance(p, dict) and p.get("name") == module), None)
+        if not module_perm:
+            return False
+        return bool(module_perm.get("actions", {}).get(action))
+    return False
+
 
 def _calc_progress(project: dict) -> int:
     """Calculate progress % from tasks list."""
@@ -350,20 +373,33 @@ async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)
     await db.projects.update_one({"_id": ObjectId(project_id)}, {"$set": {"progress": new_progress}})
     return {"success": True, "task": task_dict, "progress": new_progress}
 
-@router.put("/{project_id}/tasks/{task_id}", dependencies=[Depends(RBACPermission("Projects", "edit"))])
-async def update_task(project_id: str, task_id: str, task_update: TaskUpdate, db = Depends(get_database)):
+@router.put("/{project_id}/tasks/{task_id}")
+async def update_task(
+    project_id: str, task_id: str, task_update: TaskUpdate,
+    db = Depends(get_database), current_user: dict = Depends(get_current_user)
+):
+    role_name = current_user.get("role") or ""
+    can_edit = await _has_permission(db, role_name, "Projects", "edit")
+
+    # Users without Projects:edit permission may only mark a task as Completed
+    if not can_edit and task_update.status != "Completed":
+        raise HTTPException(status_code=403, detail="You can only mark tasks as Completed.")
+
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-        
+
     task = next((t for t in project.get("tasks", []) if t.get("id") == task_id), None)
-    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
     # Update the specific task in the tasks array
     update_data = {"tasks.$.status": task_update.status}
     if task_update.completionPhoto:
         update_data["tasks.$.completionPhoto"] = task_update.completionPhoto
     if task_update.status == "Completed":
         update_data["tasks.$.completedAt"] = datetime.now().isoformat()
+        update_data["tasks.$.completedBy"] = current_user.get("full_name") or current_user.get("username", "")
     if task_update.remarks:
         update_data["tasks.$.remarks"] = task_update.remarks
 
@@ -371,10 +407,10 @@ async def update_task(project_id: str, task_id: str, task_update: TaskUpdate, db
         {"_id": ObjectId(project_id), "tasks.id": task_id},
         {"$set": update_data}
     )
-    
+
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Task not found")
-        
+        raise HTTPException(status_code=404, detail="Task not found in project")
+
     # Recalculate progress
     updated_project = await db.projects.find_one({"_id": ObjectId(project_id)})
     new_progress = _calc_progress(updated_project)
