@@ -16,7 +16,7 @@ router = APIRouter(prefix="/finance", tags=["finance"])
 
 class BillCreate(BaseModel):
     project: str
-    bill_no: str
+    bill_no: Optional[str] = None
     date: Optional[str] = None
     description: Optional[str] = "Running Account Bill"
     amount: float
@@ -202,25 +202,32 @@ async def get_payables(db = Depends(get_database)):
 async def create_expense_from_payment_request(pr_doc: dict, db, current_user: dict):
     """Execute actual expense creation from an approved payment request.
     Called by the approvals handler when a payment request is approved."""
+    def _f(val, fallback=0):
+        """Safe float conversion — handles None/missing values."""
+        try:
+            return float(val) if val is not None else float(fallback)
+        except (TypeError, ValueError):
+            return float(fallback)
+
     is_pending = pr_doc.get("payment_type") == "Pending"
     expense_data = ExpenseBase(
         date=pr_doc.get("date"),
-        project=pr_doc.get("project", "General"),
-        category=pr_doc.get("category", "Material Purchase"),
-        amount=float(pr_doc.get("amount", 0)),
-        base_amount=float(pr_doc.get("base_amount", 0)),
-        gst_amount=float(pr_doc.get("gst_amount", 0)),
+        project=pr_doc.get("project") or "General",
+        category=pr_doc.get("category") or "Material Purchase",
+        amount=_f(pr_doc.get("amount")),
+        base_amount=_f(pr_doc.get("base_amount")),
+        gst_amount=_f(pr_doc.get("gst_amount")),
         invoice_no=pr_doc.get("invoice_no"),
-        paymentMode="Pending" if is_pending else pr_doc.get("paymentMode"),
-        payee=pr_doc.get("payee"),
-        description=pr_doc.get("description", ""),
-        reference=pr_doc.get("reference", ""),
+        paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
+        payee=pr_doc.get("payee") or "",
+        description=pr_doc.get("description") or "",
+        reference=pr_doc.get("reference") or "",
         grn_id=pr_doc.get("grn_id"),
         voucher_no=pr_doc.get("voucher_no"),
         receipt_url=pr_doc.get("receipt_url"),
-        mark_as_paid=pr_doc.get("mark_as_paid", False),
-        items=pr_doc.get("items", []),
-        total_amount=float(pr_doc.get("total_amount", 0)),
+        mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
+        items=pr_doc.get("items") or [],
+        total_amount=_f(pr_doc.get("total_amount")),
         status="Pending" if is_pending else "Paid",
     )
     await create_expense(expense_data, db, current_user)
@@ -390,20 +397,43 @@ async def get_bills(db = Depends(get_database)):
 @router.post("/bills", dependencies=[Depends(RBACPermission("Accounts", "edit", "Sales"))])
 async def create_bill(bill: BillCreate, db = Depends(get_database)):
     proj_clean = bill.project.strip()
-    no_clean = bill.bill_no.strip()
-    
-    # ── Prevent duplicate bill numbers (Case-insensitive check) ─────────────
-    existing = await db.bills.find_one({
-        "project": {"$regex": f"^{re.escape(proj_clean)}$", "$options": "i"},
-        "bill_no": {"$regex": f"^{re.escape(no_clean)}$", "$options": "i"}
-    })
-    
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Bill No '{no_clean}' already exists for this project. Please use a unique number."
-        )
-    
+
+    # ── Auto-generate unique bill number if not provided ─────────────────────
+    from datetime import datetime as _dt
+    prefix = f"RA-{_dt.now().strftime('%y%m')}-"
+    if not bill.bill_no or not bill.bill_no.strip():
+        # Find highest existing sequence for this month prefix
+        all_bills = await db.bills.find({}, {"bill_no": 1}).to_list(5000)
+        seq_nums = []
+        for b in all_bills:
+            bn = (b.get("bill_no") or "")
+            if bn.startswith(prefix):
+                try:
+                    seq_nums.append(int(bn[len(prefix):]))
+                except ValueError:
+                    pass
+        next_seq = max(seq_nums) + 1 if seq_nums else 1
+        no_clean = f"{prefix}{str(next_seq).zfill(3)}"
+    else:
+        no_clean = bill.bill_no.strip()
+        # ── Prevent duplicate bill numbers (Case-insensitive check) ──────────
+        existing = await db.bills.find_one({
+            "bill_no": {"$regex": f"^{re.escape(no_clean)}$", "$options": "i"}
+        })
+        if existing:
+            # Auto-increment instead of rejecting
+            all_bills = await db.bills.find({}, {"bill_no": 1}).to_list(5000)
+            seq_nums = []
+            for b in all_bills:
+                bn = (b.get("bill_no") or "")
+                if bn.startswith(prefix):
+                    try:
+                        seq_nums.append(int(bn[len(prefix):]))
+                    except ValueError:
+                        pass
+            next_seq = max(seq_nums) + 1 if seq_nums else 1
+            no_clean = f"{prefix}{str(next_seq).zfill(3)}"
+
     # Calculate GST
     gst_amount = round(bill.amount * bill.gst_rate / 100, 2)
     total_amount = round(bill.amount + gst_amount, 2)
@@ -701,6 +731,29 @@ async def get_project_finance_summary(project_name: str, db = Depends(get_databa
 @router.post("/payment-requests", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def create_payment_request(data: dict, db=Depends(get_database), current_user=Depends(get_current_user)):
     """Create a payment request that requires admin approval before processing."""
+    grn_id = data.get("grn_id")
+
+    # Block duplicate pending requests for the same GRN
+    if grn_id:
+        existing_pending = await db.payment_requests.find_one({"grn_id": grn_id, "status": "Pending"})
+        if existing_pending:
+            raise HTTPException(
+                status_code=400,
+                detail="A payment request for this GRN is already pending admin approval. Please wait for it to be processed."
+            )
+        # Also block if GRN is already fully paid
+        try:
+            existing_grn = await db.grns.find_one({"_id": ObjectId(grn_id)})
+            if existing_grn and existing_grn.get("status") == "Paid":
+                raise HTTPException(
+                    status_code=400,
+                    detail="This GRN is already fully paid. No further payment requests can be submitted."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     request_doc = {
         "date": data.get("date"),
         "project": data.get("project", "General"),

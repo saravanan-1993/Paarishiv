@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Calendar, IndianRupee, Percent, Hash, Building2 } from 'lucide-react';
+import { X, FileText, Calendar, IndianRupee, Percent, Hash, Building2, RefreshCw } from 'lucide-react';
 import { projectAPI, billingAPI } from '../utils/api';
 import CustomSelect from './CustomSelect';
+
+const generateBillNo = (bills) => {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    const prefix = `RA-${year}${month}-`;
+    const existing = (bills || [])
+        .map(b => b.bill_no || '')
+        .filter(n => n.startsWith(prefix))
+        .map(n => parseInt(n.replace(prefix, ''), 10))
+        .filter(n => !isNaN(n));
+    const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    return `${prefix}${String(next).padStart(3, '0')}`;
+};
 
 const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
     const [projects, setProjects] = useState([]);
@@ -10,7 +23,7 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
     const [isCustomType, setIsCustomType] = useState(false);
     const [form, setForm] = useState({
         project: '',
-        bill_no: '',
+        bill_no: generateBillNo([]),
         date: new Date().toISOString().split('T')[0],
         description: 'Running RA Bill',
         amount: '',
@@ -26,7 +39,9 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
             ]).then(([projRes, billRes]) => {
                 const activeProjects = (projRes.data || []).filter(p => p.status !== 'Completed');
                 setProjects(activeProjects);
-                setAllBills(billRes.data || []);
+                const bills = billRes.data || [];
+                setAllBills(bills);
+                setForm(prev => ({ ...prev, bill_no: generateBillNo(bills) }));
             }).catch(() => { });
         }
     }, [isOpen]);
@@ -72,7 +87,7 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
             onBillCreated?.(res.data);
             onClose();
             setForm({
-                project: '', bill_no: '', date: new Date().toISOString().split('T')[0],
+                project: '', bill_no: generateBillNo(allBills), date: new Date().toISOString().split('T')[0],
                 description: 'Running RA Bill', amount: '', gst_rate: '18', bill_type: 'Running',
             });
         } catch (err) {
@@ -159,19 +174,26 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                         <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                Bill Number *
+                                Bill Number
                             </label>
-                            <div style={{ position: 'relative' }}>
-                                <Hash size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9CA3AF' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '11px 12px', borderRadius: '8px', border: '1.5px solid #3b82f6', backgroundColor: '#EFF6FF' }}>
+                                <Hash size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
                                 <input
-                                    required
                                     type="text"
-                                    placeholder="RA-001"
                                     value={form.bill_no}
                                     onChange={e => handleChange('bill_no', e.target.value)}
-                                    style={{ width: '100%', padding: '11px 12px 11px 30px', borderRadius: '8px', border: '1.5px solid #E5E7EB', fontSize: '14px' }}
+                                    style={{ border: 'none', background: 'transparent', fontSize: '14px', fontWeight: '700', color: '#1e3a5f', outline: 'none', width: '100%' }}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => handleChange('bill_no', generateBillNo(allBills))}
+                                    title="Regenerate"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', padding: 0, display: 'flex' }}
+                                >
+                                    <RefreshCw size={13} />
+                                </button>
                             </div>
+                            <p style={{ fontSize: '10px', color: '#6B7280', marginTop: '3px' }}>Auto-assigned by system · editable</p>
                         </div>
                         <div>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -311,13 +333,18 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
                         }}>
                             Cancel
                         </button>
-                        <button type="submit" disabled={loading || isExceeding || !form.project || !form.bill_no || !form.amount} style={{
-                            padding: '11px 28px', borderRadius: '8px', border: 'none',
-                            background: isExceeding ? '#9CA3AF' : 'linear-gradient(135deg, #1e3a5f, #2F5D8A)',
-                            color: 'white', fontWeight: '800', fontSize: '14px', cursor: isExceeding ? 'not-allowed' : 'pointer',
-                            opacity: (loading || isExceeding) ? 0.7 : 1,
-                            transition: 'all 0.2s'
-                        }}>
+                        <button type="submit"
+                            disabled={loading || isExceeding || !form.project || !form.amount}
+                            style={{
+                                padding: '11px 28px', borderRadius: '8px', border: 'none',
+                                background: (loading || isExceeding || !form.project || !form.amount)
+                                    ? '#9CA3AF'
+                                    : 'linear-gradient(135deg, #1e3a5f, #2F5D8A)',
+                                color: 'white', fontWeight: '800', fontSize: '14px',
+                                cursor: (loading || isExceeding || !form.project || !form.amount) ? 'not-allowed' : 'pointer',
+                                opacity: 1,
+                                transition: 'all 0.2s'
+                            }}>
                             {loading ? 'Creating...' : isExceeding ? 'Limit Exceeded' : 'Create Bill'}
                         </button>
                     </div>

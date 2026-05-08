@@ -26,6 +26,9 @@ export const SYSTEM_FEATURES = [
     { id: 'add_employee', label: 'Add New Employee' },
     { id: 'create_invoice', label: 'Create Invoice/Bill' },
     { id: 'create_sc_bill', label: 'Create Subcontractor Bill' },
+    { id: 'request_trip', label: 'Request a Trip (Fleet)' },
+    { id: 'approve_trip_request', label: 'Approve Trip Requests' },
+    { id: 'assign_trip_vehicle', label: 'Assign Vehicle to Trip Request' },
 ];
 
 export const SUB_TABS = {
@@ -35,9 +38,9 @@ export const SUB_TABS = {
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
-    'Fleet Management': ['Dashboard', 'Trips', 'Vehicles', 'Maintenance', 'Reports'],
+    'Fleet Management': ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay', 'Vendor Payments', 'Trip Requests'],
     'Notifications': [],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };

@@ -942,13 +942,18 @@ const Finance = () => {
         .filter(pb => ['Pending', 'Unpaid', 'Partially Paid'].includes(pb.status))
         .reduce((s, pb) => s + (pb.total_amount || 0), 0);
 
+    // Purchase outstanding = total balance unpaid across all GRN-based vendor payables
+    const purchaseOutstanding = filteredPayables
+        .filter(p => (p.balance || 0) > 0)
+        .reduce((s, p) => s + (p.balance || 0), 0);
+
     // Calculate 5% retention on total billed if not specifically tracked
     const totalRetention = filteredBills.reduce((s, b) => s + (b.retention_amount || (b.total_amount * 0.05)), 0);
 
     const kpiCards = [
         { label: 'PROJECT VALUE', value: fmt(totalProjectValue), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
         { label: 'TOTAL BILLED', value: fmt(totalBilled), icon: Receipt, color: '#6366F1', bgColor: '#EEF2FF' },
-        { label: 'OUTSTANDING', value: fmt((totalBilled - totalCollected) + purchaseBillOutstanding), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
+        { label: 'OUTSTANDING', value: fmt((totalBilled - totalCollected) + purchaseBillOutstanding + purchaseOutstanding), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
         { label: 'COLLECTION (MTD)', value: fmt(collectionThisMonth), icon: Calendar, color: '#0EA5E9', bgColor: '#F0F9FF' },
         { label: 'COLLECTION (TODAY)', value: fmt(collectionToday), icon: TrendingUp, color: '#10B981', bgColor: '#F0FDF4' },
         { label: 'PAYMENTS (MTD)', value: fmt(paymentsThisMonth), icon: ArrowDownRight, color: '#F43F5E', bgColor: '#FFF1F2' },

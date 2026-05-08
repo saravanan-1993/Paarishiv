@@ -84,3 +84,14 @@ class FuelLog(BaseModel):
     engineer: str
     type: str = "Consumption" # Consumption, Adjustment
     remarks: Optional[str] = None
+
+class TripRequestCreate(BaseModel):
+    project_id: Optional[str] = None
+    project_name: Optional[str] = None
+    load_type: str
+    from_location: str
+    to_location: str
+    quantity: Optional[float] = None
+    quantity_unit: Optional[str] = None
+    requested_date: Optional[str] = None
+    remarks: Optional[str] = None

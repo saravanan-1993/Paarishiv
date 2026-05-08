@@ -22,7 +22,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "labour_payments": [],
         "stock_returns": [],
         "material_transfers": [],
-        "payment_requests": []
+        "payment_requests": [],
+        "trip_requests": []
     }
     
     query = {}
@@ -197,6 +198,28 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             if hasattr(v, "isoformat"):
                 pr[k] = str(v)
     results["payment_requests"] = pr_records
+
+    # Trip requests (fleet trip approval workflow)
+    # Coordinator sees Pending, PO sees Coordinator Approved, Admin sees PO Approved
+    if status.lower() == "all":
+        tr_visible_statuses = ["Pending", "Coordinator Approved", "PO Approved", "Approved", "Rejected", "Assigned"]
+    elif is_admin_user:
+        tr_visible_statuses = ["PO Approved", "Pending"]
+    elif is_coordinator_user:
+        tr_visible_statuses = ["Pending"]
+    elif is_po_user:
+        tr_visible_statuses = ["Coordinator Approved"]
+    else:
+        tr_visible_statuses = ["Pending", "Coordinator Approved", "PO Approved"]
+
+    tr_records = await db.trip_requests.find({"status": {"$in": tr_visible_statuses}}).sort("created_at", -1).to_list(100)
+    for tr in tr_records:
+        tr["_id"] = str(tr["_id"])
+        resolve_names(tr)
+        for k, v in tr.items():
+            if hasattr(v, "isoformat"):
+                tr[k] = str(v)
+    results["trip_requests"] = tr_records
 
     return results
 
@@ -431,6 +454,24 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             approver_name = update_fields["approvedBy"]
 
             if status == "Approved":
+                grn_id = pr_doc.get("grn_id")
+
+                # Check if GRN is already paid — auto-cancel duplicates instead of erroring
+                if grn_id and pr_doc.get("mark_as_paid"):
+                    try:
+                        from bson import ObjectId as ObjId
+                        existing_grn = await db.grns.find_one({"_id": ObjId(grn_id)})
+                        if existing_grn and existing_grn.get("status") == "Paid":
+                            # Mark this request as cancelled (duplicate)
+                            await db.payment_requests.update_one({"_id": oid}, {"$set": {
+                                "status": "Cancelled",
+                                "rejection_reason": "Auto-cancelled: GRN already fully paid by a previous request.",
+                                "rejected_at": datetime.now(),
+                            }})
+                            return {"message": "Duplicate payment request auto-cancelled — GRN already paid.", "status": "Cancelled"}
+                    except Exception:
+                        pass
+
                 # Execute the actual payment by creating an expense
                 from app.api.finance import create_expense_from_payment_request
                 await create_expense_from_payment_request(pr_doc, db, current_user)
@@ -439,6 +480,18 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "approved_by": approver_name,
                     "approved_at": datetime.now(),
                 }})
+
+                # Auto-cancel all other pending payment requests for the same GRN
+                if grn_id:
+                    await db.payment_requests.update_many(
+                        {"grn_id": grn_id, "status": "Pending", "_id": {"$ne": oid}},
+                        {"$set": {
+                            "status": "Cancelled",
+                            "rejection_reason": "Auto-cancelled: GRN payment already processed.",
+                            "rejected_at": datetime.now(),
+                        }}
+                    )
+
                 # Notify requester
                 try:
                     requester = pr_doc.get("requested_by", "")
@@ -463,6 +516,55 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         f"Payment of ₹{pr_doc.get('amount', 0):,.0f} for {pr_doc.get('payee', '')} ({pr_doc.get('voucher_no', '')}) rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
                         entity_type="payment_request", entity_id=obj_id,
                         project_name=pr_doc.get("project"), priority="high")
+                except Exception:
+                    pass
+        elif type == "trip_requests":
+            tr_doc = await db.trip_requests.find_one({"_id": oid})
+            if not tr_doc:
+                raise HTTPException(status_code=404, detail="Trip request not found")
+            approver_name = update_fields["approvedBy"]
+            user_role = (current_user.get("role") or "").strip()
+            is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
+            is_coordinator = "coordinator" in user_role.lower()
+            is_po = "purchase" in user_role.lower()
+            current_tr_status = tr_doc.get("status", "Pending")
+
+            if action.lower() == "approve":
+                if is_coordinator and not is_admin and current_tr_status == "Pending":
+                    new_status = "Coordinator Approved"
+                elif is_po and not is_admin and current_tr_status in ("Pending", "Coordinator Approved"):
+                    new_status = "PO Approved"
+                else:
+                    new_status = "Approved"
+
+                await db.trip_requests.update_one({"_id": oid}, {"$set": {
+                    "status": new_status,
+                    "approved_by": approver_name,
+                    "approved_at": datetime.now(),
+                }})
+                try:
+                    requester = tr_doc.get("requested_by", "")
+                    await notify(db, approver_name, [requester, "Administrator"], EVENT_APPROVAL,
+                        f"Trip Request {new_status}",
+                        f"Trip request for {tr_doc.get('load_type', '')} — {tr_doc.get('project_name', '')} ({tr_doc.get('from_location', '')} → {tr_doc.get('to_location', '')}) {new_status.lower()} by {approver_name}.",
+                        entity_type="trip_request", entity_id=obj_id,
+                        project_name=tr_doc.get("project_name"), priority="high")
+                except Exception:
+                    pass
+            else:
+                await db.trip_requests.update_one({"_id": oid}, {"$set": {
+                    "status": "Rejected",
+                    "rejection_reason": reason,
+                    "rejected_by": approver_name,
+                    "rejected_at": datetime.now(),
+                }})
+                try:
+                    requester = tr_doc.get("requested_by", "")
+                    await notify(db, approver_name, [requester], EVENT_APPROVAL,
+                        "Trip Request Rejected",
+                        f"Trip request for {tr_doc.get('load_type', '')} — {tr_doc.get('project_name', '')} rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
+                        entity_type="trip_request", entity_id=obj_id,
+                        project_name=tr_doc.get("project_name"), priority="high")
                 except Exception:
                     pass
         elif type == "dprs":

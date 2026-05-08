@@ -207,6 +207,11 @@ export const fleetAPI = {
     getFuelLogs: (projectName) => api.get('/fleet/fuel/logs', { params: { project_name: projectName } }),
     addFuelLog: (data) => api.post('/fleet/fuel/logs', data),
     getFuelSummary: (projectName) => api.get('/fleet/fuel/summary', { params: { project_name: projectName } }),
+
+    // Trip Requests
+    getTripRequests: () => api.get('/fleet/trip-requests'),
+    createTripRequest: (data) => api.post('/fleet/trip-requests', data),
+    assignTripRequest: (id, data) => api.put(`/fleet/trip-requests/${id}/assign`, data),
 };
 
 // ── HRMS ──────────────────────────────────────────────────────────────────────
