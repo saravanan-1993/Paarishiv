@@ -256,6 +256,8 @@ const Finance = () => {
     const [selectedBill, setSelectedBill] = useState(null);
     const [purchaseBills, setPurchaseBills] = useState([]);
     const [isPurchaseBillModalOpen, setIsPurchaseBillModalOpen] = useState(false);
+    const [viewingPurchaseBill, setViewingPurchaseBill] = useState(null);
+    const [viewingPayment, setViewingPayment] = useState(null);
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
 
@@ -1274,31 +1276,7 @@ const Finance = () => {
                             ))}
                         </div>
 
-                        {/* Pending GRN Action Alert */}
-                        {grns.filter(g => g.status !== 'Billed').length > 0 && (
-                            <div style={{
-                                marginTop: '32px', padding: '24px', backgroundColor: '#FFFBEB',
-                                borderRadius: '16px', border: '1px solid #FEF3C7',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                            }}>
-                                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                                    <div style={{ padding: '12px', backgroundColor: '#FEF3C7', borderRadius: '12px', color: '#D97706' }}>
-                                        <ClipboardCheck size={28} />
-                                    </div>
-                                    <div>
-                                        <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#92400E', marginBottom: '4px' }}>
-                                            {grns.filter(g => g.status !== 'Billed').length} GRNs Pending for Invoicing
-                                        </h4>
-                                        <p style={{ fontSize: '14px', color: '#B45309' }}>
-                                            Materials have been received at site. Please record vendor bills to update ledgers.
-                                        </p>
-                                    </div>
-                                </div>
-                                <button className="btn btn-primary" onClick={() => setIsPurchaseBillModalOpen(true)} style={{ backgroundColor: '#D97706', border: 'none' }}>
-                                    RECORD BILLS NOW
-                                </button>
-                            </div>
-                        )}
+                        {/* Pending GRN Action Alert - hidden */}
                     </div>
                 )}
 
@@ -1588,6 +1566,9 @@ const Finance = () => {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => setViewingPurchaseBill(pb)} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="View">
+                                                        <Eye size={18} color="var(--primary)" />
+                                                    </button>
                                                     <button onClick={() => handleDownloadVoucher('Purchase Bill', { no: pb.bill_no, date: pb.bill_date, party: pb.vendor_name, project: pb.project_name, amount: pb.total_amount, base_amount: pb.total_amount - (pb.tax_amount || 0), gst_amount: pb.tax_amount, items: pb.items, status: pb.status })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                         <Download size={18} color="var(--primary)" />
                                                     </button>
@@ -1844,9 +1825,14 @@ const Finance = () => {
                                                 {fmt(exp.amount || 0)}
                                             </td>
                                             <td>
-                                                <button onClick={() => handleDownloadVoucher('Payment Voucher', { no: exp.voucher_no || exp.invoice_no, date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount, base_amount: exp.base_amount, gst_amount: exp.gst_amount, invoice_no: exp.invoice_no, items: exp.items, status: 'Paid' })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
-                                                    <Download size={18} color="var(--primary)" />
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button onClick={() => setViewingPayment(exp)} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="View">
+                                                        <Eye size={18} color="var(--primary)" />
+                                                    </button>
+                                                    <button onClick={() => handleDownloadVoucher('Payment Voucher', { no: exp.voucher_no || exp.invoice_no, date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount, base_amount: exp.base_amount, gst_amount: exp.gst_amount, invoice_no: exp.invoice_no, items: exp.items, status: 'Paid' })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
+                                                        <Download size={18} color="var(--primary)" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -2316,6 +2302,237 @@ const Finance = () => {
                 onClose={() => setIsPurchaseBillModalOpen(false)}
                 onSuccess={loadData}
             />
+
+            {/* Payment View Modal */}
+            {viewingPayment && (
+                <div className="modal-overlay" onClick={() => setViewingPayment(null)}>
+                    <div className="card animate-fade-in" style={{ width: '600px', maxWidth: '95vw', maxHeight: '88vh', overflowY: 'auto', padding: '32px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Payment Details</h3>
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Vendor & Expense Record</p>
+                            </div>
+                            <button onClick={() => setViewingPayment(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--text-muted)', lineHeight: 1 }}>&times;</button>
+                        </div>
+
+                        {/* Info Grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '12px' }}>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Date</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px' }}>
+                                    {viewingPayment.date ? new Date(viewingPayment.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Category</span>
+                                <span style={{ background: '#F3F4F6', padding: '3px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>{viewingPayment.category || '—'}</span>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Paid To</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px', color: 'var(--primary)' }}>{viewingPayment.payee || '—'}</p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Project</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px' }}>{viewingPayment.project || '—'}</p>
+                            </div>
+                            {viewingPayment.paymentMode && (
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Payment Mode</span>
+                                    <p style={{ fontWeight: '600', fontSize: '13px' }}>{viewingPayment.paymentMode}</p>
+                                </div>
+                            )}
+                            {(viewingPayment.voucher_no || viewingPayment.invoice_no) && (
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Reference No</span>
+                                    <p style={{ fontWeight: '600', fontSize: '13px' }}>{viewingPayment.voucher_no || viewingPayment.invoice_no}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Description */}
+                        {viewingPayment.description && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Description</span>
+                                <p style={{ fontSize: '14px', color: 'var(--text-main)', padding: '12px 16px', backgroundColor: '#f8fafc', borderRadius: '8px', lineHeight: '1.5' }}>{viewingPayment.description}</p>
+                            </div>
+                        )}
+
+                        {/* Items table if available */}
+                        {viewingPayment.items && viewingPayment.items.length > 0 && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>Items</span>
+                                <table className="data-table" style={{ fontSize: '13px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ padding: '10px 12px' }}>#</th>
+                                            <th style={{ padding: '10px 12px' }}>Item</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Qty</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {viewingPayment.items.map((item, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                                <td style={{ padding: '10px 12px', fontWeight: '600' }}>{item.name || item.description}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>{item.qty || item.quantity || '—'}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '700' }}>{fmt(item.amount || 0)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Amount Summary */}
+                        <div style={{ borderTop: '2px solid var(--border)', paddingTop: '16px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <div style={{ minWidth: '260px' }}>
+                                    {viewingPayment.base_amount > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '14px' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Base Amount</span>
+                                            <span style={{ fontWeight: '600' }}>{fmt(viewingPayment.base_amount)}</span>
+                                        </div>
+                                    )}
+                                    {viewingPayment.gst_amount > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '14px' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>GST / Tax</span>
+                                            <span style={{ fontWeight: '600' }}>{fmt(viewingPayment.gst_amount)}</span>
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontSize: '18px', borderTop: '1px solid var(--border)', marginTop: '4px' }}>
+                                        <span style={{ fontWeight: '800' }}>Total Paid</span>
+                                        <span style={{ fontWeight: '800', color: '#EF4444' }}>{fmt(viewingPayment.amount || 0)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Footer actions */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button className="btn btn-outline" onClick={() => { handleDownloadVoucher('Payment Voucher', { no: viewingPayment.voucher_no || viewingPayment.invoice_no, date: viewingPayment.date, party: viewingPayment.payee, project: viewingPayment.project, category: viewingPayment.category, description: viewingPayment.description, mode: viewingPayment.paymentMode, amount: viewingPayment.amount, base_amount: viewingPayment.base_amount, gst_amount: viewingPayment.gst_amount, invoice_no: viewingPayment.invoice_no, items: viewingPayment.items, status: 'Paid' }); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px' }}>
+                                <Download size={16} /> Download
+                            </button>
+                            <button className="btn btn-outline" onClick={() => setViewingPayment(null)} style={{ padding: '10px 24px' }}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Purchase Bill View Modal */}
+            {viewingPurchaseBill && (
+                <div className="modal-overlay" onClick={() => setViewingPurchaseBill(null)}>
+                    <div className="card animate-fade-in" style={{ width: '680px', maxWidth: '95vw', maxHeight: '88vh', overflowY: 'auto', padding: '32px', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Purchase Bill</h3>
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Vendor Invoice Details</p>
+                            </div>
+                            <button onClick={() => setViewingPurchaseBill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: 'var(--text-muted)', lineHeight: 1 }}>&times;</button>
+                        </div>
+
+                        {/* Bill Info Grid */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '12px' }}>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Bill No</span>
+                                <p style={{ fontWeight: '800', fontSize: '16px', color: 'var(--primary)' }}>{viewingPurchaseBill.bill_no}</p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Bill Date</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px' }}>{viewingPurchaseBill.bill_date ? new Date(viewingPurchaseBill.bill_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Vendor</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px' }}>{viewingPurchaseBill.vendor_name}</p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Project</span>
+                                <p style={{ fontWeight: '700', fontSize: '14px' }}>{viewingPurchaseBill.project_name}</p>
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Status</span>
+                                <span className={`badge ${viewingPurchaseBill.status === 'Paid' ? 'badge-success' : viewingPurchaseBill.status === 'Partially Paid' ? 'badge-info' : viewingPurchaseBill.status === 'Draft' ? 'badge-secondary' : 'badge-warning'}`}>
+                                    {viewingPurchaseBill.status || 'Pending'}
+                                </span>
+                            </div>
+                            {viewingPurchaseBill.grn_id && (
+                                <div>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>GRN Reference</span>
+                                    <p style={{ fontWeight: '600', fontSize: '13px' }}>{viewingPurchaseBill.grn_id}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Items Table */}
+                        {viewingPurchaseBill.items && viewingPurchaseBill.items.length > 0 && (
+                            <div style={{ marginBottom: '24px' }}>
+                                <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '10px' }}>Items ({viewingPurchaseBill.items.length})</span>
+                                <table className="data-table" style={{ fontSize: '13px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ padding: '10px 12px' }}>#</th>
+                                            <th style={{ padding: '10px 12px' }}>Item</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Qty</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Rate</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>GST %</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {viewingPurchaseBill.items.map((item, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ padding: '10px 12px', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                                                <td style={{ padding: '10px 12px', fontWeight: '600' }}>{item.name}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>{item.qty}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{fmt(item.rate || 0)}</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right' }}>{item.gst || 0}%</td>
+                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '700' }}>{fmt(item.amount || 0)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* Totals */}
+                        <div style={{ borderTop: '2px solid var(--border)', paddingTop: '16px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <div style={{ minWidth: '260px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '14px' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>Subtotal</span>
+                                        <span style={{ fontWeight: '600' }}>{fmt((viewingPurchaseBill.total_amount || 0) - (viewingPurchaseBill.tax_amount || 0))}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '14px' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>GST / Tax</span>
+                                        <span style={{ fontWeight: '600' }}>{fmt(viewingPurchaseBill.tax_amount || 0)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', fontSize: '16px', borderTop: '1px solid var(--border)', marginTop: '4px' }}>
+                                        <span style={{ fontWeight: '800' }}>Total Amount</span>
+                                        <span style={{ fontWeight: '800', color: 'var(--primary)' }}>{fmt(viewingPurchaseBill.total_amount || 0)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Notes */}
+                        {viewingPurchaseBill.notes && (
+                            <div style={{ padding: '12px 16px', backgroundColor: '#eff6ff', borderRadius: '10px', borderLeft: '4px solid #3b82f6', marginBottom: '20px', fontSize: '13px', color: '#1e40af' }}>
+                                <strong>Notes:</strong> {viewingPurchaseBill.notes}
+                            </div>
+                        )}
+
+                        {/* Footer actions */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            <button className="btn btn-outline" onClick={() => { handleDownloadVoucher('Purchase Bill', { no: viewingPurchaseBill.bill_no, date: viewingPurchaseBill.bill_date, party: viewingPurchaseBill.vendor_name, project: viewingPurchaseBill.project_name, amount: viewingPurchaseBill.total_amount, base_amount: viewingPurchaseBill.total_amount - (viewingPurchaseBill.tax_amount || 0), gst_amount: viewingPurchaseBill.tax_amount, items: viewingPurchaseBill.items, status: viewingPurchaseBill.status }); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px' }}>
+                                <Download size={16} /> Download
+                            </button>
+                            <button className="btn btn-outline" onClick={() => setViewingPurchaseBill(null)} style={{ padding: '10px 24px' }}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

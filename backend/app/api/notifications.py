@@ -7,6 +7,7 @@ from typing import Optional
 from datetime import datetime
 from database import get_database
 from app.utils.auth import get_current_user, validate_object_id
+from app.utils.rbac import normalize_role
 from bson import ObjectId
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -23,6 +24,7 @@ async def get_notifications(
 ):
     """Get current user's notifications with pagination and filters."""
     username = current_user.get("username", "")
+    user_role = normalize_role(current_user.get("role", ""))
     query = {"recipient": username}
 
     if event_type:
@@ -31,6 +33,23 @@ async def get_notifications(
         query["is_read"] = True
     elif is_read == "false":
         query["is_read"] = False
+
+    # Site Engineers only see notifications for their assigned projects
+    if user_role == "siteengineer":
+        emp_code = current_user.get("username") or current_user.get("employeeCode", "")
+        assigned_projects = await db.projects.find(
+            {"$or": [
+                {"engineer_id": emp_code},
+                {"engineer_id": current_user.get("id", "")},
+            ]},
+            {"name": 1}
+        ).to_list(200)
+        assigned_names = [p["name"] for p in assigned_projects if p.get("name")]
+        # Show: no project attached (system/personal) OR project they're assigned to
+        query["$or"] = [
+            {"project_name": {"$in": [None, "", *assigned_names]}},
+            {"project_name": {"$exists": False}},
+        ]
 
     skip = (page - 1) * limit
 
@@ -59,7 +78,25 @@ async def get_unread_count(
 ):
     """Get unread notification count for badge."""
     username = current_user.get("username", "")
-    count = await db.notifications.count_documents({"recipient": username, "is_read": False})
+    user_role = normalize_role(current_user.get("role", ""))
+    count_query = {"recipient": username, "is_read": False}
+
+    if user_role == "siteengineer":
+        emp_code = current_user.get("username") or current_user.get("employeeCode", "")
+        assigned_projects = await db.projects.find(
+            {"$or": [
+                {"engineer_id": emp_code},
+                {"engineer_id": current_user.get("id", "")},
+            ]},
+            {"name": 1}
+        ).to_list(200)
+        assigned_names = [p["name"] for p in assigned_projects if p.get("name")]
+        count_query["$or"] = [
+            {"project_name": {"$in": [None, "", *assigned_names]}},
+            {"project_name": {"$exists": False}},
+        ]
+
+    count = await db.notifications.count_documents(count_query)
     return {"unread_count": count}
 
 

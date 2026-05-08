@@ -129,6 +129,7 @@ const Dashboard = () => {
             interval = setInterval(() => {
                 const now = new Date();
                 const checkIn = new Date(attendanceStatus.current_session.check_in);
+                if (isNaN(checkIn.getTime())) return;
                 let totalSecs = Math.floor((now - checkIn) / 1000);
                 let totalBreakSecs = 0;
                 let activeOfficialSecs = 0;

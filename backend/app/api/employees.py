@@ -116,6 +116,12 @@ async def create_employee(employee: EmployeeCreate, db = Depends(get_database)):
 @router.put("/{emp_id}", response_model=EmployeeResponse, dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def update_employee(emp_id: str, employee: EmployeeUpdate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     employee_dict = {k: v for k, v in employee.dict().items() if v is not None and v != ""}
+
+    # Hash password if provided
+    if "password" in employee_dict:
+        from app.utils.auth import get_password_hash
+        employee_dict["hashed_password"] = get_password_hash(employee_dict.pop("password"))
+
     # C13 Fix: Prevent role escalation - only Super Admin can assign admin roles
     if "roles" in employee_dict:
         admin_roles = {"Super Admin", "Administrator"}
