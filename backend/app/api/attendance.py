@@ -40,11 +40,11 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
             print(f"User {username} already clocked in today.")
             existing["id"] = str(existing.pop("_id"))
             for k, v in existing.items():
-                if isinstance(v, datetime): existing[k] = v.isoformat()
+                if isinstance(v, datetime): existing[k] = v.isoformat(timespec='seconds')
                 if k == "breaks":
                     for bk in v:
-                        if bk.get("start") and isinstance(bk["start"], datetime): bk["start"] = bk["start"].isoformat()
-                        if bk.get("end") and isinstance(bk["end"], datetime): bk["end"] = bk["end"].isoformat()
+                        if bk.get("start") and isinstance(bk["start"], datetime): bk["start"] = bk["start"].isoformat(timespec='seconds')
+                        if bk.get("end") and isinstance(bk["end"], datetime): bk["end"] = bk["end"].isoformat(timespec='seconds')
             return {"message": "Already clocked in", **existing}
         
         # Geofencing check
@@ -91,8 +91,8 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
         if "_id" in record: record.pop("_id")
         
         # Format for JSON
-        record["check_in"] = record["check_in"].isoformat()
-        record["created_at"] = record["created_at"].isoformat()
+        record["check_in"] = record["check_in"].isoformat(timespec='seconds')
+        record["created_at"] = record["created_at"].isoformat(timespec='seconds')
         
         return record
     except Exception as e:
@@ -216,14 +216,14 @@ async def get_my_summary(current_user = Depends(get_current_user), db = Depends(
             "total_hours": round(total_hours, 2),
             "working_days": working_days_elapsed,
             "current_session": {
-                "check_in": session["check_in"].isoformat() if session and session.get("check_in") else None,
-                "check_out": session["check_out"].isoformat() if session and session.get("check_out") else None,
+                "check_in": session["check_in"].isoformat(timespec='seconds') if session and session.get("check_in") else None,
+                "check_out": session["check_out"].isoformat(timespec='seconds') if session and session.get("check_out") else None,
                 "on_break": session.get("on_break", False),
                 "breaks": [
                     {
                         **b,
-                        "start": b["start"].isoformat() if b.get("start") else None,
-                        "end": b["end"].isoformat() if b.get("end") else None
+                        "start": b["start"].isoformat(timespec='seconds') if b.get("start") else None,
+                        "end": b["end"].isoformat(timespec='seconds') if b.get("end") else None
                     } for b in session.get("breaks", [])
                 ] if session else []
             } if session else None

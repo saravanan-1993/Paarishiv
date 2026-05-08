@@ -5,8 +5,8 @@ import {
     Loader2, User, Building, Award, Clock, Cake
 } from 'lucide-react';
 import { settingsAPI, employeeAPI } from '../utils/api';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
     const [attSummary, setAttSummary] = useState({ present_days: 0, absent_days: 0, total_hours: 0 });
@@ -67,52 +67,159 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
 
     const handleGeneratePayslip = () => {
         const doc = new jsPDF();
-        const month = new Date().toLocaleString('default', { month: 'long', year: 'numeric' });
+        const now = new Date();
+        const month = now.toLocaleString('default', { month: 'long' });
+        const year = now.getFullYear();
+        const monthYear = `${month} ${year}`;
+        const empCode = employee.employeeCode || employee.code || 'N/A';
+        const fmt = (n) => `Rs. ${parseFloat(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+        const PRIMARY = [30, 64, 120];
+        const LIGHT_BG = [235, 242, 255];
+        const DARK_TEXT = [20, 20, 20];
+        const MUTED = [100, 100, 100];
+
+        const pageW = 210;
+
+        // ── Header Band ──────────────────────────────────────────
+        doc.setFillColor(...PRIMARY);
+        doc.rect(0, 0, pageW, 38, 'F');
+
+        doc.setTextColor(255, 255, 255);
         doc.setFontSize(20);
-        doc.setTextColor(47, 93, 138);
-        doc.text(companyInfo.companyName || 'CIVIL ERP', 105, 20, { align: 'center' });
+        doc.setFont('helvetica', 'bold');
+        doc.text(companyInfo.companyName || 'CIVIL ERP', pageW / 2, 16, { align: 'center' });
 
-        doc.setFontSize(14);
-        doc.setTextColor(100);
-        doc.text(`Salary Slips for ${month}`, 105, 30, { align: 'center' });
-        doc.line(20, 35, 190, 35);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text('SALARY SLIP', pageW / 2, 24, { align: 'center' });
+        doc.text(`For the month of ${monthYear}`, pageW / 2, 31, { align: 'center' });
 
-        doc.setFontSize(11);
-        doc.setTextColor(0);
-        doc.text(`Employee Name: ${employee.name}`, 20, 50);
-        doc.text(`Employee Code: ${employee.id}`, 20, 58);
-        doc.text(`Designation: ${employee.designation || employee.role}`, 20, 66);
-        doc.text(`Department: ${employee.dept}`, 20, 74);
+        // ── Employee Info Box ─────────────────────────────────────
+        doc.setFillColor(...LIGHT_BG);
+        doc.roundedRect(14, 44, pageW - 28, 44, 3, 3, 'F');
+        doc.setDrawColor(...PRIMARY);
+        doc.setLineWidth(0.5);
+        doc.roundedRect(14, 44, pageW - 28, 44, 3, 3, 'S');
 
-        doc.text(`Days Present: ${attSummary.present_days}`, 130, 50);
-        doc.text(`Days Absent: ${attSummary.absent_days}`, 130, 58);
-        doc.text(`Bank A/c: ${employee.bankAccount || 'N/A'}`, 130, 66);
+        const col1x = 20, col2x = 110;
+        const labelColor = MUTED, valueColor = DARK_TEXT;
 
-        const basic = parseFloat(employee.basicSalary) || 0;
-        const hra = basic * 0.2;
-        const pf = basic * 0.12;
-        const tax = basic * 0.05;
-        const netSalary = basic + hra - pf - tax;
+        const field = (label, value, x, y) => {
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(...labelColor);
+            doc.text(label, x, y);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...valueColor);
+            doc.text(String(value || 'N/A'), x, y + 5);
+        };
 
-        doc.autoTable({
-            startY: 85,
-            head: [['Description', 'Earnings (₹)', 'Deductions (₹)']],
-            body: [
-                ['Basic Salary', basic.toLocaleString(), ''],
-                ['HRA', hra.toLocaleString(), ''],
-                ['Provident Fund (PF)', '', pf.toLocaleString()],
-                ['Professional Tax', '', tax.toLocaleString()],
-                ['', '', ''],
-                ['Total Earnings', (basic + hra).toLocaleString(), ''],
-                ['Total Deductions', '', (pf + tax).toLocaleString()],
-                ['NET SALARY', { content: `₹${netSalary.toLocaleString()}`, styles: { fontStyle: 'bold' } }, '']
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: [47, 93, 138] }
+        field('Employee Name', employee.name, col1x, 52);
+        field('Employee Code', empCode, col1x, 64);
+        field('Designation', employee.designation || employee.role || 'N/A', col1x, 76);
+
+        field('Department', employee.dept || 'N/A', col2x, 52);
+        field('Bank Account', employee.bankAccount || 'N/A', col2x, 64);
+        field('Pay Period', monthYear, col2x, 76);
+
+        // ── Attendance Summary ────────────────────────────────────
+        doc.setFillColor(245, 247, 250);
+        doc.roundedRect(14, 93, pageW - 28, 18, 2, 2, 'F');
+
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...PRIMARY);
+        doc.text('ATTENDANCE SUMMARY', 20, 100);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MUTED);
+        const attW = (pageW - 28) / 3;
+        const attItems = [
+            ['Days Present', attSummary.present_days || 0],
+            ['Days Absent', attSummary.absent_days || 0],
+            ['Total Hours', `${attSummary.total_hours || 0} hrs`],
+        ];
+        attItems.forEach(([label, value], i) => {
+            const ax = 20 + i * attW;
+            doc.setFontSize(8);
+            doc.setTextColor(...MUTED);
+            doc.text(label, ax, 106);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(...DARK_TEXT);
+            doc.text(String(value), ax, 111);
+            doc.setFont('helvetica', 'normal');
         });
 
-        doc.save(`Payslip_${employee.id}_${month}.pdf`);
+        // ── Earnings & Deductions Table ───────────────────────────
+        const basic = parseFloat(employee.basicSalary) || 0;
+        const hraVal = parseFloat(employee.hra) || basic * 0.2;
+        const pf = basic * 0.12;
+        const tax = basic * 0.05;
+        const grossEarnings = basic + hraVal;
+        const totalDeductions = pf + tax;
+        const netSalary = grossEarnings - totalDeductions;
+
+        autoTable(doc, {
+            startY: 117,
+            margin: { left: 14, right: 14 },
+            head: [['EARNINGS', 'Amount (Rs.)', 'DEDUCTIONS', 'Amount (Rs.)']],
+            body: [
+                ['Basic Salary', fmt(basic), 'Provident Fund (PF)', fmt(pf)],
+                ['House Rent Allowance (HRA)', fmt(hraVal), 'Professional Tax', fmt(tax)],
+                ['', '', '', ''],
+                [
+                    { content: 'Gross Earnings', styles: { fontStyle: 'bold', fillColor: [220, 230, 255] } },
+                    { content: fmt(grossEarnings), styles: { fontStyle: 'bold', fillColor: [220, 230, 255] } },
+                    { content: 'Total Deductions', styles: { fontStyle: 'bold', fillColor: [255, 220, 220] } },
+                    { content: fmt(totalDeductions), styles: { fontStyle: 'bold', fillColor: [255, 220, 220] } },
+                ],
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: PRIMARY, textColor: 255, fontStyle: 'bold', fontSize: 9 },
+            bodyStyles: { fontSize: 9, textColor: DARK_TEXT },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            columnStyles: {
+                0: { cellWidth: 55 },
+                1: { cellWidth: 40, halign: 'right' },
+                2: { cellWidth: 55 },
+                3: { cellWidth: 40, halign: 'right' },
+            },
+        });
+
+        // ── Net Salary Band ───────────────────────────────────────
+        const afterTable = doc.lastAutoTable.finalY + 6;
+        doc.setFillColor(...PRIMARY);
+        doc.roundedRect(14, afterTable, pageW - 28, 16, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('NET SALARY PAYABLE', 20, afterTable + 10);
+        doc.text(fmt(netSalary), pageW - 14, afterTable + 10, { align: 'right' });
+
+        // ── Signature Section ─────────────────────────────────────
+        const sigY = afterTable + 36;
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.3);
+
+        doc.line(20, sigY, 75, sigY);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...MUTED);
+        doc.text('Employee Signature', 20, sigY + 5);
+
+        doc.line(135, sigY, 190, sigY);
+        doc.text('Authorised Signatory', 135, sigY + 5);
+
+        // ── Footer ────────────────────────────────────────────────
+        doc.setFontSize(7);
+        doc.setTextColor(160, 160, 160);
+        doc.text('This is a system generated payslip and does not require a physical signature.', pageW / 2, 285, { align: 'center' });
+        doc.text(`Generated on: ${now.toLocaleDateString('en-IN')}`, pageW / 2, 289, { align: 'center' });
+
+        doc.save(`Payslip_${empCode}_${monthYear.replace(' ', '_')}.pdf`);
     };
 
     if (!isOpen || !employee) return null;

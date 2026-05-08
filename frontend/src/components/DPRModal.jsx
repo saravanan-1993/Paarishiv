@@ -644,7 +644,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                                                         <CustomSelect
                                                             options={[
                                                                 { value: '', label: 'Select Category' },
-                                                                ...rateCard.map(rc => ({ value: rc.role, label: `${rc.role} (₹${rc.rate})` })),
+                                                                ...rateCard.map(rc => ({ value: rc.role, label: rc.role })),
                                                                 ...(rateCard.length === 0 && row.party ? [{ value: 'General', label: 'General' }] : [])
                                                             ]}
                                                             value={row.category}
@@ -1061,7 +1061,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
                     </button>
                     {activeTab !== 'photos' ? (
                         <button onClick={() => {
-                            const tabOrder = ['work', 'labour', 'material', 'equipment', 'next_day', 'contractor', 'checklist', 'photos'];
+                            const tabOrder = ['work', 'labour', 'material', 'next_day', 'contractor', 'checklist', 'photos'];
                             const nextIdx = tabOrder.indexOf(activeTab) + 1;
                             if (nextIdx < tabOrder.length) setActiveTab(tabOrder[nextIdx]);
                         }} style={{

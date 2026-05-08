@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, role_in
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_MATERIAL, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -108,7 +108,7 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
     
     # Check if user is Coordinator, Admin, or Purchase Officer
     allowed_roles = ["Project Coordinator", "Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
-    if current_user.get("role") in allowed_roles:
+    if role_in(current_user.get("role", ""), allowed_roles):
         if project_name and project_name != "all":
             query["project_name"] = project_name
     elif current_user.get("role") == "Site Engineer":
@@ -157,7 +157,7 @@ class ConsolidateRequests(BaseModel):
 async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Only Coordinator, Admin can consolidate
     allowed = ["Project Coordinator", "Super Admin", "Administrator"]
-    if current_user.get("role") not in allowed:
+    if not role_in(current_user.get("role", ""), allowed):
         raise HTTPException(status_code=403, detail="Not authorized to consolidate requests")
         
     # 1. Fetch all selected requests
@@ -263,7 +263,7 @@ async def update_request_status(request_id: str, payload: dict, db = Depends(get
     oid = validate_object_id(request_id, "request")
     # Only Coordinator, Admin, Purchase Officer or Inventory Manager can approve
     allowed_approvers = ["Project Coordinator", "Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
-    if current_user.get("role") not in allowed_approvers:
+    if not role_in(current_user.get("role", ""), allowed_approvers):
         raise HTTPException(status_code=403, detail="Not authorized to approve requests")
 
     status = payload.get("status")

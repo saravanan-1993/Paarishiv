@@ -24,6 +24,15 @@ _KEY_TO_LABEL = {
 _LABEL_TO_KEY = {v: k for k, v in _KEY_TO_LABEL.items()}
 
 
+def normalize_role(role: str) -> str:
+    """Remove all spaces and lowercase so 'Project Co ordinator' == 'Project Coordinator'."""
+    return "".join((role or "").lower().split())
+
+def role_in(user_role: str, allowed: list) -> bool:
+    """Space-insensitive, case-insensitive role membership check."""
+    norm = normalize_role(user_role)
+    return any(norm == normalize_role(r) for r in allowed)
+
 def _resolve_v2(permissions: dict, module_label: str, action: str, feature: Optional[str]):
     """
     Resolve permission check against a v2 permissions dict.
@@ -85,7 +94,7 @@ class RBACPermission:
         role_name = current_user.get("role")
 
         # Super Admin bypass
-        if role_name in ["Super Admin", "Administrator"]:
+        if role_in(role_name, ["Super Admin", "Administrator"]):
             return True
 
         # Get roles from DB
@@ -97,7 +106,7 @@ class RBACPermission:
             )
 
         roles = roles_doc.get("roles", [])
-        role = next((r for r in roles if r.get("name") == role_name), None)
+        role = next((r for r in roles if normalize_role(r.get("name", "")) == normalize_role(role_name)), None)
 
         if not role:
             raise HTTPException(

@@ -1,6 +1,17 @@
 import React from 'react';
 import { Clock, Activity, Coffee, Briefcase as BriefcaseIcon, UserCircle, ChevronDown } from 'lucide-react';
 
+const formatClockTime = (isoStr) => {
+    if (!isoStr) return '--:--';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '--:--';
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${ampm}`;
+};
+
 const AttendanceWidget = ({
     attendanceStatus,
     isClocking,
@@ -119,9 +130,7 @@ const AttendanceWidget = ({
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px', textTransform: 'uppercase' }}>Logged in at</p>
                         <p style={{ fontSize: '18px', fontWeight: '800', color: 'var(--primary)' }}>
-                            {attendanceStatus?.current_session?.check_in ?
-                                new Date(attendanceStatus.current_session.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-                                : '--:--'}
+                            {formatClockTime(attendanceStatus?.current_session?.check_in)}
                         </p>
                     </div>
                 </div>

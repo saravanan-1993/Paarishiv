@@ -8,6 +8,7 @@ from datetime import datetime
 import re
 from app.utils.auth import get_current_user
 from app.utils.cloudinary import upload_file
+from app.utils.rbac import role_in
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
@@ -119,7 +120,8 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
 async def get_projects(all: bool = False, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
     user_role = (current_user.get("role") or "").lower()
-    if user_role == "site engineer" and not all:
+    user_role_norm = user_role.replace(" ", "")
+    if user_role_norm == "siteengineer" and not all:
         emp_username = current_user.get("username")
         emp_id = current_user.get("id")
         emp_code = current_user.get("employeeCode") or ""
@@ -149,7 +151,7 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
 
         query["$or"] = or_conditions
 
-    elif "coordinator" in user_role and not all:
+    elif "coordinator" in user_role_norm and not all:
         emp_username = current_user.get("username")
         emp_id = current_user.get("id")
         emp_code = current_user.get("employeeCode") or ""
@@ -199,8 +201,8 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
 @router.get("/all-dprs")
 async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Fetch all DPRs from all projects for Coordinator/Admin."""
-    if current_user.get("role") not in ["Project Coordinator", "Super Admin", "Administrator"]:
-         raise HTTPException(status_code=403, detail="Not authorized")
+    if not role_in(current_user.get("role", ""), ["Project Coordinator", "Super Admin", "Administrator"]):
+        raise HTTPException(status_code=403, detail="Not authorized")
     
     # Pre-fetch employees to resolve IDs/usernames to names
     employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "username": 1, "employeeCode": 1}).to_list(1000)
@@ -239,7 +241,7 @@ async def get_project(project_id: str, db = Depends(get_database), current_user:
         
     # RBAC: Site Engineer can only view assigned projects
     user_role = (current_user.get("role") or "").lower()
-    if user_role == "site engineer":
+    if user_role.replace(" ", "") == "siteengineer":
         if project.get("engineer_id") != current_user.get("username") and project.get("engineer_id") != current_user.get("id"):
             raise HTTPException(status_code=403, detail="Not authorized to view this project")
 
@@ -307,8 +309,7 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
         current = project.get("status", "Planning")
         # Prevent reverting Completed projects (except by Admin)
         if current == "Completed" and new_status != "Completed":
-            user_role = (current_user.get("role") or "").strip()
-            if user_role not in ("Super Admin", "Administrator"):
+            if not role_in(current_user.get("role", ""), ["Super Admin", "Administrator"]):
                 raise HTTPException(status_code=403, detail="Only Admin can revert a Completed project")
 
     result = await db.projects.update_one(
@@ -378,11 +379,10 @@ async def update_task(
     project_id: str, task_id: str, task_update: TaskUpdate,
     db = Depends(get_database), current_user: dict = Depends(get_current_user)
 ):
-    role = (current_user.get("role") or "").lower()
-    is_admin_or_pm = role in (
-        "administrator", "super admin", "general manager", "managing director",
-        "project manager", "project coordinator", "site engineer"
-    )
+    is_admin_or_pm = role_in(current_user.get("role", ""), [
+        "Administrator", "Super Admin", "General Manager", "Managing Director",
+        "Project Manager", "Project Coordinator", "Site Engineer"
+    ])
 
     # Non-admin users may only mark a task as Completed (not change to other statuses)
     if not is_admin_or_pm and task_update.status != "Completed":
@@ -702,16 +702,17 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
 
     user_role = (current_user.get("role") or "").strip()
     user_name = current_user.get("full_name") or current_user.get("username", "Unknown")
+    user_role_norm = user_role.lower().replace(" ", "")  # space-insensitive comparison
 
     # Bug 26 - Multi-stage DPR approval workflow
     # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
     # Coordinator: Pending -> Coordinator Approved / Rejected
     # PO/HR: Coordinator Approved -> Dept Approved / Rejected
     # Admin: any transition
-    is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
-    is_coordinator = "coordinator" in user_role.lower()
-    is_po = "purchase" in user_role.lower()
-    is_hr = "hr" in user_role.lower() or user_role == "HR Manager"
+    is_admin = role_in(user_role, ["Super Admin", "Administrator", "Admin", "Managing Director"])
+    is_coordinator = "coordinator" in user_role_norm
+    is_po = "purchase" in user_role_norm
+    is_hr = "hr" in user_role_norm or "humanresource" in user_role_norm
 
     if not is_admin and not is_coordinator and not is_po and not is_hr:
         raise HTTPException(status_code=403, detail="Only Coordinators, PO, HR or Admins can update DPR status")
