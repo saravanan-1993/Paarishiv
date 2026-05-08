@@ -33,6 +33,9 @@ SYSTEM_FEATURES = [
     { "id": 'approve_leave', "label": 'Approve Leaves' },
     { "id": 'add_employee', "label": 'Add New Employee' },
     { "id": 'create_invoice', "label": 'Create Invoice/Bill' },
+    { "id": 'request_trip', "label": 'Request a Trip (Fleet)' },
+    { "id": 'approve_trip_request', "label": 'Approve Trip Requests' },
+    { "id": 'assign_trip_vehicle', "label": 'Assign Vehicle to Trip Request' },
 ]
 
 SUB_TABS = {
@@ -43,6 +46,8 @@ SUB_TABS = {
     'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
+    'Fleet Management': ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay', 'Vendor Payments', 'Trip Requests'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP']
 }
 
@@ -59,11 +64,11 @@ DEFAULT_ROLES = [
             { "name": 'Accounts', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Accounts'] },
             { "name": 'Procurement', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Procurement'] },
             { "name": 'HRMS', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['HRMS'] },
-            { "name": 'Approvals', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
+            { "name": 'Approvals', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Approvals'] },
             { "name": 'Inventory Management', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Inventory Management'] },
             { "name": 'Reports', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
             { "name": 'Team Chat', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
-            { "name": 'Fleet Management', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
+            { "name": 'Fleet Management', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Fleet Management'] },
             { "name": 'System Logs', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
             { "name": 'Settings', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Settings'] },
             { "name": 'Subcontractor Billing', "actions": { "view": True, "add": True, "edit": True, "delete": True } },

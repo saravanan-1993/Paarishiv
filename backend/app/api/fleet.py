@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List, Optional
-from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog, EquipmentBase
+from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock, FuelLog, EquipmentBase, TripRequestCreate
 from database import get_database
 from bson import ObjectId
 from datetime import datetime
@@ -337,6 +337,109 @@ async def add_fuel_log(log_data: dict = Body(...), db=Depends(get_database), cur
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+# ── Trip Requests ─────────────────────────────────────────────────────────────
+
+@router.get("/trip-requests", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
+async def get_trip_requests(db=Depends(get_database)):
+    reqs = await db.trip_requests.find().sort("created_at", -1).to_list(500)
+    for r in reqs:
+        r["id"] = str(r["_id"])
+        del r["_id"]
+        if isinstance(r.get("created_at"), datetime):
+            r["created_at"] = r["created_at"].isoformat()
+    return reqs
+
+@router.post("/trip-requests", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
+async def create_trip_request(data: TripRequestCreate, db=Depends(get_database), current_user=Depends(get_current_user)):
+    doc = data.dict()
+    doc["requested_by"] = current_user.get("full_name") or current_user.get("username", "")
+    doc["requested_by_username"] = current_user.get("username", "")
+    doc["status"] = "Pending"
+    doc["created_at"] = datetime.now()
+    result = await db.trip_requests.insert_one(doc)
+    doc.pop("_id", None)
+    doc["created_at"] = doc["created_at"].isoformat()
+    doc["id"] = str(result.inserted_id)
+    return doc
+
+@router.put("/trip-requests/{req_id}/assign", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
+async def assign_trip_request(req_id: str, assign_data: dict = Body(...), db=Depends(get_database), current_user=Depends(get_current_user)):
+    """Admin assigns vehicle/driver to an approved trip request → creates actual trip + project expense."""
+    oid = validate_object_id(req_id, "trip request")
+    req = await db.trip_requests.find_one({"_id": oid})
+    if not req:
+        raise HTTPException(status_code=404, detail="Trip request not found")
+    if req.get("status") != "Approved":
+        raise HTTPException(status_code=400, detail="Trip request is not approved yet")
+
+    vehicle_id = assign_data.get("vehicleId", "")
+    vehicle_number = assign_data.get("vehicleNumber", "")
+    driver_id = assign_data.get("driverId", "")
+    driver_name = assign_data.get("driverName", "")
+    rate_per_load = float(assign_data.get("ratePerLoad", 0) or 0)
+    transport_cost = float(assign_data.get("transportCost", 0) or 0)
+
+    # Auto-generate trip ID
+    count = await db.trips.count_documents({})
+    trip_id = str(count + 1).zfill(4)
+
+    trip_doc = {
+        "tripId": trip_id,
+        "vehicleId": vehicle_id,
+        "vehicleNumber": vehicle_number,
+        "driverId": driver_id,
+        "driverName": driver_name,
+        "loadType": req.get("load_type", ""),
+        "fromLocation": req.get("from_location", ""),
+        "toLocation": req.get("to_location", ""),
+        "projectId": req.get("project_id", ""),
+        "projectName": req.get("project_name", ""),
+        "tripType": "Project Trip",
+        "ratePerLoad": rate_per_load,
+        "totalRevenue": 0.0,
+        "totalExpense": transport_cost,
+        "netProfit": -transport_cost,
+        "status": "Open",
+        "date": datetime.now(),
+        "paymentStatus": "Pending",
+        "trip_request_id": req_id,
+        "expenses": [{"category": "Transport", "amount": transport_cost, "remarks": f"Trip request: {req.get('load_type', '')}"}] if transport_cost > 0 else [],
+    }
+    trip_result = await db.trips.insert_one(trip_doc)
+
+    # Add transport cost as project expense
+    if transport_cost > 0 and req.get("project_name"):
+        await db.expenses.insert_one({
+            "category": "Transport",
+            "amount": transport_cost,
+            "project": req.get("project_name", ""),
+            "payee": vehicle_number or "Transport",
+            "paymentMode": "Cash",
+            "description": f"Transport: {req.get('load_type', '')} | {req.get('from_location', '')} → {req.get('to_location', '')} | {req.get('quantity', '')} {req.get('quantity_unit', '')}",
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "base_amount": transport_cost,
+            "gst_amount": 0,
+            "source": "fleet_trip",
+            "trip_id": str(trip_result.inserted_id),
+            "status": "Recorded",
+        })
+        await db.projects.update_one(
+            {"name": req.get("project_name", "")},
+            {"$inc": {"spent": transport_cost}}
+        )
+
+    # Mark trip request as assigned
+    await db.trip_requests.update_one({"_id": oid}, {"$set": {
+        "status": "Assigned",
+        "assigned_vehicle": vehicle_number,
+        "assigned_driver": driver_name,
+        "trip_id": str(trip_result.inserted_id),
+        "assigned_at": datetime.now(),
+        "assigned_by": current_user.get("full_name") or current_user.get("username", ""),
+    }})
+
+    return {"success": True, "trip_id": str(trip_result.inserted_id), "message": "Vehicle assigned and trip created"}
 
 @router.get("/fuel/summary", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
 async def get_fuel_summary(project_name: Optional[str] = None, db = Depends(get_database)):

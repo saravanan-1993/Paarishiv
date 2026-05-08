@@ -378,11 +378,14 @@ async def update_task(
     project_id: str, task_id: str, task_update: TaskUpdate,
     db = Depends(get_database), current_user: dict = Depends(get_current_user)
 ):
-    role_name = current_user.get("role") or ""
-    can_edit = await _has_permission(db, role_name, "Projects", "edit")
+    role = (current_user.get("role") or "").lower()
+    is_admin_or_pm = role in (
+        "administrator", "super admin", "general manager", "managing director",
+        "project manager", "project coordinator", "site engineer"
+    )
 
-    # Users without Projects:edit permission may only mark a task as Completed
-    if not can_edit and task_update.status != "Completed":
+    # Non-admin users may only mark a task as Completed (not change to other statuses)
+    if not is_admin_or_pm and task_update.status != "Completed":
         raise HTTPException(status_code=403, detail="You can only mark tasks as Completed.")
 
     project = await db.projects.find_one({"_id": ObjectId(project_id)})

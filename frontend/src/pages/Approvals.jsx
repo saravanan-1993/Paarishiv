@@ -3,12 +3,13 @@ import { useSearchParams } from 'react-router-dom';
 import {
     CheckCircle, XCircle, Clock, Package,
     ShoppingCart, User, FileText, Loader2, RefreshCw, Eye, CreditCard,
-    Search, Filter, ChevronDown, Download
+    Search, Filter, ChevronDown, Download, Truck
 } from 'lucide-react';
 import { approvalsAPI } from '../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
+import { hasFeature, hasSubTabAccess } from '../utils/rbac';
 import PODetailModal from '../components/PODetailModal';
 import MaterialRequestDetailModal from '../components/MaterialRequestDetailModal';
 
@@ -19,6 +20,8 @@ const Approvals = () => {
     const [activeTab, setActiveTab] = useState('leaves');
     const userRole = (user?.role || '').toLowerCase();
     const canApprovePO = ['super admin', 'administrator', 'general manager', 'manager'].includes(userRole);
+    const canApproveTripRequest = hasFeature(user, 'approve_trip_request') || ['super admin', 'administrator', 'managing director'].includes(userRole) || userRole.includes('coordinator') || userRole.includes('purchase');
+    const canSeeTripRequestsTab = hasSubTabAccess(user, 'Approvals', 'Trip Requests');
 
     const tabMapping = useMemo(() => ({
         'Leaves': 'leaves',
@@ -67,7 +70,8 @@ const Approvals = () => {
         labour_payments: [],
         stock_returns: [],
         material_transfers: [],
-        payment_requests: []
+        payment_requests: [],
+        trip_requests: []
     });
 
     const fetchData = async () => {
@@ -84,7 +88,9 @@ const Approvals = () => {
                 subcontractor_bills: res.data.subcontractor_bills || [],
                 labour_payments: res.data.labour_payments || [],
                 stock_returns: res.data.stock_returns || [],
-                material_transfers: res.data.material_transfers || []
+                material_transfers: res.data.material_transfers || [],
+                payment_requests: res.data.payment_requests || [],
+                trip_requests: res.data.trip_requests || []
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
@@ -196,6 +202,8 @@ const Approvals = () => {
         { id: 'labour_payments', label: 'Labour Pay', count: data.labour_payments?.length || 0, icon: FileText, color: '#7C3AED' },
         { id: 'stock_returns', label: 'Stock Returns', count: data.stock_returns?.length || 0, icon: FileText, color: '#059669' },
         { id: 'material_transfers', label: 'Transfers', count: data.material_transfers?.length || 0, icon: FileText, color: '#F59E0B' },
+        { id: 'payment_requests', label: 'Vendor Payments', count: data.payment_requests?.length || 0, icon: CreditCard, color: '#0891b2' },
+        ...(canSeeTripRequestsTab ? [{ id: 'trip_requests', label: 'Trip Requests', count: data.trip_requests?.length || 0, icon: Truck, color: '#7c3aed' }] : []),
     ];
 
     const handleDprAction = async (dpr, action) => {
@@ -776,6 +784,155 @@ const Approvals = () => {
         </div>
     );
 
+    const renderPaymentRequestCard = (item) => (
+        <div key={item._id || item.id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>Vendor Payment</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.payee} &bull; {item.voucher_no || item.grn_id || '—'}</p>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.project || '—'}</p>
+                </div>
+                <span style={{
+                    padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                    backgroundColor: item.status === 'Approved' ? '#D1FAE5' : item.status === 'Rejected' ? '#FEE2E2' : '#FEF3C7',
+                    color: item.status === 'Approved' ? '#065F46' : item.status === 'Rejected' ? '#991B1B' : '#92400E'
+                }}>{item.status || 'Pending'}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>AMOUNT</p>
+                    <p style={{ fontSize: '18px', fontWeight: '800', color: '#0891b2' }}>₹{(item.amount || 0).toLocaleString('en-IN')}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>PAYMENT MODE</p>
+                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.paymentMode || '—'}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>DATE</p>
+                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.date || '—'}</p>
+                </div>
+            </div>
+            {item.invoice_no && (
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>Invoice: {item.invoice_no}</p>
+            )}
+            {item.description && (
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>{item.description}</p>
+            )}
+            {item.status === 'Pending' && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('payment_requests', item._id || item.id, 'approve')}
+                        style={{ padding: '6px 16px', fontSize: '12px' }}>
+                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve & Pay'}
+                    </button>
+                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                        onClick={() => handleAction('payment_requests', item._id || item.id, 'reject')}
+                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderTripRequestCard = (item) => {
+        const statusColor = {
+            'Pending': { bg: '#FEF3C7', color: '#92400E' },
+            'Coordinator Approved': { bg: '#DBEAFE', color: '#1E40AF' },
+            'PO Approved': { bg: '#EDE9FE', color: '#5B21B6' },
+            'Approved': { bg: '#D1FAE5', color: '#065F46' },
+            'Rejected': { bg: '#FEE2E2', color: '#991B1B' },
+            'Assigned': { bg: '#D1FAE5', color: '#065F46' },
+        }[item.status] || { bg: '#FEF3C7', color: '#92400E' };
+
+        const canApprove = canApproveTripRequest && item.status !== 'Rejected' && item.status !== 'Assigned' && item.status !== 'Approved';
+
+        return (
+            <div key={item._id || item.id} style={{
+                background: 'white', borderRadius: '16px', padding: '24px',
+                border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', marginBottom: '16px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c3aed' }}>
+                            <Truck size={22} />
+                        </div>
+                        <div>
+                            <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '2px' }}>
+                                Trip Request — {item.load_type}
+                            </h3>
+                            <p style={{ fontSize: '12px', color: '#64748b' }}>
+                                {item.project_name || '—'} &bull; {item.requested_by || '—'}
+                            </p>
+                        </div>
+                    </div>
+                    <span style={{
+                        padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                        backgroundColor: statusColor.bg, color: statusColor.color
+                    }}>{item.status}</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '14px' }}>
+                    <div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>FROM</p>
+                        <p style={{ fontSize: '13px', fontWeight: '700' }}>{item.from_location || '—'}</p>
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>TO</p>
+                        <p style={{ fontSize: '13px', fontWeight: '700' }}>{item.to_location || '—'}</p>
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>QUANTITY</p>
+                        <p style={{ fontSize: '13px', fontWeight: '700' }}>{item.quantity ? `${item.quantity} ${item.quantity_unit || ''}` : '—'}</p>
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>REQ. DATE</p>
+                        <p style={{ fontSize: '13px', fontWeight: '700' }}>{item.requested_date || '—'}</p>
+                    </div>
+                    <div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>SUBMITTED</p>
+                        <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN') : '—'}</p>
+                    </div>
+                    {item.approved_by && (
+                        <div>
+                            <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>APPROVED BY</p>
+                            <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.approved_by}</p>
+                        </div>
+                    )}
+                </div>
+
+                {item.remarks && (
+                    <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Remarks: {item.remarks}</p>
+                )}
+
+                {item.status === 'Assigned' && (
+                    <div style={{ padding: '10px 14px', backgroundColor: '#D1FAE5', borderRadius: '8px', fontSize: '12px', color: '#065F46', fontWeight: '600', marginBottom: '12px' }}>
+                        ✓ Assigned to {item.assigned_vehicle || 'vehicle'} — {item.assigned_driver || 'driver'}. Trip created in Fleet.
+                    </div>
+                )}
+
+                {canApprove && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('trip_requests', item._id || item.id, 'approve')}
+                            style={{ padding: '8px 18px', fontSize: '12px' }}>
+                            {actionLoading === `${item._id || item.id}-approve` ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                            {item.status === 'Pending' ? ' Approve' : item.status === 'Coordinator Approved' ? ' PO Approve' : ' Final Approve'}
+                        </button>
+                        <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('trip_requests', item._id || item.id, 'reject')}
+                            style={{ padding: '8px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                            {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const renderStockReturnCard = (item) => (
         <div key={item._id || item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -1208,6 +1365,8 @@ const Approvals = () => {
                                 if (activeTab === 'labour_payments') return renderLabourPaymentCard(item);
                                 if (activeTab === 'stock_returns') return renderStockReturnCard(item);
                                 if (activeTab === 'material_transfers') return renderTransferCard(item);
+                                if (activeTab === 'payment_requests') return renderPaymentRequestCard(item);
+                                if (activeTab === 'trip_requests') return renderTripRequestCard(item);
                                 return null;
                             })}
                         </div>

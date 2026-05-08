@@ -9,28 +9,36 @@ import {
 } from 'lucide-react';
 import { fleetAPI, projectAPI, employeeAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission } from '../utils/rbac';
+import { hasPermission, hasFeature, hasSubTabAccess } from '../utils/rbac';
 import VehicleModal from '../components/VehicleModal';
 import TripModal from '../components/TripModal';
 import TripExpenseModal from '../components/TripExpenseModal';
 import DriverModal from '../components/DriverModal';
+import TripRequestModal from '../components/TripRequestModal';
 import Pagination from '../components/Pagination';
 
 const Fleet = () => {
     const { user } = useAuth();
     const canEditFleet = hasPermission(user, 'Fleet Management', 'edit');
     const canDeleteFleet = hasPermission(user, 'Fleet Management', 'delete');
+    const canRequestTrip = hasFeature(user, 'request_trip') || hasPermission(user, 'Fleet Management', 'view');
+    const canAssignTrip = hasFeature(user, 'assign_trip_vehicle') || canEditFleet;
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('Dashboard');
 
-    const availableTabs = useMemo(() => ['Dashboard', 'Trips', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'], []);
+    const availableTabs = useMemo(() => {
+        const all = ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'];
+        return all.filter(tab => hasSubTabAccess(user, 'Fleet Management', tab));
+    }, [user]);
 
     useEffect(() => {
         if (urlTab && availableTabs.includes(urlTab)) {
             setActiveTab(urlTab);
+        } else if (availableTabs.length > 0 && !availableTabs.includes(activeTab)) {
+            setActiveTab(availableTabs[0]);
         }
-    }, [urlTab, availableTabs]);
+    }, [urlTab, availableTabs, activeTab]);
 
     const handleTabChange = (tabId) => {
         setActiveTab(tabId);
@@ -44,9 +52,14 @@ const Fleet = () => {
     const [projects, setProjects] = useState([]);
     const [drivers, setDrivers] = useState([]);
 
+    const [tripRequests, setTripRequests] = useState([]);
+    const [assigningRequest, setAssigningRequest] = useState(null); // trip request being assigned
+    const [assignForm, setAssignForm] = useState({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' });
+
     // Modals
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
     const [isTripModalOpen, setIsTripModalOpen] = useState(false);
+    const [isTripRequestModalOpen, setIsTripRequestModalOpen] = useState(false);
     const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [selectedTrip, setSelectedTrip] = useState(null);
@@ -71,18 +84,20 @@ const Fleet = () => {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const [statsRes, vehiclesRes, tripsRes, projectsRes, employeesRes] = await Promise.all([
+            const [statsRes, vehiclesRes, tripsRes, projectsRes, employeesRes, tripReqRes] = await Promise.all([
                 fleetAPI.getStats(),
                 fleetAPI.getVehicles(),
                 fleetAPI.getTrips(),
                 projectAPI.getAll(),
-                employeeAPI.getAll()
+                employeeAPI.getAll(),
+                fleetAPI.getTripRequests().catch(() => ({ data: [] }))
             ]);
             setStats(statsRes.data);
             setVehicles(vehiclesRes.data);
             setTrips(tripsRes.data);
             setProjects(projectsRes.data);
             setDrivers(employeesRes.data.filter(e => e.roles?.includes('Driver') || e.role === 'Driver'));
+            setTripRequests(tripReqRes.data || []);
         } catch (err) {
             console.error('Failed to fetch fleet data', err);
         } finally {
@@ -517,6 +532,212 @@ const Fleet = () => {
         </div>
     );
 
+    const handleAssignSubmit = async (req) => {
+        if (!assignForm.vehicleNumber || !assignForm.driverName) {
+            alert('Please select vehicle and driver.');
+            return;
+        }
+        try {
+            await fleetAPI.assignTripRequest(req.id || req._id, {
+                ...assignForm,
+                transportCost: parseFloat(assignForm.transportCost) || 0,
+            });
+            setAssigningRequest(null);
+            setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' });
+            fetchData();
+            alert('Vehicle assigned! Trip created and expense recorded to project.');
+        } catch (err) {
+            alert(err?.response?.data?.detail || 'Failed to assign vehicle.');
+        }
+    };
+
+    const renderTripRequests = () => {
+        const pendingApproval = tripRequests.filter(r => ['Pending', 'Coordinator Approved', 'PO Approved'].includes(r.status));
+        const approved = tripRequests.filter(r => r.status === 'Approved');
+        const assigned = tripRequests.filter(r => r.status === 'Assigned');
+        const rejected = tripRequests.filter(r => r.status === 'Rejected');
+
+        const statusBadge = (status) => {
+            const map = {
+                'Pending': { bg: '#FEF3C7', color: '#92400E' },
+                'Coordinator Approved': { bg: '#DBEAFE', color: '#1E40AF' },
+                'PO Approved': { bg: '#EDE9FE', color: '#5B21B6' },
+                'Approved': { bg: '#D1FAE5', color: '#065F46' },
+                'Assigned': { bg: '#D1FAE5', color: '#065F46' },
+                'Rejected': { bg: '#FEE2E2', color: '#991B1B' },
+            };
+            const s = map[status] || { bg: '#F1F5F9', color: '#475569' };
+            return <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', backgroundColor: s.bg, color: s.color }}>{status}</span>;
+        };
+
+        const RequestCard = ({ req }) => (
+            <div style={{ background: 'white', borderRadius: '12px', padding: '20px', border: '1px solid var(--border)', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                    <div>
+                        <div style={{ fontWeight: '800', fontSize: '15px', color: 'var(--text-main)' }}>{req.load_type}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{req.project_name || '—'} &bull; {req.requested_by || '—'}</div>
+                    </div>
+                    {statusBadge(req.status)}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px', background: '#F8FAFC', borderRadius: '8px', padding: '12px' }}>
+                    <div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase' }}>FROM</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.from_location || '—'}</div>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase' }}>TO</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.to_location || '—'}</div>
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase' }}>QTY</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.quantity ? `${req.quantity} ${req.quantity_unit || ''}` : '—'}</div>
+                    </div>
+                </div>
+                {req.remarks && <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>{req.remarks}</p>}
+                {req.status === 'Assigned' && (
+                    <div style={{ padding: '8px 12px', background: '#D1FAE5', borderRadius: '8px', fontSize: '12px', color: '#065F46', fontWeight: '600' }}>
+                        ✓ Assigned: {req.assigned_vehicle} — {req.assigned_driver}
+                    </div>
+                )}
+                {req.status === 'Approved' && canAssignTrip && (
+                    <button
+                        className="btn btn-primary btn-sm"
+                        style={{ width: '100%', marginTop: '4px', fontWeight: '700', fontSize: '13px' }}
+                        onClick={() => { setAssigningRequest(req); setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' }); }}
+                    >
+                        <Truck size={14} /> Assign Vehicle & Create Trip
+                    </button>
+                )}
+            </div>
+        );
+
+        return (
+            <div className="animate-fade-in">
+                {canRequestTrip && (
+                    <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <button className="btn btn-primary" onClick={() => setIsTripRequestModalOpen(true)}>
+                            <Plus size={18} /> Request a Trip
+                        </button>
+                    </div>
+                )}
+
+                {approved.length > 0 && (
+                    <div style={{ marginBottom: '32px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10B981', display: 'inline-block' }}></span>
+                            Ready for Assignment ({approved.length})
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                            {approved.map(req => <RequestCard key={req.id || req._id} req={req} />)}
+                        </div>
+                    </div>
+                )}
+
+                {pendingApproval.length > 0 && (
+                    <div style={{ marginBottom: '32px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#F59E0B', display: 'inline-block' }}></span>
+                            Awaiting Approval ({pendingApproval.length})
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                            {pendingApproval.map(req => <RequestCard key={req.id || req._id} req={req} />)}
+                        </div>
+                    </div>
+                )}
+
+                {assigned.length > 0 && (
+                    <div style={{ marginBottom: '32px' }}>
+                        <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#3B82F6', display: 'inline-block' }}></span>
+                            Assigned / In Progress ({assigned.length})
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+                            {assigned.map(req => <RequestCard key={req.id || req._id} req={req} />)}
+                        </div>
+                    </div>
+                )}
+
+                {tripRequests.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
+                        <Truck size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
+                        <p style={{ fontWeight: '700', fontSize: '16px' }}>No trip requests yet</p>
+                        <p style={{ fontSize: '13px' }}>Site Engineers can request trips using the "Request a Trip" button.</p>
+                    </div>
+                )}
+
+                {/* Assign Vehicle Modal */}
+                {assigningRequest && (
+                    <div className="modal-overlay" style={{ zIndex: 1000 }}>
+                        <div className="card animate-fade-in" style={{ width: '90%', maxWidth: '480px', padding: '28px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Assign Vehicle — {assigningRequest.load_type}</h3>
+                                <button onClick={() => setAssigningRequest(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                    <ArrowRightLeft size={20} style={{ transform: 'rotate(45deg)' }} />
+                                </button>
+                            </div>
+                            <div style={{ background: '#F8FAFC', borderRadius: '8px', padding: '12px', marginBottom: '20px', fontSize: '13px', color: '#475569' }}>
+                                {assigningRequest.project_name} &bull; {assigningRequest.from_location} → {assigningRequest.to_location} &bull; {assigningRequest.quantity} {assigningRequest.quantity_unit}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                <div>
+                                    <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Vehicle *</label>
+                                    <select
+                                        value={assignForm.vehicleNumber}
+                                        onChange={e => {
+                                            const v = vehicles.find(v => v.vehicleNumber === e.target.value);
+                                            setAssignForm(f => ({ ...f, vehicleNumber: e.target.value, vehicleId: v?.id || v?._id || '' }));
+                                        }}
+                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                    >
+                                        <option value="">Select vehicle...</option>
+                                        {vehicles.filter(v => v.status === 'Active').map(v => (
+                                            <option key={v.id || v._id} value={v.vehicleNumber}>{v.vehicleNumber} — {v.vehicleType}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Driver *</label>
+                                    <select
+                                        value={assignForm.driverName}
+                                        onChange={e => {
+                                            const d = drivers.find(d => d.fullName === e.target.value || d.name === e.target.value);
+                                            setAssignForm(f => ({ ...f, driverName: e.target.value, driverId: d?.id || d?._id || '' }));
+                                        }}
+                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                    >
+                                        <option value="">Select driver...</option>
+                                        {drivers.map(d => (
+                                            <option key={d.id || d._id} value={d.fullName || d.name}>{d.fullName || d.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Transport Cost (₹)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="e.g. 5000"
+                                        value={assignForm.transportCost}
+                                        onChange={e => setAssignForm(f => ({ ...f, transportCost: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                    />
+                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Will be added as project expense automatically</p>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+                                <button className="btn btn-outline" onClick={() => setAssigningRequest(null)}>Cancel</button>
+                                <button className="btn btn-primary" style={{ fontWeight: '800' }} onClick={() => handleAssignSubmit(assigningRequest)}>
+                                    <Truck size={16} /> Assign & Create Trip
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="fleet-container" style={{ position: 'relative' }}>
             <div className="animate-fade-in" style={{ padding: '0 10px 40px 10px' }}>
@@ -528,7 +749,8 @@ const Fleet = () => {
                     </div>
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button className="btn btn-outline" onClick={fetchData}><Clock size={18} /> Refresh Data</button>
-                        <button className="btn btn-primary" onClick={() => setIsTripModalOpen(true)}><Plus size={18} /> NEW TRIP</button>
+                        {canRequestTrip && <button className="btn btn-outline" onClick={() => setIsTripRequestModalOpen(true)}><Plus size={18} /> Request Trip</button>}
+                        {canEditFleet && <button className="btn btn-primary" onClick={() => setIsTripModalOpen(true)}><Plus size={18} /> NEW TRIP</button>}
                     </div>
                 </div>
 
@@ -556,11 +778,12 @@ const Fleet = () => {
                     </div>
                 ) : (
                     <>
-                        {activeTab === 'Dashboard' && renderDashboard()}
-                        {activeTab === 'Trips' && renderTrips()}
-                        {activeTab === 'Vehicles' && renderVehicles()}
-                        {activeTab === 'Drivers' && renderDrivers()}
-                        {activeTab === 'Maintenance' && (
+                        {activeTab === 'Dashboard' && availableTabs.includes('Dashboard') && renderDashboard()}
+                        {activeTab === 'Trips' && availableTabs.includes('Trips') && renderTrips()}
+                        {activeTab === 'Trip Requests' && availableTabs.includes('Trip Requests') && renderTripRequests()}
+                        {activeTab === 'Vehicles' && availableTabs.includes('Vehicles') && renderVehicles()}
+                        {activeTab === 'Drivers' && availableTabs.includes('Drivers') && renderDrivers()}
+                        {activeTab === 'Maintenance' && availableTabs.includes('Maintenance') && (
                             <div className="animate-fade-in card">
                                 <h3 style={{ marginBottom: '20px' }}>Vehicle Service & Compliance Tracker</h3>
                                 <table className="data-table">
@@ -591,7 +814,7 @@ const Fleet = () => {
                                 </table>
                             </div>
                         )}
-                        {activeTab === 'Reports' && (() => {
+                        {activeTab === 'Reports' && availableTabs.includes('Reports') && (() => {
                             // Bug 44: Filter trips by date range for reports
                             const filteredTrips = trips.filter(t => {
                                 if (!reportStartDate && !reportEndDate) return true;
@@ -849,6 +1072,11 @@ const Fleet = () => {
                     onClose={() => setIsExpenseModalOpen(false)}
                     onSuccess={fetchData}
                     trip={selectedTrip}
+                />
+                <TripRequestModal
+                    isOpen={isTripRequestModalOpen}
+                    onClose={() => setIsTripRequestModalOpen(false)}
+                    onSuccess={() => { fetchData(); alert('Trip request submitted! It will appear in Approvals for review.'); }}
                 />
             </div>
         </div>
