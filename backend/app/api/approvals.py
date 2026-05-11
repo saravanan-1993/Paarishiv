@@ -328,7 +328,21 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         {"$set": {"status": "Issued", "issued_items": issued, "issued_at": datetime.now()}}
                     )
         elif type == "expenses":
+            exp_doc = await db.expenses.find_one({"_id": oid})
             await db.expenses.update_one({"_id": oid}, {"$set": update_fields})
+            # On approval: add expense amount to project spent
+            if status == "Approved" and exp_doc:
+                await db.expenses.update_one({"_id": oid}, {"$set": {
+                    "approved_by": update_fields["approvedBy"],
+                    "approved_at": datetime.now()
+                }})
+                exp_project = exp_doc.get("project")
+                exp_amount = float(exp_doc.get("amount", 0))
+                if exp_project and exp_project != "General" and exp_amount > 0 and not exp_doc.get("grn_id"):
+                    await db.projects.update_one(
+                        {"name": exp_project},
+                        {"$inc": {"spent": exp_amount}}
+                    )
         elif type == "manpower":
             await db.manpower_requests.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "subcontractor_bills":

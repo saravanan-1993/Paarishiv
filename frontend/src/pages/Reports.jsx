@@ -69,12 +69,7 @@ const REPORT_TEMPLATES = [
         icon: Package, color: '#14B8A6', bg: '#F0FDFA',
         frequency: 'Weekly', lastGenerated: '18 Feb 2026',
     },
-    {
-        id: 'R009', category: 'Plant', title: 'Equipment Utilisation',
-        description: 'Hours run, diesel consumed, and downtime analysis.',
-        icon: HardHat, color: '#F97316', bg: '#FFF7ED',
-        frequency: 'Weekly', lastGenerated: '17 Feb 2026',
-    },
+    /* Plant report hidden */
     {
         id: 'R010', category: 'Financial', title: 'Expense Analytics',
         description: 'Detailed breakdown of site and office expenditures.',
@@ -127,7 +122,7 @@ const PROGRESS_DATA = [
     { project: 'Riverside', progress: 61.5, tasks: 9, dpr: 38 },
 ];
 
-const CATEGORIES = ['All', 'Financial', 'Project', 'HRMS', 'Inventory', 'Plant'];
+const CATEGORIES = ['All', 'Financial', 'Project', 'HRMS', 'Inventory'];
 
 // ─── Report Preview Modal ────────────────────────────────────────────────────
 const ReportPreview = ({

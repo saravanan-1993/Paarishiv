@@ -636,9 +636,10 @@ const Finance = () => {
         }
     };
 
-    const filteredPayables = (selectedProject === 'All Projects'
+    const selectedProjectTrimmed = (selectedProject || 'All Projects').trim();
+    const filteredPayables = (selectedProjectTrimmed === 'All Projects'
         ? payables
-        : payables.filter(p => p.project === selectedProject)
+        : payables.filter(p => (p.project || '').trim() === selectedProjectTrimmed)
     ).filter(p => {
         if (!p.vendor || p.vendor.toLowerCase() === 'internal') return false;
 
@@ -658,7 +659,7 @@ const Finance = () => {
     });
 
     const filteredPurchaseBills = purchaseBills.filter(pb => {
-        const matchesProject = selectedProject === 'All Projects' || pb.project_name === selectedProject;
+        const matchesProject = selectedProjectTrimmed === 'All Projects' || (pb.project_name || '').trim() === selectedProjectTrimmed;
         const searchRegex = new RegExp(purchaseSearch, 'i');
         const matchesSearch = !purchaseSearch ||
             searchRegex.test(pb.bill_no) ||
@@ -675,7 +676,7 @@ const Finance = () => {
     });
 
     const filteredBills = bills.filter(b => {
-        const matchesProject = selectedProject === 'All Projects' || b.project === selectedProject;
+        const matchesProject = selectedProjectTrimmed === 'All Projects' || (b.project || '').trim() === selectedProjectTrimmed;
         const matchesType = billTypeFilter === 'All Types' || b.bill_type === billTypeFilter;
         const matchesSearch = b.bill_no?.toLowerCase().includes(billSearch.toLowerCase()) ||
             b.project?.toLowerCase().includes(billSearch.toLowerCase()) ||
@@ -683,9 +684,9 @@ const Finance = () => {
         return matchesProject && matchesType && matchesSearch;
     });
 
-    const filteredExpenses = (selectedProject === 'All Projects'
+    const filteredExpenses = (selectedProjectTrimmed === 'All Projects'
         ? expenses
-        : expenses.filter(e => e.project === selectedProject)
+        : expenses.filter(e => (e.project || '').trim() === selectedProjectTrimmed)
     ).filter(e => {
         const searchRegex = new RegExp(paymentSearch, 'i');
         const matchesSearch = !paymentSearch ||
@@ -703,9 +704,9 @@ const Finance = () => {
         return matchesSearch && matchesFrom && matchesTo && matchesPayee;
     });
 
-    const filteredReceipts = selectedProject === 'All Projects'
+    const filteredReceipts = selectedProjectTrimmed === 'All Projects'
         ? receipts
-        : receipts.filter(r => r.project === selectedProject);
+        : receipts.filter(r => (r.project || '').trim() === selectedProjectTrimmed);
 
     const billTypes = ['All Types', ...new Set(bills.map(b => b.bill_type).filter(Boolean))];
 
@@ -929,13 +930,13 @@ const Finance = () => {
         return s;
     }, 0);
 
-    const totalProjectValue = (selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject))
+    const totalProjectValue = (selectedProjectTrimmed === 'All Projects' ? projects : projects.filter(p => (p.name || '').trim() === selectedProjectTrimmed))
         .reduce((s, p) => s + parseFloat(p.budget || 0), 0);
     const totalBilled = filteredBills.reduce((s, b) => s + (b.total_amount || 0), 0);
     const totalCollected = filteredBills.reduce((s, b) => s + (b.collection_amount || 0), 0);
     const totalPayableAmt = filteredPayables.reduce((s, p) => s + (p.amount || 0), 0);
     const scOutstanding = scBills.filter(sb => ['Approved', 'Partially Paid'].includes(sb.status))
-        .filter(sb => selectedProject === 'All Projects' || sb.project_name === selectedProject)
+        .filter(sb => selectedProjectTrimmed === 'All Projects' || (sb.project_name || '').trim() === selectedProjectTrimmed)
         .reduce((s, sb) => s + (sb.balance || 0), 0);
     const totalPurchases = filteredPayables.reduce((s, p) => s + (p.total_amount || 0), 0);
 
@@ -951,6 +952,24 @@ const Finance = () => {
 
     // Calculate 5% retention on total billed if not specifically tracked
     const totalRetention = filteredBills.reduce((s, b) => s + (b.retention_amount || (b.total_amount * 0.05)), 0);
+
+    // Total expenses = all payments + purchase bills + SC bills
+    const totalExpensesPaid = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+    const totalPurchaseBillAmt = filteredPurchaseBills.reduce((s, pb) => s + (pb.total_amount || 0), 0);
+    const totalScBillAmt = scBills
+        .filter(sb => selectedProjectTrimmed === 'All Projects' || (sb.project_name || '').trim() === selectedProjectTrimmed)
+        .reduce((s, sb) => s + (sb.total_amount || sb.amount || 0), 0);
+
+    // Fleet P&L from trips
+    const filteredTrips = selectedProjectTrimmed === 'All Projects' ? trips : trips.filter(t => (t.projectName || '').trim() === selectedProjectTrimmed);
+    const fleetRevenue = filteredTrips.reduce((s, t) => s + (t.totalRevenue || 0), 0);
+    const fleetExpense = filteredTrips.reduce((s, t) => s + (t.totalExpense || 0), 0);
+    const fleetProfit = fleetRevenue - fleetExpense;
+
+    const totalAllExpenses = totalExpensesPaid + totalPurchaseBillAmt + totalScBillAmt;
+    const totalIncome = totalBilled + fleetRevenue;
+    const totalCosts = totalAllExpenses + fleetExpense;
+    const profitLoss = totalIncome - totalCosts;
 
     const kpiCards = [
         { label: 'PROJECT VALUE', value: fmt(totalProjectValue), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
@@ -1276,7 +1295,76 @@ const Finance = () => {
                             ))}
                         </div>
 
-                        {/* Pending GRN Action Alert - hidden */}
+                        {/* Profit & Loss Summary */}
+                        <div style={{
+                            marginTop: '24px', padding: '24px', borderRadius: '16px',
+                            background: profitLoss >= 0
+                                ? 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)'
+                                : 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)',
+                            border: `1.5px solid ${profitLoss >= 0 ? '#86EFAC' : '#FECACA'}`
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                                <div style={{
+                                    width: '44px', height: '44px', borderRadius: '12px',
+                                    backgroundColor: profitLoss >= 0 ? '#10B981' : '#EF4444',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
+                                }}>
+                                    {profitLoss >= 0 ? <TrendingUp size={22} /> : <ArrowDownRight size={22} />}
+                                </div>
+                                <div>
+                                    <h4 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
+                                        Profit & Loss {selectedProject !== 'All Projects' ? `- ${selectedProject}` : '(All Projects)'}
+                                    </h4>
+                                    <div style={{ fontSize: '28px', fontWeight: '900', color: profitLoss >= 0 ? '#059669' : '#DC2626' }}>
+                                        {profitLoss >= 0 ? '+' : ''}{fmt(profitLoss)}
+                                    </div>
+                                </div>
+                            </div>
+                            {/* Income Section */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <p style={{ fontSize: '11px', fontWeight: '800', color: '#059669', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>Income</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Project Billing</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#059669' }}>{fmt(totalBilled)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Fleet Revenue</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#059669' }}>{fmt(fleetRevenue)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#059669', textTransform: 'uppercase', marginBottom: '4px' }}>Total Income</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '900', color: '#059669' }}>{fmt(totalIncome)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* Expenses Section */}
+                            <div>
+                                <p style={{ fontSize: '11px', fontWeight: '800', color: '#DC2626', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>Expenses</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Material / Purchase</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalPurchaseBillAmt)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Payments / Expenses</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalExpensesPaid)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Subcontractor Cost</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalScBillAmt)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Fleet Expense</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(fleetExpense)}</p>
+                                    </div>
+                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px', border: '1px solid #fecaca' }}>
+                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#DC2626', textTransform: 'uppercase', marginBottom: '4px' }}>Total Expenses</p>
+                                        <p style={{ fontSize: '18px', fontWeight: '900', color: '#DC2626' }}>{fmt(totalCosts)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 )}
 

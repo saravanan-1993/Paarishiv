@@ -5,7 +5,7 @@ import {
     Users, UserPlus, CheckCircle, Clock, Calendar, IndianRupee,
     Briefcase, Wallet, FileText, Plus, Search, Filter,
     Check, X, XCircle, AlertCircle, TrendingUp, BarChart2, Shield, ShieldCheck, Edit3, Loader2, Eye, Power, Trash2, UserCheck, UserX, Save,
-    Mail, MoreVertical, Edit2, ListTodo, ShoppingCart, Package, UserCog, History, Settings as SettingsIcon2
+    Mail, MoreVertical, Edit2, ListTodo, ShoppingCart, Package, UserCog, History, Settings as SettingsIcon2, DollarSign
 } from 'lucide-react';
 import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -544,6 +544,9 @@ const HRMS = () => {
     };
 
     const filteredEmployees = employees.filter(emp => {
+        // Exclude drivers and non-monthly salary employees
+        if ((emp.designation || '').toLowerCase() === 'driver') return false;
+        if (emp.salaryType && emp.salaryType !== 'monthly') return false;
         const matchesSearch = (emp.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
             emp.employeeCode?.toLowerCase().includes(searchQuery.toLowerCase()));
         const matchesRole = selectedRole === 'All' || emp.designation === selectedRole;
@@ -954,7 +957,7 @@ const HRMS = () => {
                             />
                         </div>
                         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
-                            {canEditHRMS && <button className="btn btn-outline" onClick={handleBulkPresent}><CheckCircle size={18} /> Bulk Present</button>}
+                            {/* Bulk Present hidden */}
                             {canEditHRMS && <button className="btn btn-success" onClick={handleSaveAttendance} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', fontWeight: '700', fontSize: '14px', letterSpacing: '0.025em' }}>
                                 <Save size={18} /> SAVE CHANGES
                             </button>}
@@ -1184,7 +1187,9 @@ const HRMS = () => {
                     />
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    {canEditHRMS && <button className="btn btn-primary" onClick={generatePayrollRecord}>GENERATE PAYROLL</button>}
+                    {canEditHRMS && <button className="btn btn-primary" onClick={generatePayrollRecord} style={{ fontWeight: '800' }}>
+                        <DollarSign size={18} /> Process Monthly Payroll
+                    </button>}
                 </div>
             </div>
 
@@ -1202,38 +1207,41 @@ const HRMS = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {payroll.map((p, i) => (
+                        {employees.filter(emp => {
+                            if ((emp.designation || '').toLowerCase() === 'driver') return false;
+                            if (emp.salaryType && emp.salaryType !== 'monthly') return false;
+                            return emp.status === 'Active';
+                        }).map((emp, i) => {
+                            const empId = emp.id || emp._id;
+                            const p = payroll.find(pr => pr.employeeId === empId) || {};
+                            return (
                             <tr key={i}>
-                                <td style={{ fontWeight: '600' }}>{p.employeeName}</td>
-                                <td>{p.totalDays} / <span style={{ color: '#10B981', fontWeight: '700' }}>{p.presentDays}</span></td>
-                                <td style={{ color: '#EF4444', fontWeight: '700' }}>{p.lopDays}</td>
-                                <td style={{ fontSize: '12px' }}>
-                                    {employees.find(e => (e.id || e._id) === p.employeeId)?.salaryType === 'monthly' ? 'Monthly Basic' : 'Daily Wage'}
-                                </td>
-                                <td style={{ fontWeight: '800', color: 'var(--primary)' }}>₹{p.netSalary.toLocaleString()}</td>
-                                <td><span className={`badge ${p.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{p.status}</span></td>
+                                <td style={{ fontWeight: '600' }}>{emp.fullName}</td>
+                                <td>{p.totalDays || '—'} / <span style={{ color: '#10B981', fontWeight: '700' }}>{p.presentDays ?? '—'}</span></td>
+                                <td style={{ color: '#EF4444', fontWeight: '700' }}>{p.lopDays ?? 0}</td>
+                                <td style={{ fontSize: '12px' }}>Monthly Basic</td>
+                                <td style={{ fontWeight: '800', color: 'var(--primary)' }}>₹{(p.netSalary || parseFloat(emp.basicSalary) || 0).toLocaleString()}</td>
+                                <td><span className={`badge ${p.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'DRAFT'}</span></td>
                                 <td>
                                     <button
                                         className="icon-btn"
+                                        title="Adjust Payroll"
                                         onClick={() => {
-                                            const emp = employees.find(e => (e.id || e._id) === p.employeeId);
-                                            if (emp) {
-                                                setPayrollEmployee({
-                                                    ...emp,
-                                                    id: emp.id || emp._id,
-                                                    name: emp.fullName,
-                                                    payrollData: p
-                                                });
-                                                setIsProcessPayrollOpen(true);
-                                            }
+                                            setPayrollEmployee({
+                                                ...emp,
+                                                id: empId,
+                                                name: emp.fullName,
+                                                payrollData: Object.keys(p).length > 0 ? p : { month: selectedMonth, totalDays: 0, presentDays: 0, lopDays: 0 }
+                                            });
+                                            setIsProcessPayrollOpen(true);
                                         }}
                                     >
                                         <Edit3 size={16} />
                                     </button>
                                 </td>
                             </tr>
-                        ))}
-                        {payroll.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No records for this month. Click Generate to start.</td></tr>}
+                        ); })}
+                        {employees.filter(e => e.status === 'Active' && (e.designation || '').toLowerCase() !== 'driver' && (!e.salaryType || e.salaryType === 'monthly')).length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No monthly employees found.</td></tr>}
                     </tbody>
                 </table>
             </div>
@@ -1586,11 +1594,7 @@ const HRMS = () => {
                             <div className="animate-fade-in">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                                     <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Manage System Users</h3>
-                                    {canEditHRMS && (
-                                        <button className="btn btn-primary" onClick={() => { setEditingUser(null); setNewUser({ fullName: '', employeeCode: '', email: '', roles: [], password: '', status: 'Active' }); setIsAddUserModalOpen(true); }}>
-                                            <UserPlus size={18} /> Add New User
-                                        </button>
-                                    )}
+                                    {/* Add New User button hidden */}
                                 </div>
 
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>

@@ -185,7 +185,7 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
                     <div className="modal-footer" style={{ borderTop: 'none', padding: '24px 0 0 0', gap: '12px', justifyContent: 'flex-end' }}>
                         <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
                         <button type="submit" className="btn btn-primary" style={{ fontWeight: '800' }} disabled={loading}>
-                            {loading ? 'SAVING...' : 'SAVE EXPENSE'}
+                            {loading ? 'SUBMITTING...' : 'SUBMIT FOR APPROVAL'}
                         </button>
                     </div>
                 </form>

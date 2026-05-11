@@ -262,24 +262,34 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
             po = await db.purchase_orders.find_one({"_id": ObjectId(grn.po_id)})
             if po:
                 po_items = po.get("items", [])
-                # Build item→rate lookup from PO
+                is_multi_vendor = po.get("is_multi_vendor", False)
+
+                # Build item→rate and item→vendor lookup from PO
                 rate_map = {}
+                vendor_map = {}
                 for pit in po_items:
                     if pit.get("name") and pit.get("rate"):
                         rate_map[pit["name"]] = float(pit["rate"])
+                    if pit.get("name") and pit.get("vendor_name"):
+                        vendor_map[pit["name"]] = pit["vendor_name"]
 
                 has_rates = len(rate_map) > 0
+                proj_name = po.get("project_name", project_name)
 
-                # Build purchase bill items from GRN net qty (received - rejected) + PO rates
-                bill_items = []
-                bill_total = 0
+                # Group GRN items by vendor for multi-vendor POs
+                vendor_items = {}
                 for item in grn.items:
                     item_net = item.received_qty - item.rejected_qty
                     if item_net <= 0:
                         continue
                     rate = rate_map.get(item.name, 0)
                     amount = item_net * rate
-                    bill_items.append({
+                    item_vendor = vendor_map.get(item.name, po.get("vendor_name", "Unknown"))
+                    if not is_multi_vendor:
+                        item_vendor = po.get("vendor_name", "Unknown")
+                    if item_vendor not in vendor_items:
+                        vendor_items[item_vendor] = {"items": [], "total": 0}
+                    vendor_items[item_vendor]["items"].append({
                         "name": item.name,
                         "qty": item_net,
                         "unit": item.unit,
@@ -287,10 +297,13 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                         "gst": 0,
                         "amount": amount,
                     })
-                    bill_total += amount
+                    vendor_items[item_vendor]["total"] += amount
 
-                if bill_items:
-                    # Generate bill number
+                # Create separate purchase bill per vendor
+                bill_ids = []
+                for v_name, v_data in vendor_items.items():
+                    if not v_data["items"]:
+                        continue
                     counter = await db.counters.find_one_and_update(
                         {"_id": "purchase_bill"},
                         {"$inc": {"seq": 1}},
@@ -300,18 +313,15 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                     seq = (counter or {}).get("seq", 1)
                     bill_no = f"PB-{seq:05d}"
 
-                    vendor_name = po.get("vendor_name", "")
-                    proj_name = po.get("project_name", project_name)
-
                     bill_doc = {
                         "grn_id": str(result.inserted_id),
                         "po_id": grn.po_id,
                         "bill_no": bill_no,
                         "bill_date": datetime.now().strftime("%Y-%m-%d"),
-                        "vendor_name": vendor_name,
+                        "vendor_name": v_name,
                         "project_name": proj_name,
-                        "items": bill_items,
-                        "total_amount": bill_total,
+                        "items": v_data["items"],
+                        "total_amount": v_data["total"],
                         "tax_amount": 0,
                         "notes": f"Auto-generated from GRN-{str(result.inserted_id)[-6:].upper()}",
                         "created_at": datetime.now(),
@@ -320,20 +330,23 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
                         "has_rates": has_rates,
                     }
                     bill_result = await db.purchase_bills.insert_one(bill_doc)
+                    bill_ids.append(str(bill_result.inserted_id))
 
+                if bill_ids:
                     # Mark GRN as billed
                     await db.grns.update_one(
                         {"_id": result.inserted_id},
-                        {"$set": {"is_billed": True, "status": "Billed", "bill_id": str(bill_result.inserted_id)}}
+                        {"$set": {"is_billed": True, "status": "Billed", "bill_id": bill_ids[0], "bill_ids": bill_ids}}
                     )
 
                     # If PO had rates, update project spent
-                    if has_rates and bill_total > 0:
+                    total_bill_amount = sum(v["total"] for v in vendor_items.values())
+                    if has_rates and total_bill_amount > 0:
                         project = await db.projects.find_one({"name": proj_name})
                         if project:
                             await db.projects.update_one(
                                 {"name": proj_name},
-                                {"$inc": {"spent": bill_total}}
+                                {"$inc": {"spent": total_bill_amount}}
                             )
     except Exception as e:
         # Don't fail GRN creation if auto-bill fails

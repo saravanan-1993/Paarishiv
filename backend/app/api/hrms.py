@@ -314,7 +314,7 @@ async def generate_payroll(month: str, db = Depends(get_database)):
             "leaveDays": leave_days,
             "lopDays": lop_days,
             "netSalary": round(net_salary, 2),
-            "status": "Draft"
+            "status": "Paid"
         }
         
         await db.payroll.update_one(
