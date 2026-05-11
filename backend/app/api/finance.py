@@ -180,73 +180,186 @@ async def get_payables(db = Depends(get_database)):
         if hasattr(grn_date, 'isoformat'):
             grn_date = grn_date.isoformat()
 
-        payables.append({
-            "id": grn_id_str,
-            "voucher_no": f"GRN-{grn_id_str[-6:].upper()}",
-            "vendor": po.get("vendor_name"),
-            "project": po.get("project_name"),
-            "amount": balance, 
-            "total_amount": total_value,
-            "paid_amount": paid_amount,
-            "invoice_no": invoice_no,
-            "base_amount": base_amount_stored,
-            "gst_percent": gst_percent,
-            "date": grn_date,
-            "status": status,
-            "source": "GRN",
-            "items": clean_items
-        })
-        
+        # For multi-vendor POs, split payable entries per vendor
+        is_multi = po.get("is_multi_vendor", False)
+        po_item_vendor_map = {}
+        if is_multi:
+            for pit in po.get("items", []):
+                if pit.get("name") and pit.get("vendor_name"):
+                    po_item_vendor_map[pit["name"]] = pit["vendor_name"]
+
+        if is_multi and po_item_vendor_map:
+            # Group items by vendor
+            vendor_groups = {}
+            for ci in clean_items:
+                v = po_item_vendor_map.get(ci.get("name"), po.get("vendor_name", "Unknown"))
+                if v not in vendor_groups:
+                    vendor_groups[v] = []
+                vendor_groups[v].append(ci)
+
+            for v_name, v_items in vendor_groups.items():
+                v_total = sum(
+                    float(ci.get("price", 0) or 0) * (float(ci.get("received_qty", 0)) - float(ci.get("rejected_qty", 0)))
+                    for ci in v_items
+                )
+                v_balance = max(0, v_total - (paid_amount * (v_total / total_value) if total_value > 0 else 0))
+                v_status = "Paid" if grn.get("status") == "Paid" else ("Paid" if v_balance <= 0 and v_total > 0 else status)
+                payables.append({
+                    "id": grn_id_str,
+                    "voucher_no": f"GRN-{grn_id_str[-6:].upper()}",
+                    "vendor": v_name.strip(),
+                    "project": po.get("project_name"),
+                    "amount": v_balance,
+                    "total_amount": v_total,
+                    "paid_amount": paid_amount * (v_total / total_value) if total_value > 0 else 0,
+                    "invoice_no": invoice_no,
+                    "base_amount": base_amount_stored,
+                    "gst_percent": gst_percent,
+                    "date": grn_date,
+                    "status": v_status,
+                    "source": "GRN",
+                    "items": v_items
+                })
+        else:
+            payables.append({
+                "id": grn_id_str,
+                "voucher_no": f"GRN-{grn_id_str[-6:].upper()}",
+                "vendor": (po.get("vendor_name") or "").strip(),
+                "project": po.get("project_name"),
+                "amount": balance,
+                "total_amount": total_value,
+                "paid_amount": paid_amount,
+                "invoice_no": invoice_no,
+                "base_amount": base_amount_stored,
+                "gst_percent": gst_percent,
+                "date": grn_date,
+                "status": status,
+                "source": "GRN",
+                "items": clean_items
+            })
+
     return payables
 
 async def create_expense_from_payment_request(pr_doc: dict, db, current_user: dict):
     """Execute actual expense creation from an approved payment request.
-    Called by the approvals handler when a payment request is approved."""
+    Called by the approvals handler when a payment request is approved.
+    For multi-vendor GRNs, creates separate expenses per vendor."""
     def _f(val, fallback=0):
-        """Safe float conversion — handles None/missing values."""
         try:
             return float(val) if val is not None else float(fallback)
         except (TypeError, ValueError):
             return float(fallback)
 
     is_pending = pr_doc.get("payment_type") == "Pending"
-    expense_data = ExpenseBase(
-        date=pr_doc.get("date"),
-        project=pr_doc.get("project") or "General",
-        category=pr_doc.get("category") or "Material Purchase",
-        amount=_f(pr_doc.get("amount")),
-        base_amount=_f(pr_doc.get("base_amount")),
-        gst_amount=_f(pr_doc.get("gst_amount")),
-        invoice_no=pr_doc.get("invoice_no"),
-        paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
-        payee=pr_doc.get("payee") or "",
-        description=pr_doc.get("description") or "",
-        reference=pr_doc.get("reference") or "",
-        grn_id=pr_doc.get("grn_id"),
-        voucher_no=pr_doc.get("voucher_no"),
-        receipt_url=pr_doc.get("receipt_url"),
-        mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
-        items=pr_doc.get("items") or [],
-        total_amount=_f(pr_doc.get("total_amount")),
-        status="Pending" if is_pending else "Paid",
-    )
-    await create_expense(expense_data, db, current_user)
+    grn_id = pr_doc.get("grn_id")
+
+    # Check if this is a multi-vendor PO — split expenses per vendor
+    po = None
+    is_multi = False
+    po_item_vendor_map = {}
+    if grn_id and ObjectId.is_valid(grn_id):
+        grn_doc = await db.grns.find_one({"_id": ObjectId(grn_id)})
+        if grn_doc and grn_doc.get("po_id") and ObjectId.is_valid(grn_doc["po_id"]):
+            po = await db.purchase_orders.find_one({"_id": ObjectId(grn_doc["po_id"])})
+            if po and po.get("is_multi_vendor"):
+                is_multi = True
+                for pit in po.get("items", []):
+                    if pit.get("name") and pit.get("vendor_name"):
+                        po_item_vendor_map[pit["name"]] = pit["vendor_name"]
+
+    if is_multi and po_item_vendor_map:
+        # Group items by vendor
+        items = pr_doc.get("items") or []
+        vendor_groups = {}
+        for item in items:
+            v = po_item_vendor_map.get(item.get("name"), pr_doc.get("payee", "Unknown"))
+            if v not in vendor_groups:
+                vendor_groups[v] = []
+            vendor_groups[v].append(item)
+
+        total_amount = _f(pr_doc.get("total_amount")) or _f(pr_doc.get("amount"))
+
+        for v_name, v_items in vendor_groups.items():
+            v_total = sum(
+                _f(it.get("price", 0)) * (float(it.get("received_qty", 0)) - float(it.get("rejected_qty", 0)))
+                for it in v_items
+            )
+            if v_total <= 0:
+                v_total = total_amount * (len(v_items) / max(len(items), 1))
+            expense_data = ExpenseBase(
+                date=pr_doc.get("date"),
+                project=pr_doc.get("project") or "General",
+                category=pr_doc.get("category") or "Material Purchase",
+                amount=v_total,
+                base_amount=v_total,
+                gst_amount=0,
+                invoice_no=pr_doc.get("invoice_no"),
+                paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
+                payee=v_name.strip(),
+                description=pr_doc.get("description") or "",
+                reference=pr_doc.get("reference") or "",
+                grn_id=grn_id,
+                voucher_no=pr_doc.get("voucher_no"),
+                receipt_url=pr_doc.get("receipt_url"),
+                mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
+                items=v_items,
+                total_amount=v_total,
+                status="Pending" if is_pending else "Paid",
+            )
+            await create_expense(expense_data, db, current_user)
+    else:
+        expense_data = ExpenseBase(
+            date=pr_doc.get("date"),
+            project=pr_doc.get("project") or "General",
+            category=pr_doc.get("category") or "Material Purchase",
+            amount=_f(pr_doc.get("amount")),
+            base_amount=_f(pr_doc.get("base_amount")),
+            gst_amount=_f(pr_doc.get("gst_amount")),
+            invoice_no=pr_doc.get("invoice_no"),
+            paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
+            payee=(pr_doc.get("payee") or "").strip(),
+            description=pr_doc.get("description") or "",
+            reference=pr_doc.get("reference") or "",
+            grn_id=pr_doc.get("grn_id"),
+            voucher_no=pr_doc.get("voucher_no"),
+            receipt_url=pr_doc.get("receipt_url"),
+            mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
+            items=pr_doc.get("items") or [],
+            total_amount=_f(pr_doc.get("total_amount")),
+            status="Pending" if is_pending else "Paid",
+        )
+        await create_expense(expense_data, db, current_user)
 
 
 @router.post("/expenses", dependencies=[Depends(RBACPermission("Accounts", "edit", "Payments"))])
 async def create_expense(expense: ExpenseBase, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    # CRITICAL-1: Prevent double payment on already-paid GRN
+    # CRITICAL-1: Prevent double payment on already-paid GRN (skip for multi-vendor partial payments)
     if expense.grn_id and expense.mark_as_paid:
         existing_grn = await db.grns.find_one({"_id": ObjectId(expense.grn_id)})
         if existing_grn and existing_grn.get("status") == "Paid":
-            raise HTTPException(status_code=400, detail="This GRN is already marked as Paid. Cannot process duplicate payment.")
+            # Check if this is a multi-vendor PO — allow per-vendor payments
+            po_id = existing_grn.get("po_id")
+            is_multi = False
+            if po_id and ObjectId.is_valid(po_id):
+                po_check = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+                is_multi = po_check.get("is_multi_vendor", False) if po_check else False
+            if not is_multi:
+                raise HTTPException(status_code=400, detail="This GRN is already marked as Paid. Cannot process duplicate payment.")
 
     expense_dict = expense.dict()
+
+    # Manual expenses (no GRN link) go to Pending for approval
+    is_manual_expense = not expense.grn_id
+    if is_manual_expense and expense_dict.get("status") != "Pending":
+        expense_dict["status"] = "Pending"
+        expense_dict["requested_by"] = current_user.get("full_name") or current_user.get("username", "")
+        expense_dict["requested_by_id"] = current_user.get("id") or current_user.get("_id", "")
+
     result = await db.expenses.insert_one(expense_dict)
 
-    # HIGH-6 FIX: Only update project spent for NON-GRN expenses (general expenses, petty cash, etc.)
-    # For GRN-linked expenses, spent was already updated when auto-bill was created in grns.py
-    if expense.project and expense.project != "General" and not expense.grn_id:
+    # Only update project spent for GRN-linked expenses that are already paid
+    # Manual expenses update spent only after approval (handled in approvals.py)
+    if expense.project and expense.project != "General" and not is_manual_expense:
         await db.projects.update_one(
             {"name": expense.project},
             {"$inc": {"spent": expense.amount}}
@@ -311,20 +424,49 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
     # If this marks the payable as fully paid, update GRN + Purchase Bill status
     if expense.grn_id and expense.mark_as_paid:
         try:
-            await db.grns.update_one(
-                {"_id": ObjectId(expense.grn_id)},
-                {"$set": {"status": "Paid"}}
-            )
-            # Also mark the linked purchase bill as Paid + update total with GST
+            # For multi-vendor POs, only mark GRN as Paid when all vendor bills are paid
+            grn_doc = await db.grns.find_one({"_id": ObjectId(expense.grn_id)})
+            po_doc = None
+            if grn_doc and grn_doc.get("po_id") and ObjectId.is_valid(grn_doc["po_id"]):
+                po_doc = await db.purchase_orders.find_one({"_id": ObjectId(grn_doc["po_id"])})
+
+            # Mark this vendor's purchase bill as Paid
             invoice_total = float(expense.base_amount or 0) + float(expense.gst_amount or 0)
             pb_update = {"status": "Paid", "paid_at": datetime.now().isoformat()}
             if invoice_total > 0:
                 pb_update["total_amount"] = invoice_total
                 pb_update["tax_amount"] = float(expense.gst_amount or 0)
-            await db.purchase_bills.update_many(
-                {"grn_id": expense.grn_id},
-                {"$set": pb_update}
-            )
+
+            payee_name = (expense.payee or "").strip()
+            if payee_name:
+                # Update only this vendor's purchase bill
+                await db.purchase_bills.update_many(
+                    {"grn_id": expense.grn_id, "vendor_name": payee_name},
+                    {"$set": pb_update}
+                )
+            else:
+                await db.purchase_bills.update_many(
+                    {"grn_id": expense.grn_id},
+                    {"$set": pb_update}
+                )
+
+            # Check if ALL purchase bills for this GRN are now Paid
+            unpaid_bills = await db.purchase_bills.count_documents({
+                "grn_id": expense.grn_id,
+                "status": {"$ne": "Paid"}
+            })
+            if unpaid_bills == 0:
+                # All vendors paid — mark GRN as fully Paid
+                await db.grns.update_one(
+                    {"_id": ObjectId(expense.grn_id)},
+                    {"$set": {"status": "Paid"}}
+                )
+            else:
+                # Some vendors still unpaid — mark as Partially Paid
+                await db.grns.update_one(
+                    {"_id": ObjectId(expense.grn_id)},
+                    {"$set": {"status": "Partially Paid"}}
+                )
             # Find project by name and trigger workflow
             if expense.project and expense.project != "General":
                 project = await db.projects.find_one({"name": expense.project})
@@ -733,22 +875,32 @@ async def create_payment_request(data: dict, db=Depends(get_database), current_u
     """Create a payment request that requires admin approval before processing."""
     grn_id = data.get("grn_id")
 
-    # Block duplicate pending requests for the same GRN
+    # Block duplicate pending requests for the same GRN + same vendor
     if grn_id:
-        existing_pending = await db.payment_requests.find_one({"grn_id": grn_id, "status": "Pending"})
+        payee = (data.get("payee") or "").strip()
+        dup_query = {"grn_id": grn_id, "status": "Pending"}
+        if payee:
+            dup_query["payee"] = payee
+        existing_pending = await db.payment_requests.find_one(dup_query)
         if existing_pending:
             raise HTTPException(
                 status_code=400,
-                detail="A payment request for this GRN is already pending admin approval. Please wait for it to be processed."
+                detail="A payment request for this vendor/GRN is already pending admin approval. Please wait for it to be processed."
             )
-        # Also block if GRN is already fully paid
+        # Also block if GRN is already fully paid (but allow for multi-vendor POs)
         try:
             existing_grn = await db.grns.find_one({"_id": ObjectId(grn_id)})
             if existing_grn and existing_grn.get("status") == "Paid":
-                raise HTTPException(
-                    status_code=400,
-                    detail="This GRN is already fully paid. No further payment requests can be submitted."
-                )
+                po_id = existing_grn.get("po_id")
+                is_multi = False
+                if po_id and ObjectId.is_valid(po_id):
+                    po_chk = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})
+                    is_multi = po_chk.get("is_multi_vendor", False) if po_chk else False
+                if not is_multi:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="This GRN is already fully paid. No further payment requests can be submitted."
+                    )
         except HTTPException:
             raise
         except Exception:

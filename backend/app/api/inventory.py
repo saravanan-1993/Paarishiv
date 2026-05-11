@@ -802,8 +802,8 @@ async def get_lifo_rate(db, material_name, project_name):
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Admin approves transfer request — does NOT move stock yet. Accountant executes later."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
-    user_role = (current_user.get("role") or "").strip().lower()
+    allowed_roles = ["superadmin", "administrator", "generalmanager", "manager", "managingdirector", "projectcoordinator"]
+    user_role = (current_user.get("role") or "").lower().replace(" ", "")
     if user_role not in allowed_roles and "coordinator" not in user_role:
         raise HTTPException(status_code=403, detail="Only Admin/GM/Coordinator can approve transfer requests")
 

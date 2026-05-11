@@ -217,9 +217,7 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
                     <button className="btn btn-outline" onClick={handleDownloadLedger} style={{ padding: '10px 24px' }}>
                         <Download size={18} /> Download Report
                     </button>
-                    <button className="btn btn-primary" style={{ padding: '10px 24px' }}>
-                        <ShoppingCart size={18} /> Create New PO
-                    </button>
+                    {/* Create New PO button hidden */}
                 </div>
             </div>
         </div>

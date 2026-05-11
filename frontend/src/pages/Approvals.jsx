@@ -23,6 +23,7 @@ const Approvals = () => {
     const canApproveTripRequest = hasFeature(user, 'approve_trip_request') || ['super admin', 'administrator', 'managing director'].includes(userRole) || userRole.includes('coordinator') || userRole.includes('purchase');
     const canSeeTripRequestsTab = hasSubTabAccess(user, 'Approvals', 'Trip Requests');
     const [viewPayment, setViewPayment] = useState(null);
+    const [viewDetail, setViewDetail] = useState(null);
 
     const tabMapping = useMemo(() => ({
         'Leaves': 'leaves',
@@ -304,6 +305,9 @@ const Approvals = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                <button onClick={() => setViewDetail({ type: 'Leave', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
                 {item.status === 'Pending' && (
                     <>
                         <button
@@ -543,6 +547,9 @@ const Approvals = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                <button onClick={() => setViewDetail({ type: 'Manpower Request', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
                 {item.status === 'Pending' && (
                     <>
                         <button
@@ -630,6 +637,9 @@ const Approvals = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                <button onClick={() => setViewDetail({ type: 'Expense', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
                 {(!item.status || item.status === 'Pending') && (
                     <>
                         <button
@@ -716,26 +726,31 @@ const Approvals = () => {
                     M-Book: {item.mbook_entries.length} measurement entries &bull; Pg {item.mbook_page_no || '—'}
                 </p>
             )}
-            {item.status === 'Pending Approval' && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button
-                        className="btn btn-primary btn-sm"
-                        disabled={!!actionLoading}
-                        onClick={() => handleAction('subcontractor_bills', item._id, 'approve')}
-                        style={{ padding: '6px 16px', fontSize: '12px' }}
-                    >
-                        {actionLoading === `${item._id}-approve` ? 'Approving...' : 'Approve'}
-                    </button>
-                    <button
-                        className="btn btn-outline btn-sm"
-                        disabled={!!actionLoading}
-                        onClick={() => handleAction('subcontractor_bills', item._id, 'reject')}
-                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
-                    >
-                        {actionLoading === `${item._id}-reject` ? 'Rejecting...' : 'Reject'}
-                    </button>
-                </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => setViewDetail({ type: 'Subcontractor Bill', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
+                {item.status === 'Pending Approval' && (
+                    <>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('subcontractor_bills', item._id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}
+                        >
+                            {actionLoading === `${item._id}-approve` ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('subcontractor_bills', item._id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
+                        >
+                            {actionLoading === `${item._id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 
@@ -763,20 +778,25 @@ const Approvals = () => {
                 ))}
             </div>
             <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>Requested by: {item.requested_by || item.engineer_id || '\u2014'}</p>
-            {item.status === 'Pending' && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('material_transfers', item._id || item.id, 'approve')}
-                        style={{ padding: '6px 16px', fontSize: '12px' }}>
-                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Transfer'}
-                    </button>
-                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('material_transfers', item._id || item.id, 'reject')}
-                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
-                        Reject
-                    </button>
-                </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setViewDetail({ type: 'Material Transfer', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
+                {item.status === 'Pending' && (
+                    <>
+                        <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('material_transfers', item._id || item.id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}>
+                            {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Transfer'}
+                        </button>
+                        <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('material_transfers', item._id || item.id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                            Reject
+                        </button>
+                    </>
+                )}
+            </div>
             {item.status?.includes('Approved') && item.status!=='Pending' && (
                 <div style={{ padding: '8px 12px', backgroundColor: '#DBEAFE', borderRadius: '8px', fontSize: '12px', color: '#1E40AF', fontWeight: '600' }}>
                     Approved — Go to Warehouse {'\u2192'} Transfers to execute with cost entry
@@ -921,21 +941,26 @@ const Approvals = () => {
                     </div>
                 )}
 
-                {canApprove && (
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                        <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
-                            onClick={() => handleAction('trip_requests', item._id || item.id, 'approve')}
-                            style={{ padding: '8px 18px', fontSize: '12px' }}>
-                            {actionLoading === `${item._id || item.id}-approve` ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                            {item.status === 'Pending' ? ' Approve' : item.status === 'Coordinator Approved' ? ' PO Approve' : ' Final Approve'}
-                        </button>
-                        <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
-                            onClick={() => handleAction('trip_requests', item._id || item.id, 'reject')}
-                            style={{ padding: '8px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
-                            {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
-                        </button>
-                    </div>
-                )}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                    <button onClick={() => setViewDetail({ type: 'Trip Request', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Eye size={18} /> View Details
+                    </button>
+                    {canApprove && (
+                        <>
+                            <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                                onClick={() => handleAction('trip_requests', item._id || item.id, 'approve')}
+                                style={{ padding: '8px 18px', fontSize: '12px' }}>
+                                {actionLoading === `${item._id || item.id}-approve` ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                                {item.status === 'Pending' ? ' Approve' : item.status === 'Coordinator Approved' ? ' PO Approve' : ' Final Approve'}
+                            </button>
+                            <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                                onClick={() => handleAction('trip_requests', item._id || item.id, 'reject')}
+                                style={{ padding: '8px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                                {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
         );
     };
@@ -959,20 +984,25 @@ const Approvals = () => {
                     </span>
                 ))}
             </div>
-            {item.status === 'Pending' && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('stock_returns', item._id || item.id, 'approve')}
-                        style={{ padding: '6px 16px', fontSize: '12px' }}>
-                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Return'}
-                    </button>
-                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('stock_returns', item._id || item.id, 'reject')}
-                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
-                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
-                    </button>
-                </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => setViewDetail({ type: 'Stock Return', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
+                {item.status === 'Pending' && (
+                    <>
+                        <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('stock_returns', item._id || item.id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}>
+                            {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Return'}
+                        </button>
+                        <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('stock_returns', item._id || item.id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                            {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 
@@ -1014,26 +1044,31 @@ const Approvals = () => {
                     ))}
                 </div>
             )}
-            {item.payment_status === 'Payment Requested' && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button
-                        className="btn btn-primary btn-sm"
-                        disabled={!!actionLoading}
-                        onClick={() => handleAction('labour_payments', item._id || item.id, 'approve')}
-                        style={{ padding: '6px 16px', fontSize: '12px' }}
-                    >
-                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Payment'}
-                    </button>
-                    <button
-                        className="btn btn-outline btn-sm"
-                        disabled={!!actionLoading}
-                        onClick={() => handleAction('labour_payments', item._id || item.id, 'reject')}
-                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
-                    >
-                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
-                    </button>
-                </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => setViewDetail({ type: 'Labour Payment', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
+                {item.payment_status === 'Payment Requested' && (
+                    <>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('labour_payments', item._id || item.id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}
+                        >
+                            {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve Payment'}
+                        </button>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('labour_payments', item._id || item.id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
+                        >
+                            {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 
@@ -1131,6 +1166,9 @@ const Approvals = () => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+                <button onClick={() => setViewDetail({ type: 'DPR', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
                 {(item.status === 'Pending' || item.status === 'Coordinator Approved' || item.status === 'Dept Approved') && (
                     <>
                         <button
@@ -1491,6 +1529,103 @@ const Approvals = () => {
                     </div>
                 </div>
             )}
+            {viewDetail && (() => {
+                const item = viewDetail.item;
+                const hiddenKeys = ['_id', '__v', 'id', 'project_id', 'requested_by_id', 'source_id', 'hashed_password'];
+                const labelMap = {
+                    employee_name: 'Employee', employeeName: 'Employee', fullName: 'Employee',
+                    project_name: 'Project', project: 'Project', engineer_id: 'Engineer',
+                    leave_type: 'Leave Type', leaveType: 'Leave Type',
+                    start_date: 'From Date', fromDate: 'From Date', end_date: 'To Date', toDate: 'To Date',
+                    total_days: 'Duration', created_at: 'Created At', updated_at: 'Updated At',
+                    requested_items: 'Requested Items', requested_by: 'Requested By',
+                    approved_by: 'Approved By', approvedBy: 'Approved By',
+                    paymentMode: 'Payment Mode', payee: 'Payee', vendor_name: 'Vendor',
+                    project_name: 'Project', contractor_name: 'Contractor',
+                    from_project: 'From Project', to_project: 'To Project',
+                    net_amount: 'Net Amount', total_amount: 'Total Amount',
+                    source: 'Source', priority: 'Priority', remarks: 'Remarks',
+                };
+                const formatLabel = (key) => labelMap[key] || key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+                const formatValue = (key, val) => {
+                    if (val === null || val === undefined || val === '') return '—';
+                    if (Array.isArray(val)) {
+                        if (val.length === 0) return '—';
+                        if (typeof val[0] === 'object') {
+                            return val.map((v, i) => {
+                                const parts = Object.entries(v).filter(([k]) => k !== '_id').map(([k, vv]) => `${formatLabel(k)}: ${vv}`);
+                                return parts.join(', ');
+                            }).join(' | ');
+                        }
+                        return val.join(', ');
+                    }
+                    if (typeof val === 'object') {
+                        return Object.entries(val).filter(([k]) => k !== '_id').map(([k, v]) => `${formatLabel(k)}: ${v}`).join(', ');
+                    }
+                    if (typeof val === 'number' && key.toLowerCase().includes('amount')) return `₹${val.toLocaleString('en-IN')}`;
+                    if (typeof val === 'number' && (key.toLowerCase().includes('salary') || key.toLowerCase().includes('wage'))) return `₹${val.toLocaleString('en-IN')}`;
+                    return String(val);
+                };
+                const statusColor = (item.status || '').toLowerCase().includes('approv') ? '#059669'
+                    : (item.status || '').toLowerCase().includes('reject') ? '#DC2626'
+                    : (item.status || '').toLowerCase().includes('paid') ? '#059669' : '#D97706';
+                const entries = Object.entries(item).filter(([k, v]) => !hiddenKeys.includes(k) && v !== null && v !== undefined && v !== '');
+
+                return (
+                <div className="modal-overlay" onClick={() => setViewDetail(null)}>
+                    <div className="card animate-fade-in" onClick={e => e.stopPropagation()} style={{ width: '95%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                        <div className="modal-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ width: '40px', height: '40px', backgroundColor: '#EFF6FF', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3B82F6' }}>
+                                    <Eye size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ fontSize: '18px', fontWeight: '800' }}>{viewDetail.type} Details</h3>
+                                    {item.status && <span style={{ fontSize: '12px', fontWeight: '700', color: statusColor }}>{item.status}</span>}
+                                </div>
+                            </div>
+                            <button onClick={() => setViewDetail(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><XCircle size={24} /></button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '24px', overflowY: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                {entries.filter(([k, v]) => !Array.isArray(v) && typeof v !== 'object').map(([key, value]) => (
+                                    <div key={key}>
+                                        <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', marginBottom: '2px' }}>{formatLabel(key)}</p>
+                                        <p style={{ fontSize: '14px', fontWeight: '600', color: '#334155' }}>{formatValue(key, value)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {entries.filter(([k, v]) => Array.isArray(v) && v.length > 0).map(([key, value]) => (
+                                <div key={key} style={{ marginTop: '20px' }}>
+                                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>{formatLabel(key)}</p>
+                                    {typeof value[0] === 'object' ? (
+                                        <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                                            <thead><tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                                {Object.keys(value[0]).filter(k => k !== '_id').map(k => (
+                                                    <th key={k} style={{ textAlign: 'left', padding: '8px 6px', color: '#64748b', fontWeight: '600', fontSize: '11px', textTransform: 'uppercase' }}>{formatLabel(k)}</th>
+                                                ))}
+                                            </tr></thead>
+                                            <tbody>{value.map((row, idx) => (
+                                                <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                    {Object.entries(row).filter(([k]) => k !== '_id').map(([k, v], ci) => (
+                                                        <td key={ci} style={{ padding: '8px 6px', fontWeight: '500' }}>{formatValue(k, v)}</td>
+                                                    ))}
+                                                </tr>
+                                            ))}</tbody>
+                                        </table>
+                                    ) : (
+                                        <p style={{ fontSize: '14px', color: '#334155' }}>{value.join(', ')}</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '16px 24px', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button className="btn btn-outline" onClick={() => setViewDetail(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+                );
+            })()}
         </div>
     );
 };
