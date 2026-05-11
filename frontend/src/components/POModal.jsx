@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShoppingCart, Calendar, Building2, IndianRupee, Loader2, ChevronDown, Check, Users, User } from 'lucide-react';
 import { projectAPI, vendorAPI, purchaseOrderAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CreateMaterialModal from './CreateMaterialModal';
 import CustomSelect from './CustomSelect';
 
 const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [vendors, setVendors] = useState([]);
     const [projects, setProjects] = useState([]);
@@ -181,7 +183,7 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
         e.preventDefault();
 
         if (!formData.project_name || !formData.expected_delivery) {
-            alert('Please fill all required fields');
+            toast.warning('Please fill all required fields');
             return;
         }
 
@@ -189,17 +191,17 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
         if (isMultiVendor) {
             const unassigned = items.filter(i => i.name && parseFloat(i.qty) > 0 && !i.vendor_name);
             if (unassigned.length > 0) {
-                alert(`Please assign a vendor to all items. ${unassigned.length} item(s) have no vendor assigned.`);
+                toast.warning(`Please assign a vendor to all items. ${unassigned.length} item(s) have no vendor assigned.`);
                 return;
             }
         } else if (!formData.vendor_name) {
-            alert('Please select a vendor');
+            toast.warning('Please select a vendor');
             return;
         }
 
         const validItems = items.filter(i => i.name && parseFloat(i.qty) > 0);
         if (validItems.length === 0) {
-            alert('Please add at least one item with name and quantity');
+            toast.warning('Please add at least one item with name and quantity');
             return;
         }
 
@@ -221,12 +223,12 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 status: 'Pending',
                 is_multi_vendor: isMultiVendor
             });
-            alert('Purchase order created successfully.');
+            toast.success('Purchase order created successfully.');
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
             console.error('Failed to create PO:', err);
-            alert(err.response?.data?.detail || 'Failed to save purchase order.');
+            toast.error(err.response?.data?.detail || 'Failed to save purchase order.');
         } finally {
             setIsSaving(false);
         }

@@ -360,6 +360,85 @@ label {
     margin-top: 20px;
 }
 
+/* Shared horizontal-scroll wrapper for tables that need it */
+.table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+}
+.table-scroll .data-table { min-width: 720px; }
+
+/* Card hover effect (replaces inline onMouseEnter/Leave) */
+.project-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.project-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Semantic color tokens (use these instead of hardcoded hex) */
+:root {
+    --danger: #EF4444;
+    --danger-bg: #FEF2F2;
+    --warning: #F59E0B;
+    --warning-bg: #FEF3C7;
+    --info: #3B82F6;
+    --info-bg: #DBEAFE;
+    --success: #10B981;
+    --success-bg: #D1FAE5;
+}
+
+/* Tab bar overflow scroll affordance (right-edge fade) */
+.tab-bar-scrollable {
+    position: relative;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.tab-bar-scrollable::-webkit-scrollbar {
+    height: 6px;
+}
+.tab-bar-scrollable::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 3px;
+}
+
+/* Skeleton loader shimmer */
+@keyframes skeleton-shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: 600px 0; }
+}
+
+/* Login form inputs (replaces inline onFocus/onBlur style mutation) */
+.login-input {
+    width: 100%;
+    padding: 14px 16px 14px 48px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    outline: none;
+    font-size: 15px;
+    transition: border-color .2s, background-color .2s, box-shadow .2s;
+    background-color: #F9FAFB;
+}
+.login-input--with-toggle {
+    padding-right: 48px;
+}
+.login-input:focus {
+    border-color: var(--primary);
+    background-color: white;
+    box-shadow: 0 0 0 4px rgba(47, 93, 138, 0.1);
+}
+
+/* Demo role button hover (replaces inline onMouseEnter/Leave) */
+.demo-role-btn {
+    transition: border-color .2s, box-shadow .2s, background-color .2s;
+}
+.demo-role-btn:not(:disabled):hover {
+    border-color: var(--primary);
+    background-color: white;
+    box-shadow: 0 4px 12px rgba(47, 93, 138, 0.08);
+}
+
 .data-table th {
     text-align: left;
     padding: 16px;
@@ -563,6 +642,10 @@ label {
     }
     .data-table {
         font-size: 12px;
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
     }
     .data-table th, .data-table td {
         padding: 8px 6px !important;

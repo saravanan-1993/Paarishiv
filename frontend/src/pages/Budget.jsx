@@ -1,29 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Calculator, Briefcase, Loader2, PieChart, TrendingUp, Target, AlertCircle
+    Calculator, Briefcase, Loader2, PieChart, TrendingUp, Target, AlertCircle, IndianRupee
 } from 'lucide-react';
 import PremiumSelect from '../components/PremiumSelect';
 import CustomSelect from '../components/CustomSelect';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
 import { projectAPI } from '../utils/api';
-
-const IndianRupee = ({ size, className, style }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
-        <path d="M6 3h12" />
-        <path d="M6 8h12" />
-        <path d="M6 13l8.5 8" />
-        <path d="M6 13h3" />
-        <path d="M9 13c6.667 0 6.667-10 0-10" />
-    </svg>
-);
-
-const fmt = (n) => {
-    if (!n && n !== 0) return '₹0';
-    if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
-    if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
-    return `₹${Number(n).toLocaleString('en-IN')}`;
-};
+import { fmt } from '../utils/format';
 
 const Budget = () => {
     const [activeTab, setActiveTab] = useState('Overview');

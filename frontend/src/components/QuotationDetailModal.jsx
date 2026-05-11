@@ -8,7 +8,7 @@ const WhatsAppIcon = ({ size = 16 }) => (
 );
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 const QuotationDetailModal = ({ isOpen, onClose, quotation, companyInfo = {}, onSendEmail, onWhatsApp, onDownloadPDF }) => {
     if (!isOpen || !quotation) return null;

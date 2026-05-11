@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Tag, IndianRupee, Upload, Briefcase, Filter, Loader2 } from 'lucide-react';
 import { projectAPI, chatAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
         project: '',
@@ -40,7 +42,7 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
             }
         } catch (err) {
             console.error('File upload failed:', err);
-            alert('Failed to upload attachment. Check Cloudinary settings.');
+            toast.error('Failed to upload attachment. Check Cloudinary settings.');
         } finally {
             setUploadingFile(false);
         }

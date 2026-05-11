@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, DollarSign, Calendar, FileText, User, Briefcase } from 'lucide-react';
 import { projectAPI, billingAPI, financeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const RecordReceiptModal = ({ isOpen, onClose, onReceiptRecorded }) => {
+    const toast = useToast();
     const [loading, setLoading] = useState(false);
     const [fetchingBills, setFetchingBills] = useState(false);
     const [projects, setProjects] = useState([]);
@@ -90,7 +92,7 @@ const RecordReceiptModal = ({ isOpen, onClose, onReceiptRecorded }) => {
             });
         } catch (err) {
             console.error('Failed to record receipt:', err);
-            alert('Failed to record receipt. Please try again.');
+            toast.error('Failed to record receipt. Please try again.');
         } finally {
             setLoading(false);
         }

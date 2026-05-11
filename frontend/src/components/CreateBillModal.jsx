@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Calendar, IndianRupee, Percent, Hash, Building2, RefreshCw } from 'lucide-react';
 import { projectAPI, billingAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const generateBillNo = (bills) => {
@@ -17,6 +18,7 @@ const generateBillNo = (bills) => {
 };
 
 const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
+    const toast = useToast();
     const [projects, setProjects] = useState([]);
     const [allBills, setAllBills] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -68,12 +70,12 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
         e.preventDefault();
 
         if (!form.project || !form.bill_no || !form.amount) {
-            alert('Please fill all required fields.');
+            toast.warning('Please fill all required fields.');
             return;
         }
 
         if (isExceeding) {
-            alert(`Error: This bill exceeds the remaining project budget! \nRemaining Capacity: ₹${remainingBudget.toLocaleString('en-IN')}`);
+            toast.warning(`This bill exceeds the remaining project budget. Remaining Capacity: ₹${remainingBudget.toLocaleString('en-IN')}`);
             return;
         }
 
@@ -93,7 +95,7 @@ const CreateBillModal = ({ isOpen, onClose, onBillCreated }) => {
         } catch (err) {
             console.error(err);
             const msg = err?.response?.data?.detail || 'Failed to create bill. Please try again.';
-            alert(msg);
+            toast.error(msg);
         } finally {
             setLoading(false);
         }

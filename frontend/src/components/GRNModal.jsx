@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Truck, Info, Loader2, CheckCircle, Clock } from 'lucide-react';
 import { purchaseOrderAPI, grnAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const GRNModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [pos, setPOs] = useState([]);
     const [allGrns, setAllGrns] = useState([]);
@@ -67,7 +69,7 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.po_id) {
-            alert('Please select a Purchase Order');
+            toast.warning('Please select a Purchase Order');
             return;
         }
 
@@ -85,7 +87,7 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
             onClose();
         } catch (err) {
             console.error('Failed to create GRN:', err);
-            alert('Failed to save Goods Receipt Note.');
+            toast.error('Failed to save Goods Receipt Note.');
         } finally {
             setIsSaving(false);
         }

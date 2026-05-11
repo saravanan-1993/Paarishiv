@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, ClipboardCheck, Users, Calendar, AlertCircle } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 const DailyReportModal = ({ isOpen, onClose, project }) => {
+    const toast = useToast();
     const [progress, setProgress] = useState('');
     const [labour, setLabour] = useState('');
     const [materials, setMaterials] = useState('');
@@ -12,7 +14,7 @@ const DailyReportModal = ({ isOpen, onClose, project }) => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        alert('Daily Report (DPR) submitted successfully!');
+        toast.success('Daily Report (DPR) submitted successfully!');
         onClose();
     };
 

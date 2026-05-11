@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, CheckCircle, Download, Printer, AlertCircle, Plus, Trash2, Save, Users, Building2 } from 'lucide-react';
 import { purchaseOrderAPI, projectAPI, vendorAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
+    const toast = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState(null);
     const [projects, setProjects] = useState([]);
@@ -107,7 +109,7 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
         } catch (err) {
             console.error('Failed to update PO:', err);
             const errMsg = err.response?.data?.detail || err.message;
-            alert('Failed to save changes: ' + errMsg);
+            toast.error('Failed to save changes: ' + errMsg);
         } finally {
             setIsSaving(false);
         }
@@ -121,7 +123,7 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
             onClose();
         } catch (err) {
             console.error('Failed to approve PO:', err);
-            alert('Failed to approve PO.');
+            toast.error('Failed to approve PO.');
         } finally {
             setIsSaving(false);
         }

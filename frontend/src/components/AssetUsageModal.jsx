@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Clock, Gauge, User, MapPin } from 'lucide-react';
 import { fleetAPI, employeeAPI, projectAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
         date: new Date().toISOString().split('T')[0],
         asset: '',
@@ -51,7 +53,7 @@ const AssetUsageModal = ({ isOpen, onClose, onLogAdded, fleet }) => {
             onClose();
         } catch (err) {
             console.error('Error saving fuel log:', err);
-            alert('Failed to save usage log');
+            toast.error('Failed to save usage log');
         } finally {
             setLoading(false);
         }

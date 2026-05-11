@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { materialAPI, inventoryAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [saving, setSaving] = useState(false);
     const [materials, setMaterials] = useState([]);
     const [items, setItems] = useState([{ name: '', quantity: '', unit: '' }]);
@@ -46,7 +48,7 @@ const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => 
 
     const handleSubmit = async () => {
         const validItems = items.filter(i => i.name.trim() && parseInt(i.quantity) > 0);
-        if (!validItems.length) { alert('Add at least one material with quantity'); return; }
+        if (!validItems.length) { toast.warning('Add at least one material with quantity'); return; }
 
         setSaving(true);
         try {
@@ -63,11 +65,11 @@ const UrgentMaterialRequestModal = ({ isOpen, onClose, onSuccess, project }) => 
                 remarks: remarks || 'Urgent — required today',
                 is_urgent: true,
             });
-            alert('Urgent material request submitted!');
+            toast.success('Urgent material request submitted!');
             onSuccess?.();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to submit request');
+            toast.error(err.response?.data?.detail || 'Failed to submit request');
         }
         setSaving(false);
     };

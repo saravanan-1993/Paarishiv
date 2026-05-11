@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { fleetAPI, employeeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
+    const toast = useToast();
     const [expenses, setExpenses] = useState([]);
     const [loading, setLoading] = useState(false);
     const [initializing, setInitializing] = useState(false);
@@ -80,7 +82,7 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
             onClose();
         } catch (err) {
             console.error(err);
-            alert('Failed to update expenses');
+            toast.error('Failed to update expenses');
         } finally {
             setLoading(false);
         }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ClipboardList, HardHat, Package, Truck, User, Calendar, Download, Loader2, Building2 } from 'lucide-react';
 import { settingsAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 const CHECKLIST_ITEMS = {
@@ -154,6 +155,7 @@ const CHECKLIST_ITEMS = {
 };
 
 const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
+    const toast = useToast();
     const [isDownloading, setIsDownloading] = useState(false);
     const [companyInfo, setCompanyInfo] = useState({
         companyName: 'CIVIL ERP',
@@ -452,7 +454,7 @@ const DPRViewModal = ({ isOpen, onClose, dpr, projectName }) => {
             doc.save(`DPR_${projectName.replace(/\s+/g, '_')}_${dpr.date.replace(/\s+/g, '_')}.pdf`);
         } catch (err) {
             console.error('PDF generation crash:', err);
-            alert('Failed to generate PDF. Some images might be blocking the request.');
+            toast.error('Failed to generate PDF. Some images might be blocking the request.');
         } finally {
             setIsDownloading(false);
         }

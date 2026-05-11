@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Truck, Loader2 } from 'lucide-react';
 import { inventoryAPI, projectAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const DirectIssueModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [saving, setSaving] = useState(false);
     const [projects, setProjects] = useState([]);
     const [warehouseStock, setWarehouseStock] = useState([]);
@@ -44,14 +46,14 @@ const DirectIssueModal = ({ isOpen, onClose, onSuccess }) => {
     };
 
     const handleSubmit = async () => {
-        if (!selectedProject) { alert('Select a destination project'); return; }
+        if (!selectedProject) { toast.warning('Select a destination project'); return; }
         const valid = items.filter(it => it.name && parseFloat(it.quantity) > 0);
-        if (!valid.length) { alert('Add at least one item with quantity'); return; }
+        if (!valid.length) { toast.warning('Add at least one item with quantity'); return; }
         // Check stock
         for (const it of valid) {
             const avail = getAvailable(it.name);
             if (parseFloat(it.quantity) > avail) {
-                alert(`Insufficient stock for ${it.name}. Available: ${avail}, Requested: ${it.quantity}`);
+                toast.warning(`Insufficient stock for ${it.name}. Available: ${avail}, Requested: ${it.quantity}`);
                 return;
             }
         }
@@ -63,12 +65,12 @@ const DirectIssueModal = ({ isOpen, onClose, onSuccess }) => {
                 project_name: selectedProject,
                 items: valid.map(it => ({ name: it.name, quantity: parseFloat(it.quantity), unit: it.unit })),
             });
-            alert(`${valid.length} materials sent to ${selectedProject}`);
+            toast.success(`${valid.length} materials sent to ${selectedProject}`);
             onSuccess?.();
             onClose();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to issue materials');
+            toast.error(err.response?.data?.detail || 'Failed to issue materials');
         }
         setSaving(false);
     };

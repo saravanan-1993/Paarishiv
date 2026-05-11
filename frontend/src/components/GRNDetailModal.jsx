@@ -1,9 +1,11 @@
 import React from 'react';
 import { X, Package, Calendar, Truck, User, MapPin, ClipboardCheck, FileText, Download } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const GRNDetailModal = ({ isOpen, onClose, grn }) => {
+    const toast = useToast();
     if (!isOpen || !grn) return null;
 
     const formattedDate = grn.created_at ? new Date(grn.created_at).toLocaleDateString('en-IN', {
@@ -86,7 +88,7 @@ const GRNDetailModal = ({ isOpen, onClose, grn }) => {
             doc.save(`${grnNum}_Slip.pdf`);
         } catch (err) {
             console.error('GRN PDF error:', err);
-            alert('Failed to generate PDF');
+            toast.error('Failed to generate PDF');
         }
     };
 

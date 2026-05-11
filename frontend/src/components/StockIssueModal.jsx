@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { X, ClipboardCheck, Loader2 } from 'lucide-react';
 import { inventoryAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const StockIssueModal = ({ isOpen, onClose, request, onSuccess }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
 
     // We assume Admin approves the amounts in the request
@@ -24,7 +26,7 @@ const StockIssueModal = ({ isOpen, onClose, request, onSuccess }) => {
             const msg = typeof err.response?.data?.detail === 'string'
                 ? err.response.data.detail
                 : 'Failed to issue stock. Please check warehouse stock levels.';
-            alert(msg);
+            toast.error(msg);
         } finally {
             setIsSaving(false);
         }

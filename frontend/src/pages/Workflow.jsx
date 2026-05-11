@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import {
     Plus,
     Search,
@@ -21,7 +21,8 @@ import {
     Eye,
     Pencil,
     Trash2,
-    ChevronRight
+    ChevronRight,
+    X
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import VendorModal from '../components/VendorModal';
@@ -32,25 +33,17 @@ import PODetailModal from '../components/PODetailModal';
 import GRNDetailModal from '../components/GRNDetailModal';
 import { vendorAPI, purchaseOrderAPI, grnAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
-const WhatsAppIcon = ({ size = 18 }) => (
-    <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        style={{ verticalAlign: 'middle' }}
-    >
-        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-    </svg>
-);
+import WhatsAppIcon from '../components/icons/WhatsAppIcon';
 
 const Workflow = () => {
     const { user } = useAuth();
+    const toast = useToast();
     const location = useLocation();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const queryTab = searchParams.get('tab');
     const requestIdFromUrl = searchParams.get('request_id');
@@ -82,9 +75,19 @@ const Workflow = () => {
     // Also update URL when clicking tabs manually (optional but good for consistency)
     const handleTabChange = (tabId) => {
         setActiveSection(tabId);
-        setSearchParams({ tab: tabId });
+        // Preserve persisted search/query params when switching tabs
+        const next = new URLSearchParams(searchParams);
+        next.set('tab', tabId);
+        setSearchParams(next, { replace: true });
     };
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
+
+    // Persist search to URL
+    React.useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        if (searchTerm) next.set('q', searchTerm); else next.delete('q');
+        setSearchParams(next, { replace: true });
+    }, [searchTerm]);
     const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
     const [isPOModalOpen, setIsPOModalOpen] = useState(false);
     const [isGRNModalOpen, setIsGRNModalOpen] = useState(false);
@@ -263,12 +266,12 @@ const Workflow = () => {
 
     const handleEmailShare = async (po) => {
         try {
-            const res = await purchaseOrderAPI.sendEmail(po.id);
-            alert(`Email sent successfully to vendor for PO-${po.id.slice(-6).toUpperCase()}`);
+            await purchaseOrderAPI.sendEmail(po.id);
+            toast.success(`Email sent to vendor for PO-${po.id.slice(-6).toUpperCase()}`);
         } catch (err) {
             console.error('Failed to send email:', err);
             const errorMsg = err.response?.data?.detail || 'Failed to send email. Please check vendor email and SMTP settings.';
-            alert(errorMsg);
+            toast.error(errorMsg);
         }
     };
 
@@ -360,7 +363,7 @@ const Workflow = () => {
             doc.save(`${poNum}_${(po.vendor_name || 'Vendor').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
         } catch (error) {
             console.error('PDF Generation Error:', error);
-            alert('Failed to generate PDF. Please check console for details.');
+            toast.error('Failed to generate PDF. Please check console for details.');
         }
     };
 
@@ -438,10 +441,10 @@ const Workflow = () => {
                 {/* ── Tabs ───────────────────────────────────────────────────── */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
                     {[
-                        { name: `Vendors (${vendors.length})`, id: 'Vendors', icon: Building2 },
-                        { name: `POs (${pos.length})`, id: 'POs', icon: ShoppingCart },
-                        { name: `Requests (${requests.length + consolidatedRequests.length})`, id: 'Requests', icon: FileText },
-                        { name: `GRN (${grns.length})`, id: 'GRN', icon: Package },
+                        { name: loading ? 'Vendors' : `Vendors (${vendors.length})`, id: 'Vendors', icon: Building2 },
+                        { name: loading ? 'POs' : `POs (${pos.length})`, id: 'POs', icon: ShoppingCart },
+                        { name: loading ? 'Requests' : `Requests (${requests.length + consolidatedRequests.length})`, id: 'Requests', icon: FileText },
+                        { name: loading ? 'GRN' : `GRN (${grns.length})`, id: 'GRN', icon: Package },
                     ].filter(tab => hasSubTabAccess(user, 'Procurement', tab.id))
                         .map((tab) => {
                             const isActive = activeSection === tab.id;
@@ -474,10 +477,15 @@ const Workflow = () => {
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             style={{
-                                width: '100%', padding: '12px 12px 12px 40px', borderRadius: '8px',
+                                width: '100%', padding: '12px 40px 12px 40px', borderRadius: '8px',
                                 border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '15px'
                             }}
                         />
+                        {searchTerm && (
+                            <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                <X size={16} />
+                            </button>
+                        )}
                     </div>
                     {hasPermission(user, 'Procurement', 'edit') && (
                         <button
@@ -498,7 +506,10 @@ const Workflow = () => {
                             }}
                         >
                             <Plus size={20} />
-                            {activeSection === 'Vendors' ? 'ADD VENDOR' : activeSection === 'POs' || activeSection === 'Requests' ? 'CREATE PO' : 'NEW GRN'}
+                            {activeSection === 'Vendors' ? 'ADD VENDOR'
+                                : activeSection === 'POs' ? 'CREATE PO'
+                                : activeSection === 'Requests' ? 'FULFILL REQUEST'
+                                : 'NEW GRN'}
                         </button>
                     )}
                 </div>
@@ -658,7 +669,7 @@ const Workflow = () => {
                     {/* Material Requests */}
                     {activeSection === 'Requests' && (
                         requests.length === 0
-                            ? <EmptyState icon={FileText} label="Approved Material Requests" buttonLabel="CHECK INVENTORY" onAdd={() => window.location.href = '/materials'} />
+                            ? <EmptyState icon={FileText} label="Approved Material Requests" buttonLabel="CHECK INVENTORY" onAdd={() => navigate('/materials')} />
                             : <><div className="card" style={{ padding: '0' }}>
                                 <table className="data-table">
                                     <thead>
@@ -699,7 +710,7 @@ const Workflow = () => {
                                                                         await inventoryAPI.updateRequestStatus(req.id, { status: 'Approved' });
                                                                         fetchRequests();
                                                                     } catch (err) {
-                                                                        alert('Failed to approve request');
+                                                                        toast.error('Failed to approve request');
                                                                     }
                                                                 }}
                                                             >

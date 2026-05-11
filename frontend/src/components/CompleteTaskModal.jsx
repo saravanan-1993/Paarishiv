@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { X, Camera, Loader2, CheckCircle } from 'lucide-react';
 import { projectAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
+    const toast = useToast();
     const [loading, setLoading] = useState(false);
     const [photo, setPhoto] = useState(null);
     const [photoPreview, setPhotoPreview] = useState(null);
@@ -44,13 +46,13 @@ const CompleteTaskModal = ({ isOpen, onClose, project, task, onCompleted }) => {
                 console.warn('Failed to send admin notification:', notifyErr);
             }
 
-            alert('Task marked as completed! Admin notified.');
+            toast.success('Task marked as completed! Admin notified.');
             onCompleted?.();
             onClose();
         } catch (err) {
             console.error(err);
             const msg = err?.response?.data?.detail || err?.message || 'Unknown error';
-            alert(`Failed to complete task: ${msg}`);
+            toast.error(`Failed to complete task: ${msg}`);
         } finally {
             setLoading(false);
         }

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X, Truck, Loader2 } from 'lucide-react';
 import { fleetAPI, projectAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const LOAD_TYPES = ['Sand', 'Cement', 'Steel', 'Aggregate', 'M-Sand', 'Bricks', 'Gravel', 'Soil', 'Debris', 'Water', 'Equipment', 'Other'];
 const UNITS = ['Tons', 'Loads', 'Bags', 'Cu.m', 'Nos', 'Kgs'];
 
 const TripRequestModal = ({ isOpen, onClose, onSuccess }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [projects, setProjects] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
     const [form, setForm] = useState({
@@ -38,7 +40,7 @@ const TripRequestModal = ({ isOpen, onClose, onSuccess }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!form.from_location.trim() || !form.to_location.trim()) {
-            alert('Please fill From Location and To Location.');
+            toast.warning('Please fill From Location and To Location.');
             return;
         }
         setIsSaving(true);
@@ -55,7 +57,7 @@ const TripRequestModal = ({ isOpen, onClose, onSuccess }) => {
             });
             onClose();
         } catch (err) {
-            alert(err?.response?.data?.detail || 'Failed to submit trip request.');
+            toast.error(err?.response?.data?.detail || 'Failed to submit trip request.');
         } finally {
             setIsSaving(false);
         }

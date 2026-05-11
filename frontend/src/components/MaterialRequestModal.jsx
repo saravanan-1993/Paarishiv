@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import CreateMaterialModal from './CreateMaterialModal';
 
 const MaterialRequestModal = ({ isOpen, onClose, onSuccess }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [items, setItems] = useState([{ name: '', quantity: '', unit: 'Nos' }]);
     const [selectedProject, setSelectedProject] = useState('');
     const [priority, setPriority] = useState('Medium');
@@ -118,9 +120,9 @@ const MaterialRequestModal = ({ isOpen, onClose, onSuccess }) => {
                 <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
                     <button className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
                     <button className="btn btn-primary" style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }} disabled={loading} onClick={async () => {
-                        if (!selectedProject) { alert('Please select a project'); return; }
+                        if (!selectedProject) { toast.warning('Please select a project'); return; }
                         const validItems = items.filter(i => i.name && parseFloat(i.quantity) > 0);
-                        if (validItems.length === 0) { alert('Add at least one item with name and quantity'); return; }
+                        if (validItems.length === 0) { toast.warning('Add at least one item with name and quantity'); return; }
                         setLoading(true);
                         try {
                             const proj = projects.find(p => p.name === selectedProject);
@@ -138,7 +140,7 @@ const MaterialRequestModal = ({ isOpen, onClose, onSuccess }) => {
                             onClose();
                         } catch (err) {
                             console.error('Failed to submit request:', err);
-                            alert(err?.response?.data?.detail || 'Failed to submit material request');
+                            toast.error(err?.response?.data?.detail || 'Failed to submit material request');
                         } finally { setLoading(false); }
                     }}>
                         {loading ? <Loader2 size={16} className="animate-spin" /> : null}

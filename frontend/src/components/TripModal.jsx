@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, IndianRupee, Truck, User, MapPin, Briefcase } from 'lucide-react';
 import { fleetAPI, projectAPI, employeeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, trip = null }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
         tripId: Math.random().toString(36).substr(2, 6).toUpperCase(),
         vehicleId: '',
@@ -95,7 +97,7 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
             const errorMsg = Array.isArray(detail)
                 ? detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join('\n')
                 : detail || 'Failed to create trip';
-            alert(errorMsg);
+            toast.error(errorMsg);
         }
         finally {
             setLoading(false);
@@ -156,9 +158,6 @@ const TripModal = ({ isOpen, onClose, onSuccess, vehicles, projects, drivers, tr
                                 searchable={true}
                                 placeholder="Choose a driver"
                             />
-                            {/* <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/hr?tab=Authorized+Users'}>HRMS</span>
-                            </p> */}
                         </div>
                     </div>
 

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, FileText, Calendar, Building2, Loader2, Download, Upload, Calculator } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI, projectAPI, labourAttendanceAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const UNIT_OPTIONS = ['Cft', 'Sft', 'Rmt', 'Nos', 'Kg', 'Bag', 'Cum', 'Sqm'];
 
 const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
+    const toast = useToast();
     const [billType, setBillType] = useState('work_based');
     const [formData, setFormData] = useState({
         contractor_name: '', project_name: '', project_id: '',
@@ -198,7 +200,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     // DPR Import
     const handleDprImport = async () => {
         if (!formData.contractor_name || !formData.project_name) {
-            alert('Please select contractor and project first');
+            toast.warning('Please select contractor and project first');
             return;
         }
         setDprLoading(true);
@@ -211,7 +213,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             setShowDprImport(true);
             setDprSelected({});
         } catch (err) {
-            alert('Failed to fetch DPR work entries');
+            toast.error('Failed to fetch DPR work entries');
         } finally {
             setDprLoading(false);
         }
@@ -224,7 +226,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     const importSelectedDpr = () => {
         const selected = dprWork.filter((_, i) => dprSelected[i]);
         if (selected.length === 0) {
-            alert('Please select at least one DPR entry');
+            toast.warning('Please select at least one DPR entry');
             return;
         }
         const newEntries = selected.map((item, idx) => ({
@@ -254,11 +256,11 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     // Attendance Import
     const handleAttendanceImport = async () => {
         if (!formData.contractor_name || !formData.project_name) {
-            alert('Please select contractor and project first');
+            toast.warning('Please select contractor and project first');
             return;
         }
         if (!formData.period_from || !formData.period_to) {
-            alert('Please set period from and period to dates first');
+            toast.warning('Please set period from and period to dates first');
             return;
         }
         setAttendanceLoading(true);
@@ -275,7 +277,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             setAttendanceData(contractorEntries);
             setShowAttendanceImport(true);
         } catch (err) {
-            alert('Failed to fetch attendance data');
+            toast.error('Failed to fetch attendance data');
         } finally {
             setAttendanceLoading(false);
         }
@@ -283,7 +285,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
 
     const importAttendanceEntries = () => {
         if (attendanceData.length === 0) {
-            alert('No attendance entries to import');
+            toast.warning('No attendance entries to import');
             return;
         }
         const newEntries = attendanceData.map(item => ({
@@ -299,7 +301,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
 
     const handleSubmit = async (submitForApproval = false) => {
         if (!formData.contractor_name || !formData.project_name) {
-            alert('Please select contractor and project');
+            toast.warning('Please select contractor and project');
             return;
         }
 
@@ -368,7 +370,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             const msg = typeof detail === 'string' ? detail
                 : Array.isArray(detail) ? detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ')
                 : 'Failed to save bill';
-            alert(msg);
+            toast.error(msg);
         } finally {
             setIsSaving(false);
         }

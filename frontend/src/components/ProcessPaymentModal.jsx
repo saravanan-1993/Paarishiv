@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, Calendar, CreditCard, User, FileText, AlertCircle } from 'lucide-react';
 import { financeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const IndianRupee = ({ size, className, style, color }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
@@ -13,6 +14,7 @@ const IndianRupee = ({ size, className, style, color }) => (
 );
 
 const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) => {
+    const toast = useToast();
     const [invoiceNo, setInvoiceNo] = useState('');
     const [baseAmount, setBaseAmount] = useState('');
     const [gstPercent, setGstPercent] = useState('18');
@@ -88,12 +90,12 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
 
     const handleProcess = async () => {
         if (!baseAmount || isNaN(parseFloat(baseAmount))) {
-            alert('Please enter a valid invoice base amount.');
+            toast.warning('Please enter a valid invoice base amount.');
             return;
         }
 
         if (!invoiceNo) {
-            alert('Please enter the Invoice Number.');
+            toast.warning('Please enter the Invoice Number.');
             return;
         }
 
@@ -102,17 +104,17 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
             : 0; // Pending = no payment
 
         if (paymentType === 'Full' && remainingBalance <= 0) {
-            alert('This invoice is already fully paid.');
+            toast.info('This invoice is already fully paid.');
             return;
         }
 
         if (paymentType === 'Partial' && (!partialAmount || isNaN(paymentAmountToSend) || paymentAmountToSend <= 0)) {
-            alert('Please enter a valid partial payment amount.');
+            toast.warning('Please enter a valid partial payment amount.');
             return;
         }
 
         if (paymentType !== 'Pending' && paymentAmountToSend > (remainingBalance + 0.01)) {
-            alert(`Payment amount (₹${paymentAmountToSend.toLocaleString()}) cannot exceed the remaining balance (₹${remainingBalance.toLocaleString()}).`);
+            toast.warning(`Payment amount (₹${paymentAmountToSend.toLocaleString('en-IN')}) cannot exceed the remaining balance (₹${remainingBalance.toLocaleString('en-IN')}).`);
             return;
         }
 
@@ -144,14 +146,14 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
             };
 
             await financeAPI.createPaymentRequest(payload);
-            alert(isPending
+            toast.success(isPending
                 ? 'Invoice recorded and sent for admin approval.'
                 : 'Payment request submitted for admin approval. Payment will be processed after approval.');
             onPaymentProcessed?.();
             onClose();
         } catch (err) {
             console.error('Payment request error:', err);
-            alert(`Failed to submit: ${err.response?.data?.detail || err.message}`);
+            toast.error(`Failed to submit: ${err.response?.data?.detail || err.message}`);
         } finally {
             setLoading(false);
         }

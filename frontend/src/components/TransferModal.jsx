@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { X, ArrowRightLeft, Package, Truck, Hash, Loader2 } from 'lucide-react';
 import { inventoryAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 const TransferModal = ({ isOpen, onClose, onTransferAdded, projects = [] }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const projectNames = projects.map(p => p.name).filter(Boolean);
     const [loading, setLoading] = useState(false);
     const [sourceInventory, setSourceInventory] = useState([]);
@@ -55,10 +57,10 @@ const TransferModal = ({ isOpen, onClose, onTransferAdded, projects = [] }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.from || !formData.to) { alert('Select both source and destination'); return; }
-        if (formData.from === formData.to) { alert('Source and destination cannot be the same'); return; }
+        if (!formData.from || !formData.to) { toast.warning('Select both source and destination'); return; }
+        if (formData.from === formData.to) { toast.warning('Source and destination cannot be the same'); return; }
         const validItems = formData.items.filter(i => i.name && parseFloat(i.quantity) > 0);
-        if (validItems.length === 0) { alert('Add at least one item with name and quantity'); return; }
+        if (validItems.length === 0) { toast.warning('Add at least one item with name and quantity'); return; }
 
         setLoading(true);
         try {
@@ -72,7 +74,7 @@ const TransferModal = ({ isOpen, onClose, onTransferAdded, projects = [] }) => {
             onClose();
         } catch (err) {
             console.error('Transfer failed:', err);
-            alert(err?.response?.data?.detail || 'Failed to create transfer request');
+            toast.error(err?.response?.data?.detail || 'Failed to create transfer request');
         } finally {
             setLoading(false);
         }

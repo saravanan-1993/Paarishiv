@@ -53,31 +53,39 @@ const AttendanceWidget = ({
                                     <button
                                         className="btn btn-outline"
                                         onClick={(e) => { e.stopPropagation(); setIsAwayMenuOpen(!isAwayMenuOpen); }}
+                                        onKeyDown={(e) => { if (e.key === 'Escape' && isAwayMenuOpen) { setIsAwayMenuOpen(false); } }}
                                         disabled={isClocking}
+                                        aria-haspopup="menu"
+                                        aria-expanded={isAwayMenuOpen}
+                                        aria-label="Mark away menu"
                                         style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '150px' }}
                                     >
-                                        <Activity size={18} /> Mark Away... <ChevronDown size={16} />
+                                        <Activity size={18} aria-hidden="true" /> Mark Away... <ChevronDown size={16} aria-hidden="true" />
                                     </button>
                                     {isAwayMenuOpen && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            top: 'calc(100% + 8px)',
-                                            right: '0',
-                                            backgroundColor: 'white',
-                                            borderRadius: '12px',
-                                            padding: '8px',
-                                            zIndex: 100,
-                                            boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
-                                            border: '1px solid var(--border)',
-                                            minWidth: '220px'
-                                        }}>
+                                        <div
+                                            role="menu"
+                                            aria-label="Away options"
+                                            style={{
+                                                position: 'absolute',
+                                                top: 'calc(100% + 8px)',
+                                                right: '0',
+                                                backgroundColor: 'white',
+                                                borderRadius: '12px',
+                                                padding: '8px',
+                                                zIndex: 100,
+                                                boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                                                border: '1px solid var(--border)',
+                                                minWidth: '220px'
+                                            }}>
                                             {[
-                                                { label: 'Tea / Lunch Break', value: 'Break', icon: <Coffee size={16} />, color: '#B45309' },
-                                                { label: 'Official Duty', value: 'Official Duty', icon: <BriefcaseIcon size={16} />, color: '#1D4ED8' },
-                                                { label: 'Permission (Personal)', value: 'Permission', icon: <UserCircle size={16} />, color: '#6D28D9' }
+                                                { label: 'Tea / Lunch Break', value: 'Break', icon: <Coffee size={16} aria-hidden="true" />, color: '#B45309' },
+                                                { label: 'Official Duty', value: 'Official Duty', icon: <BriefcaseIcon size={16} aria-hidden="true" />, color: '#1D4ED8' },
+                                                { label: 'Permission (Personal)', value: 'Permission', icon: <UserCircle size={16} aria-hidden="true" />, color: '#6D28D9' }
                                             ].map((opt) => (
                                                 <button
                                                     key={opt.value}
+                                                    role="menuitem"
                                                     onClick={() => {
                                                         setIsAwayMenuOpen(false);
                                                         handleClockAction('break-start', { type: opt.value });

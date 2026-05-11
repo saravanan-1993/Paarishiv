@@ -5,22 +5,26 @@ import {
 } from 'lucide-react';
 import { labourAttendanceAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const fmt = (n) => `\u20B9${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const fmtDate = (d) => {
     if (!d) return '-';
     const dt = new Date(d);
     if (isNaN(dt.getTime())) return '-';
-    return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 const ADMIN_ROLES = ['administrator', 'super admin', 'admin', 'general manager', 'managing director', 'manager'];
 
 const LabourWages = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const canEditAccounts = hasPermission(user, 'Accounts', 'edit');
     const [loading, setLoading] = useState(true);
     const [records, setRecords] = useState([]);
@@ -84,15 +88,15 @@ const LabourWages = () => {
 
     // Request Admin approval for payment
     const handleRequestPayment = async (rec) => {
-        if (!window.confirm(`Request payment approval for ${rec.project_name} — ${fmtDate(rec.date)} (${fmt(rec.day_cost)})?`)) return;
+        if (!(await confirm({ title: 'Request Payment Approval', message: `Request payment approval for ${rec.project_name} — ${fmtDate(rec.date)} (${fmt(rec.day_cost)})?`, confirmText: 'Request' }))) return;
         setRequesting(true);
         try {
             await labourAttendanceAPI.requestPayment(rec.id);
-            alert('Payment approval request sent to Admin.');
+            toast.success('Payment approval request sent to Admin.');
             await loadData();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to request payment approval');
+            toast.error(err.response?.data?.detail || 'Failed to request payment approval');
         }
         setRequesting(false);
     };
@@ -116,12 +120,12 @@ const LabourWages = () => {
                 net_amount: rec.day_cost || 0,
                 payment_mode: 'Cash',
             });
-            alert(`Payment of ${fmt(rec.day_cost)} processed for ${rec.project_name} — ${fmtDate(rec.date)}`);
+            toast.success(`Payment of ${fmt(rec.day_cost)} processed for ${rec.project_name} — ${fmtDate(rec.date)}`);
             setPayModal(null);
             await loadData();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to process payment');
+            toast.error(err.response?.data?.detail || 'Failed to process payment');
         }
         setPaying(false);
     };
@@ -230,7 +234,12 @@ const LabourWages = () => {
                     <div style={{ position: 'relative' }}>
                         <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
                         <input placeholder="Search project or category..." value={search} onChange={e => setSearch(e.target.value)}
-                            style={{ width: '100%', padding: '10px 14px 10px 34px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, outline: 'none' }} />
+                            style={{ width: '100%', padding: '10px 34px 10px 34px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, outline: 'none' }} />
+                        {search && (
+                            <button type="button" onClick={() => setSearch('')} aria-label="Clear search" style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4, display: 'flex', alignItems: 'center' }}>
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
                     <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)}
                         style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #E2E8F0', fontSize: 13, minWidth: 180 }}>
@@ -272,7 +281,6 @@ const LabourWages = () => {
                     <div style={{ padding: 60, textAlign: 'center', color: '#64748B' }}>
                         <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
                         <div style={{ marginTop: 8 }}>Loading...</div>
-                        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
                     </div>
                 ) : (activeTab === 'Pending' || activeTab === 'Awaiting Verification') ? (
                     <div style={{ overflowX: 'auto' }}>

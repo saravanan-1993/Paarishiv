@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { buildLogoUrl } from '../utils/logoUrl';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Building2, Eye, EyeOff, LayoutDashboard, ChevronRight } from 'lucide-react';
 import { settingsAPI } from '../utils/api';
 
 const Login = () => {
-    const [username, setUsername] = useState('');
+    const [username, setUsername] = useState(() => localStorage.getItem('erp_remember_user') || '');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [showForgotPasswordHint, setShowForgotPasswordHint] = useState(false);
+    const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem('erp_remember_user'));
     const [error, setError] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const { login, quickLogin, user } = useAuth();
@@ -29,9 +32,20 @@ const Login = () => {
         fetchCompany();
     }, []);
 
+    const consumeRedirect = () => {
+        try {
+            const dest = sessionStorage.getItem('erp_post_login_redirect');
+            if (dest) {
+                sessionStorage.removeItem('erp_post_login_redirect');
+                return dest;
+            }
+        } catch (e) { /* ignore */ }
+        return '/';
+    };
+
     useEffect(() => {
         if (user) {
-            navigate('/');
+            navigate(consumeRedirect());
         }
     }, [user, navigate]);
 
@@ -43,7 +57,12 @@ const Login = () => {
         try {
             const success = await login(username, password);
             if (success) {
-                navigate('/');
+                if (rememberMe) {
+                    localStorage.setItem('erp_remember_user', username);
+                } else {
+                    localStorage.removeItem('erp_remember_user');
+                }
+                navigate(consumeRedirect());
             } else {
                 setError('Invalid username or password');
             }
@@ -61,7 +80,7 @@ const Login = () => {
         try {
             const success = await quickLogin(role);
             if (success) {
-                navigate('/');
+                navigate(consumeRedirect());
             } else {
                 setError(`No active ${role} account found`);
             }
@@ -117,7 +136,7 @@ const Login = () => {
                         }}>
                             {companyInfo.logo ? (
                                 <img
-                                    src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                    src={buildLogoUrl(companyInfo.logo)}
                                     alt="Logo"
                                     style={{ width: '85%', height: '85%', objectFit: 'contain' }}
                                 />
@@ -153,29 +172,10 @@ const Login = () => {
                                 <User size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <input
                                     type="text"
+                                    className="login-input"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
                                     placeholder="e.g. admin"
-                                    style={{
-                                        width: '100%',
-                                        padding: '14px 16px 14px 48px',
-                                        borderRadius: '12px',
-                                        border: '1px solid var(--border)',
-                                        outline: 'none',
-                                        fontSize: '15px',
-                                        transition: 'all 0.2s ease',
-                                        backgroundColor: '#F9FAFB'
-                                    }}
-                                    onFocus={(e) => {
-                                        e.target.style.borderColor = 'var(--primary)';
-                                        e.target.style.backgroundColor = 'white';
-                                        e.target.style.boxShadow = '0 0 0 4px rgba(47, 93, 138, 0.1)';
-                                    }}
-                                    onBlur={(e) => {
-                                        e.target.style.borderColor = 'var(--border)';
-                                        e.target.style.backgroundColor = '#F9FAFB';
-                                        e.target.style.boxShadow = 'none';
-                                    }}
                                     required
                                 />
                             </div>
@@ -187,29 +187,10 @@ const Login = () => {
                                 <Lock size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <input
                                     type={showPassword ? "text" : "password"}
+                                    className="login-input login-input--with-toggle"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
-                                    style={{
-                                        width: '100%',
-                                        padding: '14px 48px 14px 48px',
-                                        borderRadius: '12px',
-                                        border: '1px solid var(--border)',
-                                        outline: 'none',
-                                        fontSize: '15px',
-                                        transition: 'all 0.2s ease',
-                                        backgroundColor: '#F9FAFB'
-                                    }}
-                                    onFocus={(e) => {
-                                        e.target.style.borderColor = 'var(--primary)';
-                                        e.target.style.backgroundColor = 'white';
-                                        e.target.style.boxShadow = '0 0 0 4px rgba(47, 93, 138, 0.1)';
-                                    }}
-                                    onBlur={(e) => {
-                                        e.target.style.borderColor = 'var(--border)';
-                                        e.target.style.backgroundColor = '#F9FAFB';
-                                        e.target.style.boxShadow = 'none';
-                                    }}
                                     required
                                 />
                                 <button
@@ -233,6 +214,16 @@ const Login = () => {
                                 </button>
                             </div>
                         </div>
+
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            <input
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+                            />
+                            Remember my username on this device
+                        </label>
 
                         <button
                             type="submit"
@@ -261,8 +252,23 @@ const Login = () => {
                             {isLoggingIn ? 'Verifying...' : 'Sign In to ERP'}
                             {!isLoggingIn && <ChevronRight size={18} />}
                         </button>
+                        <div style={{ marginTop: '12px', textAlign: 'center' }}>
+                            <button
+                                type="button"
+                                onClick={() => setShowForgotPasswordHint(true)}
+                                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                                Forgot password?
+                            </button>
+                        </div>
+                        {showForgotPasswordHint && (
+                            <div style={{ marginTop: '12px', padding: '12px 14px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '10px', fontSize: '13px', color: '#1E40AF' }} role="status">
+                                Contact your administrator to reset your password. They can issue a new password via HRMS → Authorized Users.
+                            </div>
+                        )}
                     </form>
 
+                    {import.meta.env.DEV && (
                     <div style={{ marginTop: '40px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                             <div style={{ height: '1px', flex: 1, backgroundColor: 'var(--border)' }}></div>
@@ -273,7 +279,7 @@ const Login = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                             {demoRoles.map((role) => (
                                 <button
-                                    key={role.username}
+                                    key={role.role}
                                     onClick={() => handleQuickLogin(role.role)}
                                     disabled={isLoggingIn}
                                     style={{
@@ -289,20 +295,7 @@ const Login = () => {
                                         flexDirection: 'column',
                                         gap: '2px'
                                     }}
-                                    onMouseEnter={(e) => {
-                                        if (!isLoggingIn) {
-                                            e.currentTarget.style.borderColor = 'var(--primary)';
-                                            e.currentTarget.style.backgroundColor = 'white';
-                                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 93, 138, 0.08)';
-                                        }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        if (!isLoggingIn) {
-                                            e.currentTarget.style.borderColor = 'var(--border)';
-                                            e.currentTarget.style.backgroundColor = role.full ? 'rgba(47, 93, 138, 0.05)' : 'white';
-                                            e.currentTarget.style.boxShadow = 'none';
-                                        }
-                                    }}
+                                    className="demo-role-btn"
                                 >
                                     <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>{role.label}</span>
                                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Auto-sign in</span>
@@ -310,32 +303,19 @@ const Login = () => {
                             ))}
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 
-            {/* Right Side: Construction Image/Branding */}
+            {/* Right Side: Brand Panel */}
             <div style={{
                 position: 'relative',
                 overflow: 'hidden',
-                backgroundColor: 'var(--primary)'
+                background: 'linear-gradient(135deg, var(--primary) 0%, #1E3A8A 100%)'
             }}>
-                <img
-                    src="https://images.unsplash.com/photo-1541888946425-d81bb19240f5?q=80&w=2070&auto=format&fit=crop"
-                    alt="Construction Site"
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        opacity: '0.7'
-                    }}
-                />
                 <div style={{
                     position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'linear-gradient(to right, rgba(47, 93, 138, 0.9), transparent)',
+                    inset: 0,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
@@ -347,7 +327,7 @@ const Login = () => {
                             {companyInfo.logo ? (
                                 <div style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                                     <img
-                                        src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                        src={buildLogoUrl(companyInfo.logo)}
                                         alt="Logo"
                                         style={{ width: '85%', height: '85%', objectFit: 'contain' }}
                                     />
@@ -360,20 +340,6 @@ const Login = () => {
                         <h3 style={{ fontSize: '24px', fontWeight: '400', lineHeight: '1.4', marginBottom: '32px', opacity: '0.9' }}>
                             Building the future with data-driven site management and real-time project tracking.
                         </h3>
-                        <div style={{ display: 'flex', gap: '40px' }}>
-                            <div>
-                                <p style={{ fontSize: '24px', fontWeight: '800' }}>15+</p>
-                                <p style={{ fontSize: '12px', opacity: '0.7' }}>Active Projects</p>
-                            </div>
-                            <div>
-                                <p style={{ fontSize: '24px', fontWeight: '800' }}>100%</p>
-                                <p style={{ fontSize: '12px', opacity: '0.7' }}>Transparency</p>
-                            </div>
-                            <div>
-                                <p style={{ fontSize: '24px', fontWeight: '800' }}>24/7</p>
-                                <p style={{ fontSize: '12px', opacity: '0.7' }}>On-site Monitoring</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, Users, Loader2, Save, Send } from 'lucide-react';
 import { labourAttendanceAPI, vendorAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const emptyRow = () => ({
     id: Date.now() + Math.random(),
@@ -15,6 +16,7 @@ const emptyRow = () => ({
 const WAGE_VISIBLE_ROLES = ['administrator', 'super admin', 'admin', 'accountant', 'general manager', 'managing director', 'manager'];
 
 const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRecord, userRole }) => {
+    const toast = useToast();
     const isEdit = !!existingRecord?.id;
     const [saving, setSaving] = useState(false);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -128,8 +130,8 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
 
     const handleSave = async (submitForApproval = false) => {
         const validRows = rows.filter(r => r.party.trim() && r.category.trim() && (parseInt(r.count) || 0) > 0);
-        if (!validRows.length) { alert('Add at least one entry with party, category, and count'); return; }
-        if (!date) { alert('Select a date'); return; }
+        if (!validRows.length) { toast.warning('Add at least one entry with party, category, and count'); return; }
+        if (!date) { toast.warning('Select a date'); return; }
 
         const payload = {
             project_id: project._id || project.id || '',
@@ -161,7 +163,7 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
             onSuccess?.();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to save attendance');
+            toast.error(err.response?.data?.detail || 'Failed to save attendance');
         }
         setSaving(false);
     };
