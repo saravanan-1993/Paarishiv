@@ -22,6 +22,7 @@ const Approvals = () => {
     const canApprovePO = ['super admin', 'administrator', 'general manager', 'manager'].includes(userRole);
     const canApproveTripRequest = hasFeature(user, 'approve_trip_request') || ['super admin', 'administrator', 'managing director'].includes(userRole) || userRole.includes('coordinator') || userRole.includes('purchase');
     const canSeeTripRequestsTab = hasSubTabAccess(user, 'Approvals', 'Trip Requests');
+    const [viewPayment, setViewPayment] = useState(null);
 
     const tabMapping = useMemo(() => ({
         'Leaves': 'leaves',
@@ -821,20 +822,26 @@ const Approvals = () => {
             {item.description && (
                 <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>{item.description}</p>
             )}
-            {item.status === 'Pending' && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('payment_requests', item._id || item.id, 'approve')}
-                        style={{ padding: '6px 16px', fontSize: '12px' }}>
-                        {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve & Pay'}
-                    </button>
-                    <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
-                        onClick={() => handleAction('payment_requests', item._id || item.id, 'reject')}
-                        style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
-                        {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
-                    </button>
-                </div>
-            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setViewPayment(item)}
+                    style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Eye size={14} /> View
+                </button>
+                {item.status === 'Pending' && (
+                    <>
+                        <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('payment_requests', item._id || item.id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}>
+                            {actionLoading === `${item._id || item.id}-approve` ? 'Approving...' : 'Approve & Pay'}
+                        </button>
+                        <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
+                            onClick={() => handleAction('payment_requests', item._id || item.id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}>
+                            {actionLoading === `${item._id || item.id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </>
+                )}
+            </div>
         </div>
     );
 
@@ -1398,6 +1405,92 @@ const Approvals = () => {
                 onClose={() => setSelectedMaterial(null)}
                 request={selectedMaterial}
             />
+
+            {viewPayment && (
+                <div className="modal-overlay" onClick={() => setViewPayment(null)}>
+                    <div className="card animate-fade-in" onClick={e => e.stopPropagation()} style={{ width: '95%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
+                        <div className="modal-header">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ width: '40px', height: '40px', backgroundColor: '#ecfeff', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0891b2' }}>
+                                    <CreditCard size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Vendor Payment Details</h3>
+                                    <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{viewPayment.voucher_no || viewPayment.grn_id || '—'}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setViewPayment(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '24px', overflowY: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Vendor / Payee</p><p style={{ fontSize: '14px', fontWeight: '700' }}>{viewPayment.payee || '—'}</p></div>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Project</p><p style={{ fontSize: '14px', fontWeight: '700' }}>{viewPayment.project || '—'}</p></div>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Date</p><p style={{ fontSize: '14px', fontWeight: '600' }}>{viewPayment.date || '—'}</p></div>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Status</p><p style={{ fontSize: '14px', fontWeight: '700', color: viewPayment.status === 'Approved' ? '#059669' : viewPayment.status === 'Rejected' ? '#DC2626' : '#D97706' }}>{viewPayment.status || 'Pending'}</p></div>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Category</p><p style={{ fontSize: '14px', fontWeight: '600' }}>{viewPayment.category || '—'}</p></div>
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Payment Mode</p><p style={{ fontSize: '14px', fontWeight: '600' }}>{viewPayment.paymentMode || '—'}</p></div>
+                                {viewPayment.invoice_no && <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Invoice No</p><p style={{ fontSize: '14px', fontWeight: '600' }}>{viewPayment.invoice_no}</p></div>}
+                                <div><p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Requested By</p><p style={{ fontSize: '14px', fontWeight: '600' }}>{viewPayment.requested_by || '—'}</p></div>
+                            </div>
+
+                            <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '16px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '13px', color: '#64748b' }}>Base Amount</span>
+                                    <span style={{ fontSize: '14px', fontWeight: '700' }}>₹{(viewPayment.base_amount || viewPayment.amount || 0).toLocaleString('en-IN')}</span>
+                                </div>
+                                {viewPayment.gst_amount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '13px', color: '#64748b' }}>GST</span>
+                                    <span style={{ fontSize: '14px', fontWeight: '700' }}>₹{(viewPayment.gst_amount || 0).toLocaleString('en-IN')}</span>
+                                </div>}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+                                    <span style={{ fontSize: '14px', fontWeight: '800' }}>Total Amount</span>
+                                    <span style={{ fontSize: '16px', fontWeight: '900', color: '#0891b2' }}>₹{(viewPayment.total_amount || viewPayment.amount || 0).toLocaleString('en-IN')}</span>
+                                </div>
+                            </div>
+
+                            {viewPayment.items && viewPayment.items.length > 0 && (
+                                <div style={{ marginBottom: '16px' }}>
+                                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase' }}>Items</p>
+                                    <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                                        <thead><tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                                            <th style={{ textAlign: 'left', padding: '8px 4px', color: '#64748b', fontWeight: '600' }}>Material</th>
+                                            <th style={{ textAlign: 'right', padding: '8px 4px', color: '#64748b', fontWeight: '600' }}>Qty</th>
+                                            <th style={{ textAlign: 'left', padding: '8px 4px', color: '#64748b', fontWeight: '600' }}>Unit</th>
+                                            <th style={{ textAlign: 'right', padding: '8px 4px', color: '#64748b', fontWeight: '600' }}>Rate</th>
+                                        </tr></thead>
+                                        <tbody>{viewPayment.items.map((it, idx) => (
+                                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '8px 4px', fontWeight: '600' }}>{it.name}</td>
+                                                <td style={{ padding: '8px 4px', textAlign: 'right' }}>{it.received_qty ?? it.qty ?? '—'}</td>
+                                                <td style={{ padding: '8px 4px' }}>{it.unit || '—'}</td>
+                                                <td style={{ padding: '8px 4px', textAlign: 'right' }}>₹{parseFloat(it.price || it.rate || 0).toLocaleString('en-IN')}</td>
+                                            </tr>
+                                        ))}</tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {viewPayment.description && (
+                                <div style={{ marginBottom: '12px' }}>
+                                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', marginBottom: '4px' }}>Description</p>
+                                    <p style={{ fontSize: '13px', color: '#334155' }}>{viewPayment.description}</p>
+                                </div>
+                            )}
+
+                            {viewPayment.approved_by && (
+                                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', padding: '8px 12px', background: '#f0fdf4', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                                    Approved by <strong>{viewPayment.approved_by}</strong> on {viewPayment.approved_at ? new Date(viewPayment.approved_at).toLocaleDateString() : '—'}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '16px 24px', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button className="btn btn-outline" onClick={() => setViewPayment(null)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

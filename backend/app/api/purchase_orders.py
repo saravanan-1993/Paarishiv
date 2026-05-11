@@ -74,8 +74,25 @@ def po_helper(po) -> dict:
 @router.get("/", response_model=List[dict])
 async def get_pos(current_user: dict = Depends(get_current_user)):
     query = {}
-    if current_user.get("role") == "Site Engineer":
-        projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
+    user_role = (current_user.get("role") or "").lower().replace(" ", "")
+    if user_role == "siteengineer":
+        username = current_user.get("username")
+        user_id = current_user.get("id") or current_user.get("_id", "")
+        or_conditions = [
+            {"engineer_id": username},
+            {"engineer_id": str(user_id)},
+        ]
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": username}, {"username": username}]
+            })
+            if employee:
+                or_conditions.append({"engineer_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"engineer_id": employee["employeeCode"]})
+        except Exception:
+            pass
+        projects = await db.projects.find({"$or": or_conditions}).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
         query["project_name"] = {"$in": project_names}
         

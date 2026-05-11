@@ -22,8 +22,10 @@ import Pagination from '../components/Pagination';
 
 const Materials = () => {
     const { user } = useAuth();
-    const isAdmin = ['administrator', 'super admin', 'general manager', 'managing director'].includes((user?.role || '').toLowerCase());
-    const isCoordinator = ['Project Coordinator', 'Super Admin', 'Administrator'].includes(user?.role);
+    const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
+    const isAdmin = ['administrator', 'superadmin', 'generalmanager', 'managingdirector'].includes(userRoleNorm);
+    const isSiteEngineer = userRoleNorm === 'siteengineer';
+    const isCoordinator = ['projectcoordinator', 'superadmin', 'administrator'].includes(userRoleNorm);
     const canEditInventory = hasPermission(user, 'Inventory Management', 'edit');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -106,7 +108,11 @@ const Materials = () => {
                 const res = await projectAPI.getAll();
                 const list = res.data || [];
                 setProjects(list);
-                setSelectedProject('all');
+                if (isSiteEngineer && list.length > 0) {
+                    setSelectedProject(list[0]._id || list[0].id);
+                } else {
+                    setSelectedProject('all');
+                }
             } catch (err) {
                 console.error('Materials fetch error:', err);
             } finally {
@@ -366,7 +372,7 @@ const Materials = () => {
                                 <div style={{ flex: '1 1 200px' }}>
                                     <CustomSelect
                                         options={[
-                                            { value: 'all', label: 'Total Inventory (All Sites)' },
+                                            ...(isSiteEngineer ? [] : [{ value: 'all', label: 'Total Inventory (All Sites)' }]),
                                             ...projects.map(p => ({ value: p._id || p.id, label: p.name }))
                                         ]}
                                         value={selectedProject}
