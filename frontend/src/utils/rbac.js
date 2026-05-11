@@ -34,13 +34,13 @@ export const SYSTEM_FEATURES = [
 export const SUB_TABS = {
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Labour Attendance', 'Workflow Tracking'],
     'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
-    'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger', 'Quotations', 'LabourWages'],
+    'Accounts': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger', 'Quotations', 'LabourWages', 'SubcontractorBilling'],
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
     'Fleet Management': ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay', 'Vendor Payments', 'Trip Requests'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'DPR', 'SC Bills', 'Labour Pay', 'Stock Returns', 'Transfers', 'Vendor Payments', 'Trip Requests'],
     'Notifications': [],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };

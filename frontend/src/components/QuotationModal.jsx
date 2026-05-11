@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, FileText, IndianRupee, Loader2 } from 'lucide-react';
 import { quotationAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const emptyItem = () => ({
     id: Date.now() + Math.random(),
@@ -22,6 +23,7 @@ const DEFAULT_PAYMENT = `1. 30% advance with work order confirmation.
 4. 5% retention released after defect liability period.`;
 
 const QuotationModal = ({ isOpen, onClose, onSuccess, initial }) => {
+    const toast = useToast();
     const isEdit = !!initial?.id;
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
@@ -106,8 +108,8 @@ const QuotationModal = ({ isOpen, onClose, onSuccess, initial }) => {
     };
 
     const handleSave = async () => {
-        if (!form.client_name.trim()) { alert('Client name is required'); return; }
-        if (!form.project_name.trim()) { alert('Project name is required'); return; }
+        if (!form.client_name.trim()) { toast.warning('Client name is required'); return; }
+        if (!form.project_name.trim()) { toast.warning('Project name is required'); return; }
         const validItems = items
             .filter(it => it.item_name.trim())
             .map(it => ({
@@ -118,7 +120,7 @@ const QuotationModal = ({ isOpen, onClose, onSuccess, initial }) => {
                 rate: parseFloat(it.rate) || 0,
                 amount: (parseFloat(it.qty) || 0) * (parseFloat(it.rate) || 0),
             }));
-        if (validItems.length === 0) { alert('Add at least one BOQ item'); return; }
+        if (validItems.length === 0) { toast.warning('Add at least one BOQ item'); return; }
 
         const payload = {
             ...form,
@@ -133,7 +135,7 @@ const QuotationModal = ({ isOpen, onClose, onSuccess, initial }) => {
             onSuccess?.();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to save quotation');
+            toast.error(err.response?.data?.detail || 'Failed to save quotation');
         }
         setSaving(false);
     };

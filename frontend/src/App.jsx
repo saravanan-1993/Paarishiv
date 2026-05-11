@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -20,6 +20,8 @@ import Chat from './pages/Chat';
 import ProjectDetails from './pages/ProjectDetails';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { ToastProvider } from './context/ToastContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 import Login from './pages/Login';
 import Approvals from './pages/Approvals';
 import Notifications from './pages/Notifications';
@@ -69,6 +71,7 @@ const ProtectedRoute = ({ module, children }) => {
 
 const MainLayout = () => {
     const { user, loading, updateUser } = useAuth();
+    const location = useLocation();
     const [activeTab, setActiveTab] = useState('/');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -87,7 +90,7 @@ const MainLayout = () => {
     // Close sidebar when route changes on mobile
     useEffect(() => {
         setIsSidebarOpen(false);
-    }, [window.location.pathname]);
+    }, [location.pathname]);
 
     if (loading) {
         return (
@@ -95,7 +98,6 @@ const MainLayout = () => {
                 <div style={{ textAlign: 'center' }}>
                     <div style={{ width: '40px', height: '40px', border: '3px solid #E2E8F0', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
                     <p style={{ color: 'var(--text-muted)', fontWeight: '600' }}>Loading Civil ERP...</p>
-                    <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
                 </div>
             </div>
         );
@@ -146,14 +148,18 @@ const MainLayout = () => {
 function App() {
     return (
         <Router>
-            <AuthProvider>
-                <NotificationProvider>
-                    <Routes>
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/*" element={<MainLayout />} />
-                    </Routes>
-                </NotificationProvider>
-            </AuthProvider>
+            <ToastProvider>
+                <ConfirmProvider>
+                    <AuthProvider>
+                        <NotificationProvider>
+                            <Routes>
+                                <Route path="/login" element={<Login />} />
+                                <Route path="/*" element={<MainLayout />} />
+                            </Routes>
+                        </NotificationProvider>
+                    </AuthProvider>
+                </ConfirmProvider>
+            </ToastProvider>
         </Router>
     );
 }

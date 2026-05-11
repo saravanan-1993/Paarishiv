@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Package, Loader2, Ruler, Plus, ChevronDown, Check } from 'lucide-react';
 import { materialAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import PremiumSelect from './PremiumSelect';
 
 const DEFAULT_UNITS = ['Nos', 'Kgs', 'Tons', 'Cft', 'Bags', 'Meters', 'Ltr', 'Sqft', 'Rmt', 'Cu.m', 'Sets', 'Rolls'];
@@ -131,6 +132,7 @@ const UnitSelect = ({ value, onChange }) => {
 };
 
 const CreateMaterialModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
@@ -151,7 +153,7 @@ const CreateMaterialModal = ({ isOpen, onClose, onSuccess }) => {
             onClose();
         } catch (err) {
             console.error('Failed to create material:', err);
-            alert('Failed to save material.');
+            toast.error('Failed to save material.');
         } finally {
             setIsSaving(false);
         }

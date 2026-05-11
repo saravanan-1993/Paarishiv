@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Loader2, Package, Search } from 'lucide-react';
 import { projectAPI, inventoryAPI, materialAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [loading, setLoading] = useState(false);
     const [projects, setProjects] = useState([]);
     const [allProjects, setAllProjects] = useState([]);
@@ -56,11 +58,11 @@ const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!fromProject || !toProject || selectedItems.length === 0) {
-            alert('Please fill all details');
+            toast.warning('Please fill all details');
             return;
         }
         if (fromProject === toProject) {
-            alert('Source and Destination projects cannot be the same');
+            toast.warning('Source and Destination projects cannot be the same');
             return;
         }
 
@@ -74,12 +76,12 @@ const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
                     quantity: parseFloat(it.qty)
                 }))
             });
-            alert('Transfer request submitted for Coordinator approval.');
+            toast.success('Transfer request submitted for Coordinator approval.');
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
             console.error('Transfer failed:', err);
-            alert('Failed to submit transfer request.');
+            toast.error('Failed to submit transfer request.');
         } finally {
             setLoading(false);
         }

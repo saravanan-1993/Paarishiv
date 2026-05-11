@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { History, Search, Filter, Clock, Download, AlertTriangle, Shield, CheckCircle, RefreshCw, Trash2, Loader2, Info } from 'lucide-react';
+import { History, Search, Clock, AlertTriangle, Shield, CheckCircle, RefreshCw, Loader2, Info, X, Download } from 'lucide-react';
 import { logsAPI } from '../utils/api';
 import Pagination from '../components/Pagination';
+import { SkeletonRow } from '../components/Skeleton';
 
 const TYPE_CONFIG = {
     info:    { icon: History,       color: '#3B82F6', bg: '#EFF6FF', label: 'Info' },
@@ -28,7 +29,8 @@ const Logs = () => {
     const [loading, setLoading]     = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('All');
-    const [showFilters, setShowFilters] = useState(false);
+    const [dateFrom, setDateFrom]   = useState('');
+    const [dateTo, setDateTo]       = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 20;
 
@@ -46,7 +48,7 @@ const Logs = () => {
 
     useEffect(() => { fetchLogs(); }, []);
 
-    useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter]);
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, typeFilter, dateFrom, dateTo]);
 
     const filtered = logs.filter(log => {
         const matchType   = typeFilter === 'All' || log.type === typeFilter;
@@ -55,21 +57,22 @@ const Logs = () => {
             log.action?.toLowerCase().includes(q) ||
             log.username?.toLowerCase().includes(q) ||
             log.details?.toLowerCase().includes(q);
-        return matchType && matchSearch;
+        // Date range filter
+        let matchDate = true;
+        if ((dateFrom || dateTo) && log.timestamp) {
+            const ts = new Date(log.timestamp);
+            if (dateFrom) {
+                const from = new Date(dateFrom);
+                if (ts < from) matchDate = false;
+            }
+            if (dateTo && matchDate) {
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                if (ts > to) matchDate = false;
+            }
+        }
+        return matchType && matchSearch && matchDate;
     });
-
-    const exportCSV = () => {
-        const header = 'Timestamp,User,Action,Details,Type\n';
-        const esc = (s) => `"${String(s || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
-        const rows = filtered.map(l =>
-            `${esc(l.timestamp)},${esc(l.username)},${esc(l.action)},${esc(l.details)},${esc(l.type)}`
-        ).join('\n');
-        const blob = new Blob([header + rows], { type: 'text/csv' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href = url; a.download = `system_logs_${new Date().toISOString().slice(0,10)}.csv`; a.click();
-        URL.revokeObjectURL(url);
-    };
 
     const logCounts = {
         info:    logs.filter(l => l.type === 'info').length,
@@ -89,6 +92,27 @@ const Logs = () => {
                 <div style={{ display: 'flex', gap: '10px' }}>
                     <button
                         className="btn btn-outline"
+                        onClick={() => {
+                            const header = 'Timestamp,User,Action,Details,Type\n';
+                            const esc = (s) => `"${String(s || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+                            const rows = filtered.map(l =>
+                                `${esc(l.timestamp)},${esc(l.username)},${esc(l.action)},${esc(l.details)},${esc(l.type)}`
+                            ).join('\n');
+                            const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `system_logs_${new Date().toISOString().slice(0, 10)}.csv`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        }}
+                        disabled={filtered.length === 0}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                        <Download size={16} /> Export CSV
+                    </button>
+                    <button
+                        className="btn btn-outline"
                         onClick={fetchLogs}
                         style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
@@ -98,7 +122,7 @@ const Logs = () => {
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '28px' }}>
                 {Object.entries(TYPE_CONFIG).map(([key, cfg]) => {
                     const Icon = cfg.icon;
                     return (
@@ -144,8 +168,13 @@ const Logs = () => {
                             placeholder="Search by user, action or keyword..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '10px', border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none' }}
+                            style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '10px', border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none' }}
                         />
+                        {searchTerm && (
+                            <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                <X size={15} />
+                            </button>
+                        )}
                     </div>
                     <select
                         value={typeFilter}
@@ -162,15 +191,38 @@ const Logs = () => {
                         {filtered.length} of {logs.length} events
                     </span>
                 </div>
+                {/* Date range filter row */}
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>Date range:</span>
+                    <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={e => setDateFrom(e.target.value)}
+                        aria-label="From date"
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                    />
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>to</span>
+                    <input
+                        type="date"
+                        value={dateTo}
+                        onChange={e => setDateTo(e.target.value)}
+                        aria-label="To date"
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                    />
+                    {(dateFrom || dateTo) && (
+                        <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} className="btn btn-outline" style={{ padding: '6px 12px', fontSize: '12px' }}>
+                            Clear dates
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Log List */}
             <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
                 {loading ? (
-                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <Loader2 size={32} style={{ margin: '0 auto 12px', animation: 'spin 1s linear infinite' }} />
-                        <p>Loading system logs...</p>
-                    </div>
+                    <table className="data-table" aria-busy="true"><tbody>
+                        {Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={5} />)}
+                    </tbody></table>
                 ) : filtered.length === 0 ? (
                     <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         <Info size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
@@ -236,7 +288,6 @@ const Logs = () => {
 
             <style>{`
                 .log-row:hover { background-color: var(--bg-main) !important; }
-                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
             `}</style>
         </div>
     );

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, Loader2, Building2, Calendar, LayoutTemplate, AlertCircle, CheckSquare } from 'lucide-react';
 import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState('work');
 
     // Checklist data from 6 PDFs — all optional
@@ -245,19 +247,19 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         // Check for empty rows before adding new ones to prevent duplicates
         if (type === 'material') {
             const hasEmpty = materialRows.some(r => !r.name || r.name.trim() === '');
-            if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
+            if (hasEmpty) { toast.warning('Please fill in the existing empty material row before adding a new one.'); return; }
         }
         if (type === 'equipment') {
             const hasEmpty = equipmentRows.some(r => !r.name || r.name.trim() === '');
-            if (hasEmpty) { alert('Please fill in the existing empty machinery row before adding a new one.'); return; }
+            if (hasEmpty) { toast.warning('Please fill in the existing empty machinery row before adding a new one.'); return; }
         }
         if (type === 'nd_material') {
             const hasEmpty = nextDayMaterials.some(r => !r.material || r.material.trim() === '');
-            if (hasEmpty) { alert('Please fill in the existing empty material row before adding a new one.'); return; }
+            if (hasEmpty) { toast.warning('Please fill in the existing empty material row before adding a new one.'); return; }
         }
         if (type === 'nd_equipment') {
             const hasEmpty = nextDayEquipment.some(r => !r.equipment || r.equipment.trim() === '');
-            if (hasEmpty) { alert('Please fill in the existing empty equipment row before adding a new one.'); return; }
+            if (hasEmpty) { toast.warning('Please fill in the existing empty equipment row before adding a new one.'); return; }
         }
         if (type === 'work') setWorkRows([...workRows, { task: '', today: '', overall: '', status: 'Ongoing', remark: '' }]);
         if (type === 'labour') setLabourRows([...labourRows, { party: '', category: '', count: '', shift: '1', ot: '0' }]);
@@ -284,23 +286,23 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         // Bug 4.3/4.4 - Prevent duplicate material names
         if (type === 'material' && field === 'name' && value) {
             const isDuplicate = materialRows.some((r, i) => i !== index && r.name && r.name.toLowerCase() === value.toLowerCase());
-            if (isDuplicate) { alert(`Material "${value}" is already added. Please select a different material.`); return; }
+            if (isDuplicate) { toast.warning(`Material "${value}" is already added. Please select a different material.`); return; }
         }
         if (type === 'nd_material' && field === 'material' && value) {
             const isDuplicate = nextDayMaterials.some((r, i) => i !== index && r.material && r.material.toLowerCase() === value.toLowerCase());
-            if (isDuplicate) { alert(`Material "${value}" is already added. Please select a different material.`); return; }
+            if (isDuplicate) { toast.warning(`Material "${value}" is already added. Please select a different material.`); return; }
         }
         if (type === 'equipment' && field === 'name' && value) {
             const isDuplicate = equipmentRows.some((r, i) => i !== index && r.name && r.name.toLowerCase() === value.toLowerCase());
-            if (isDuplicate) { alert(`Machinery "${value}" is already added. Please select a different one.`); return; }
+            if (isDuplicate) { toast.warning(`Machinery "${value}" is already added. Please select a different one.`); return; }
         }
         if (type === 'equipment' && field === 'no' && value) {
             const isDuplicate = equipmentRows.some((r, i) => i !== index && r.no && r.no === value);
-            if (isDuplicate) { alert(`Machinery number "${value}" is already added. Please select a different one.`); return; }
+            if (isDuplicate) { toast.warning(`Machinery number "${value}" is already added. Please select a different one.`); return; }
         }
         if (type === 'nd_equipment' && field === 'equipment' && value) {
             const isDuplicate = nextDayEquipment.some((r, i) => i !== index && r.equipment && r.equipment.toLowerCase() === value.toLowerCase());
-            if (isDuplicate) { alert(`Equipment "${value}" is already added. Please select a different one.`); return; }
+            if (isDuplicate) { toast.warning(`Equipment "${value}" is already added. Please select a different one.`); return; }
         }
 
         const setRows = {
@@ -349,7 +351,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const handleSubmit = async () => {
         const projectId = project?._id || project?.id;
         if (!projectId) {
-            alert('Project not found. Please close and try again.');
+            toast.error('Project not found. Please close and try again.');
             return;
         }
         // Validate: at least some data entered
@@ -359,7 +361,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
         const hasEquipment = equipmentRows.some(r => r.name && r.name.trim());
         const hasChecklist = Object.keys(checklist).length > 0;
         if (!hasWork && !hasLabour && !hasMaterial && !hasEquipment && !hasChecklist) {
-            alert('Please fill in at least one section (Work, Labour, Materials, Machinery, or Checklist) before submitting.');
+            toast.warning('Please fill in at least one section (Work, Labour, Materials, Machinery, or Checklist) before submitting.');
             return;
         }
         setLoading(true);
@@ -423,7 +425,7 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
             onClose();
         } catch (err) {
             console.error('DPR submit failed:', err);
-            alert(err?.response?.data?.detail || 'Failed to submit DPR. Please try again.');
+            toast.error(err?.response?.data?.detail || 'Failed to submit DPR. Please try again.');
         } finally {
             setLoading(false);
         }

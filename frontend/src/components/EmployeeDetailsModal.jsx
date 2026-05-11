@@ -4,11 +4,13 @@ import {
     Landmark, Shield, FileText, Download, ExternalLink,
     Loader2, User, Building, Award, Clock, Cake
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { settingsAPI, employeeAPI } from '../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
+    const navigate = useNavigate();
     const [attSummary, setAttSummary] = useState({ present_days: 0, absent_days: 0, total_hours: 0 });
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -439,8 +441,9 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                                 <button
                                     onClick={() => {
                                         onClose();
-                                        // Navigate to HRMS Attendance tab to view performance log
-                                        window.location.href = '/hrms?tab=Attendance';
+                                        // Navigate to HRMS Attendance tab; include employee id so HRMS can pre-select
+                                        const empId = employee?._id || employee?.employeeCode || employee?.employee_code || '';
+                                        navigate(`/hr?tab=Attendance${empId ? `&employee=${encodeURIComponent(empId)}` : ''}`);
                                     }}
                                     className="btn btn-outline" style={{
                                     width: '100%', padding: '16px', borderRadius: '16px',

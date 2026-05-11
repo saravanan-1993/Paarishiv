@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
     Settings, HardHat, Construction, Calendar, MapPin, Gauge, UserPlus,
-    Truck, Plus, Search, Filter, Fuel, Clock, ArrowRightLeft, ClipboardList
+    Truck, Plus, Search, Filter, Fuel, Clock, ArrowRightLeft, ClipboardList, X
 } from 'lucide-react';
 
 import { fleetAPI, projectAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { hasPermission } from '../utils/rbac';
 
 import AssetUsageModal from '../components/AssetUsageModal';
@@ -58,7 +59,7 @@ const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) =>
             <div className="card animate-fade-in" style={{ width: '95%', maxWidth: '540px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0 }}>
                 <div className="modal-header">
                     <h3 style={{ fontSize: '18px', fontWeight: '800' }}>EDIT MACHINE DETAILS</h3>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><Plus size={24} style={{ transform: 'rotate(45deg)' }} /></button>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Close"><X size={24} /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="modal-body" style={{ padding: '24px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
@@ -97,6 +98,7 @@ const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) =>
 
 const Assets = () => {
     const { user } = useAuth();
+    const toast = useToast();
     const canEditAssets = hasPermission(user, 'Inventory Management', 'edit');
     const [activeTab, setActiveTab] = useState('Fleet');
     const [searchTerm, setSearchTerm] = useState('');
@@ -153,7 +155,7 @@ const Assets = () => {
             await fetchFleet();
         } catch (err) {
             console.error('Error adding equipment:', err);
-            alert('Error adding equipment: ' + (err.response?.data?.detail || err.message));
+            toast.error('Error adding equipment: ' + (err.response?.data?.detail || err.message));
             throw err;
         }
     };
@@ -178,7 +180,7 @@ const Assets = () => {
             setIsDetailsModalOpen(false);
         } catch (err) {
             console.error('Update failed:', err);
-            alert('Error updating equipment: ' + (err.response?.data?.detail || err.message));
+            toast.error('Error updating equipment: ' + (err.response?.data?.detail || err.message));
         }
     };
 
@@ -204,21 +206,18 @@ const Assets = () => {
     };
 
     const handleEditClickFromDetails = (asset) => {
-        console.log('Edit clicked from details:', asset.id);
         setIsDetailsModalOpen(false);
         setSelectedAsset(asset);
         setIsEditModalOpen(true);
     };
 
     const handleTransferHistory = (asset) => {
-        console.log('Viewing transfer history for:', asset.id);
         setSearchTerm(asset.id);
         setActiveTab('Transfers');
         setIsDetailsModalOpen(false);
     };
 
     const handleScheduleService = (asset) => {
-        console.log('Scheduling service for:', asset.id);
         // Pre-set status to Maintenance and update
         handleAssetUpdated({ ...asset, status: 'Maintenance' });
     };
@@ -303,11 +302,13 @@ const Assets = () => {
                                     style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
                                 />
                                 {searchTerm && (
-                                    <button 
+                                    <button
+                                        type="button"
                                         onClick={() => setSearchTerm('')}
-                                        style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px' }}
+                                        aria-label="Clear search"
+                                        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
                                     >
-                                        ×
+                                        <X size={15} />
                                     </button>
                                 )}
                             </div>
@@ -463,12 +464,17 @@ const Assets = () => {
                             <div style={{ position: 'relative', width: '240px' }}>
                                 <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                 <input
-                                    type="text" 
+                                    type="text"
                                     placeholder="Search transfers..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    style={{ width: '100%', padding: '8px 10px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                                    style={{ width: '100%', padding: '8px 34px 8px 34px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
                                 />
+                                {searchTerm && (
+                                    <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                        <X size={14} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <table className="data-table">

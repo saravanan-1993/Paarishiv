@@ -18,10 +18,16 @@ import MaterialTransferModal from '../components/MaterialTransferModal';
 import AccountantTransferModal from '../components/AccountantTransferModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
+import PromptModal from '../components/PromptModal';
 import Pagination from '../components/Pagination';
 
 const Materials = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
+    const [promptModal, setPromptModal] = useState(null);
     const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
     const isAdmin = ['administrator', 'superadmin', 'generalmanager', 'managingdirector'].includes(userRoleNorm);
     const isSiteEngineer = userRoleNorm === 'siteengineer';
@@ -31,18 +37,27 @@ const Materials = () => {
     const urlTab = searchParams.get('tab');
     const [mainTab, setMainTab] = useState('Materials');
 
-    const availableTabs = useMemo(() => [
-        { id: 'Materials', label: 'Construction Materials', icon: Package },
-        { id: 'Warehouse', label: 'Warehouse & Stock Control', icon: Warehouse },
-    ].filter(tab => hasSubTabAccess(user, 'Inventory Management', tab.id)), [user]);
+    const availableTabs = useMemo(() => {
+        const base = [
+            { id: 'Materials', label: 'Construction Materials', icon: Package },
+            { id: 'Warehouse', label: 'Warehouse & Stock Control', icon: Warehouse },
+        ].filter(tab => hasSubTabAccess(user, 'Inventory Management', tab.id));
+        if (isCoordinator) {
+            base.push({ id: 'Coordination', label: 'Coordination', icon: ClipboardList });
+        }
+        return base;
+    }, [user, isCoordinator]);
 
     useEffect(() => {
         if (urlTab && availableTabs.some(t => t.id === urlTab)) {
             setMainTab(urlTab);
         } else if (isCoordinator && !urlTab) {
             setMainTab('Coordination');
+        } else if (!availableTabs.some(t => t.id === mainTab) && availableTabs.length > 0) {
+            // Current mainTab isn't available for this role — fall back to first available
+            setMainTab(availableTabs[0].id);
         }
-    }, [urlTab, availableTabs, isCoordinator]);
+    }, [urlTab, availableTabs, isCoordinator, mainTab]);
 
     const handleTabChange = (tabId) => {
         setMainTab(tabId);
@@ -272,13 +287,13 @@ const Materials = () => {
         setIsConsolidating(true);
         try {
             await inventoryAPI.consolidateRequests({ request_ids: selectedRequestIds });
-            alert('Material requests consolidated successfully!');
+            toast.success('Material requests consolidated successfully!');
             setSelectedRequestIds([]);
             fetchStockRequests();
             setCoordinationSubTab('Consolidated');
         } catch (err) {
             console.error('Consolidation failed:', err);
-            alert('Failed to consolidate requests');
+            toast.error('Failed to consolidate requests');
         } finally { setIsConsolidating(false); }
     };
 
@@ -304,7 +319,7 @@ const Materials = () => {
             setInventory(prev => prev.map(item => item.id === inventoryId ? { ...item, min_stock: Number(newMinStock) } : item));
         } catch (error) {
             console.error('Failed to update min stock:', error);
-            alert('Failed to save minimum stock level');
+            toast.error('Failed to save minimum stock level');
         }
     };
 
@@ -366,7 +381,7 @@ const Materials = () => {
                                         height: '46px'
                                     }}
                                 >
-                                    <ArrowRightLeft size={18} /> TRANSFER MATERIALS
+                                    <ArrowRightLeft size={18} /> Transfer Materials
                                 </button>
                                 )}
                                 <div style={{ flex: '1 1 200px' }}>
@@ -419,21 +434,17 @@ const Materials = () => {
                         {/* ── Search ────────────────────────────────────────────────────── */}
                         <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
                             <div style={{ display: 'flex', gap: '16px' }}>
-                                <select
-                                    value={filterProject}
-                                    onChange={e => setFilterProject(e.target.value)}
-                                    style={{
-                                        padding: '10px 12px', borderRadius: 'var(--radius-sm)',
-                                        border: '1px solid var(--border)', fontSize: '14px',
-                                        fontWeight: 600, minWidth: '200px', backgroundColor: 'var(--bg-card)',
-                                        color: 'var(--text-main)', cursor: 'pointer'
-                                    }}
-                                >
-                                    {isAdmin && <option value="">All Projects</option>}
-                                    {projects.map(p => (
-                                        <option key={p._id || p.id} value={p.name}>{p.name}</option>
-                                    ))}
-                                </select>
+                                <div style={{ minWidth: '200px' }}>
+                                    <CustomSelect
+                                        value={filterProject}
+                                        onChange={(val) => setFilterProject(val)}
+                                        options={[
+                                            ...(isAdmin ? [{ value: '', label: 'All Projects' }] : []),
+                                            ...projects.map(p => ({ value: p.name, label: p.name }))
+                                        ]}
+                                        placeholder="Filter by project"
+                                    />
+                                </div>
                                 <div style={{ flex: 1, position: 'relative' }}>
                                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                     <input
@@ -441,8 +452,13 @@ const Materials = () => {
                                         placeholder="Search by material name..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '14px' }}
+                                        style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '14px' }}
                                     />
+                                    {searchTerm && (
+                                        <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                            <XCircle size={15} />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -455,9 +471,18 @@ const Materials = () => {
                             </div>
                         ) : filteredInventory.length === 0 ? (
                             <div className="card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                                <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} aria-hidden="true" />
                                 <h4 style={{ fontWeight: '700' }}>No materials at this site</h4>
-                                <p>Perform a GRN or Request Stock from warehouse to see items here.</p>
+                                <p style={{ marginBottom: '20px' }}>Perform a GRN or Request Stock from warehouse to see items here.</p>
+                                {canEditInventory && (
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => setIsStockRequestOpen(true)}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                                    >
+                                        <Plus size={16} aria-hidden="true" /> Request Stock
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div className="card" style={{ padding: 0 }}>
@@ -581,7 +606,6 @@ const Materials = () => {
                                             <th>Material Name</th>
                                             <th>Warehouse Stock</th>
                                             <th>Unit</th>
-                                            <th>Auto Reorder</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -595,10 +619,9 @@ const Materials = () => {
                                                     {item.stock === 0 && <span style={{ marginLeft: '8px', fontSize: '11px', color: '#94A3B8', fontWeight: '600' }}>No stock yet</span>}
                                                 </td>
                                                 <td>{item.unit}</td>
-                                                <td><span className="badge badge-outline">Enabled</span></td>
                                             </tr>
                                         ))}
-                                        {warehouseStock.length === 0 && <tr><td colSpan="4" style={{ textAlign: 'center', padding: '40px' }}>No stock found in warehouse.</td></tr>}
+                                        {warehouseStock.length === 0 && <tr><td colSpan="3" style={{ textAlign: 'center', padding: '40px' }}>No stock found in warehouse.</td></tr>}
                                     </tbody>
                                 </table>
                                 <Pagination currentPage={whPage} totalItems={warehouseStock.length} pageSize={MAT_PAGE_SIZE} onPageChange={setWhPage} />
@@ -678,9 +701,9 @@ const Materials = () => {
                                                     {t.status === 'Pending' && isAdmin && (
                                                         <div style={{display:'flex',gap:4}}>
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
-                                                                onClick={async () => { if(window.confirm('Approve this transfer?')){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>Approve</button>
+                                                                onClick={async () => { if(await confirm({ title:'Approve Transfer', message:'Approve this transfer?', confirmText:'Approve' })){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>Approve</button>
                                                             <button className="btn btn-outline btn-sm" style={{padding:'4px 10px',fontSize:11,color:'#EF4444',borderColor:'#EF4444'}}
-                                                                onClick={async () => { const r=window.prompt('Reason?'); if(r!==null){ await inventoryAPI.rejectTransfer(t.id,{reason:r}); fetchMaterialTransfers(); } }}>Reject</button>
+                                                                onClick={() => setPromptModal({ title: 'Reject Transfer', message: 'Optionally provide a rejection reason.', confirmText: 'Reject', danger: true, onSubmit: async (r) => { await inventoryAPI.rejectTransfer(t.id, { reason: r || '' }); fetchMaterialTransfers(); } })}>Reject</button>
                                                         </div>
                                                     )}
                                                     {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
@@ -883,11 +906,11 @@ const Materials = () => {
                                                         {t.status === 'Pending' && isAdmin && (
                                                             <div style={{display:'flex',gap:4}}>
                                                                 <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
-                                                                    onClick={async () => { if(window.confirm('Approve this transfer?')){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>
+                                                                    onClick={async () => { if(await confirm({ title:'Approve Transfer', message:'Approve this transfer?', confirmText:'Approve' })){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>
                                                                     Approve
                                                                 </button>
                                                                 <button className="btn btn-outline btn-sm" style={{padding:'4px 10px',fontSize:11,color:'#EF4444',borderColor:'#EF4444'}}
-                                                                    onClick={async () => { const r=window.prompt('Reason?'); if(r!==null){ await inventoryAPI.rejectTransfer(t.id,{reason:r}); fetchMaterialTransfers(); } }}>
+                                                                    onClick={() => setPromptModal({ title: 'Reject Transfer', message: 'Optionally provide a rejection reason.', confirmText: 'Reject', danger: true, onSubmit: async (r) => { await inventoryAPI.rejectTransfer(t.id, { reason: r || '' }); fetchMaterialTransfers(); } })}>
                                                                     Reject
                                                                 </button>
                                                             </div>
@@ -1052,12 +1075,20 @@ const Materials = () => {
                 onEdit={(asset) => {
                     const assetId = asset?.id || asset?._id;
                     if (!assetId) return;
-                    const updateData = window.prompt('Edit status (Working / Idle / Maintenance):', asset?.status || 'Working');
-                    if (updateData && updateData.trim()) {
-                        fleetAPI.updateEquipment(assetId, { status: updateData.trim() })
-                            .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); })
-                            .catch(err => alert('Update failed: ' + err.message));
-                    }
+                    setPromptModal({
+                        title: 'Edit Status',
+                        message: 'Enter new status (Working / Idle / Maintenance).',
+                        defaultValue: asset?.status || 'Working',
+                        multiline: false,
+                        confirmText: 'Update',
+                        onSubmit: (val) => {
+                            const v = (val || '').trim();
+                            if (!v) return;
+                            fleetAPI.updateEquipment(assetId, { status: v })
+                                .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); })
+                                .catch(err => toast.error('Update failed: ' + err.message));
+                        }
+                    });
                 }}
                 onDownloadLog={(asset) => {
                     const name = asset?.equipmentId || asset?.name || 'Asset';
@@ -1077,8 +1108,8 @@ const Materials = () => {
                     const assetId = asset?.id || asset?._id;
                     if (!assetId) return;
                     fleetAPI.updateEquipment(assetId, { status: 'Maintenance' })
-                        .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); alert('Status set to Maintenance'); })
-                        .catch(err => alert('Failed: ' + err.message));
+                        .then(() => { fetchFleetData(); setIsDetailsModalOpen(false); toast.success('Status set to Maintenance'); })
+                        .catch(err => toast.error('Failed: ' + err.message));
                 }}
             />
 
@@ -1096,6 +1127,18 @@ const Materials = () => {
                     onSuccess={() => { setShowTransferExecuteModal(false); setSelectedTransfer(null); fetchMaterialTransfers(); }}
                 />
             )}
+            <PromptModal
+                isOpen={!!promptModal}
+                onClose={() => setPromptModal(null)}
+                onSubmit={(v) => promptModal?.onSubmit?.(v)}
+                title={promptModal?.title}
+                message={promptModal?.message}
+                confirmText={promptModal?.confirmText}
+                placeholder={promptModal?.placeholder}
+                defaultValue={promptModal?.defaultValue || ''}
+                danger={!!promptModal?.danger}
+                multiline={promptModal?.multiline !== false}
+            />
         </div>
     );
 };

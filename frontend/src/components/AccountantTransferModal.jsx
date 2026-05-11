@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRightLeft, Loader2, IndianRupee, User, Building2 } from 'lucide-react';
 import { inventoryAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const AccountantTransferModal = ({ isOpen, onClose, transfer, onSuccess }) => {
+    const toast = useToast();
     const [items, setItems] = useState([]);
     const [executing, setExecuting] = useState(false);
     const [loadingRates, setLoadingRates] = useState(false);
@@ -70,10 +72,10 @@ const AccountantTransferModal = ({ isOpen, onClose, transfer, onSuccess }) => {
                     rate: parseFloat(i.rate) || 0,
                 }))
             });
-            alert('Transfer executed successfully');
+            toast.success('Transfer executed successfully');
             onSuccess?.();
         } catch (err) {
-            alert(err.response?.data?.detail || 'Failed to execute transfer');
+            toast.error(err.response?.data?.detail || 'Failed to execute transfer');
         }
         setExecuting(false);
     };

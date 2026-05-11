@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { X, User, Phone, MapPin, Building2, Tag, FileText, Globe, Loader2, Mail } from 'lucide-react';
 import { vendorAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
+    const toast = useToast();
     const isEditMode = !!vendorToEdit;
     const [isSaving, setIsSaving] = useState(false);
     const [showCustomCategory, setShowCustomCategory] = useState(false);
@@ -38,7 +40,7 @@ const VendorModal = ({ isOpen, onClose, onSuccess, vendor: vendorToEdit }) => {
         } catch (err) {
             console.error('Failed to save vendor:', err);
             const errorMsg = err.response?.data?.detail || 'Failed to save vendor. Please check the connection.';
-            alert(errorMsg);
+            toast.error(errorMsg);
         } finally {
             setIsSaving(false);
         }

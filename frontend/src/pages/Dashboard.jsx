@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Briefcase, CheckCircle, Wallet, TrendingUp,
     Package, Users, AlertTriangle, Store, Loader2,
@@ -11,6 +11,8 @@ import {
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { fmt } from '../utils/format';
 import { projectAPI, hrmsAPI, attendanceAPI, approvalsAPI, workflowAPI, financeAPI, billingAPI, inventoryAPI, labourAttendanceAPI, logsAPI } from '../utils/api';
 import { hasPermission, hasDashboardCard } from '../utils/rbac';
 import WorkspaceView from '../components/dashboards/WorkspaceView';
@@ -34,13 +36,6 @@ const STATUS_BADGE = {
     Completed: { bg: '#D1FAE5', text: '#047857' },
     'On Hold': { bg: '#FEF3C7', text: '#B45309' },
     Delayed: { bg: '#FEE2E2', text: '#B91C1C' },
-};
-
-const fmt = (n) => {
-    if (!n && n !== 0) return '₹0';
-    if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
-    if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
-    return `₹${Number(n).toLocaleString('en-IN')}`;
 };
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -71,23 +66,28 @@ const CustomTooltip = ({ active, payload, label }) => {
 const Dashboard = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const toast = useToast();
 
     // Role Resolution
     const userRoleStr = (user?.role || '').toLowerCase();
 
     // Super Admin / MD (Also acts as fallback for "Administrator" default role)
-    const isSuperAdmin = userRoleStr.includes('admin') || userRoleStr.includes('md') || userRoleStr.includes('director') || userRoleStr === 'administrator';
+    // Normalize role key once — exact match avoids fragile substring matches like
+    // .includes('pm') matching "Pump Operator" or .includes('hr') matching "Threshold Reviewer".
+    const roleKey = userRoleStr.replace(/\s+/g, '');
 
-    // New Roles
-    const isGM = userRoleStr.includes('general manager') || userRoleStr === 'gm';
-    const isHR = userRoleStr.includes('hr') || userRoleStr.includes('human');
-    const isAccountant = userRoleStr.includes('account') || userRoleStr.includes('finance');
-    const isPurchaseOfficer = userRoleStr.includes('purchase') || userRoleStr.includes('procurement');
-    const isInventoryManager = userRoleStr.includes('inventory') || userRoleStr.includes('store');
-    const isProjectCoordinator = userRoleStr.includes('coordinator') || userRoleStr.includes('pm') || userRoleStr.includes('project manager');
+    const isSuperAdmin = ['administrator', 'superadmin', 'admin', 'managingdirector', 'md', 'director'].includes(roleKey);
+
+    const isGM = roleKey === 'gm' || roleKey === 'generalmanager';
+    const isHR = roleKey === 'hr' || roleKey === 'hrmanager' || roleKey === 'humanresources';
+    const isAccountant = roleKey === 'accountant' || roleKey === 'financemanager' || roleKey === 'finance';
+    const isPurchaseOfficer = roleKey === 'purchaseofficer' || roleKey === 'purchasemanager' || roleKey === 'procurement' || roleKey === 'procurementmanager';
+    const isInventoryManager = roleKey === 'inventorymanager' || roleKey === 'storemanager' || roleKey === 'storekeeper';
+    const isProjectCoordinator = roleKey === 'projectcoordinator' || roleKey === 'pm' || roleKey === 'projectmanager';
 
     // Field Engineer fallback view - "Site Engineer"
-    const isESS = userRoleStr.includes('engineer') || userRoleStr.includes('site engineer') || (!isSuperAdmin && !isGM && !isHR && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isProjectCoordinator);
+    const isESS = roleKey === 'siteengineer' || roleKey === 'engineer'
+        || (!isSuperAdmin && !isGM && !isHR && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isProjectCoordinator);
 
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -290,7 +290,7 @@ const Dashboard = () => {
             if (res) fetchData();
         } catch (err) {
             console.error('Clock action error:', err);
-            alert('Action failed: ' + (err.response?.data?.detail || 'Please try again.'));
+            toast.error('Action failed: ' + (err.response?.data?.detail || 'Please try again.'));
         } finally {
             setIsClocking(false);
         }
@@ -298,14 +298,26 @@ const Dashboard = () => {
 
     useEffect(() => { fetchData(); }, []);
 
-    // ── Derived Global Stats ────────────────────────────────────────────────
-    const totalBudget = projects.reduce((s, p) => s + (p.budget || 0), 0);
-    const totalSpent = projects.reduce((s, p) => s + (p.spent || 0), 0);
-    const totalReceived = financeSummary.totalReceived || projects.reduce((s, p) => s + (p.receivedAmount || 0), 0);
-    const totalPending = Math.max(0, totalBudget - totalReceived);
-    const totalRemaining = Math.max(0, totalBudget - totalSpent);
-    const overallUtilization = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
-    const activeProjectsCount = projects.filter(p => p.status === 'Ongoing').length;
+    // ── Derived Global Stats (memoized to avoid recomputing on every render) ─
+    const {
+        totalBudget, totalSpent, totalReceived, totalPending,
+        totalRemaining, overallUtilization, activeProjectsCount
+    } = useMemo(() => {
+        const tb = projects.reduce((s, p) => s + (p.budget || 0), 0);
+        const ts = projects.reduce((s, p) => s + (p.spent || 0), 0);
+        const tr = typeof financeSummary.totalReceived === 'number' && financeSummary.totalReceived > 0
+            ? financeSummary.totalReceived
+            : projects.reduce((s, p) => s + (p.receivedAmount || p.received_amount || 0), 0);
+        return {
+            totalBudget: tb,
+            totalSpent: ts,
+            totalReceived: tr,
+            totalPending: Math.max(0, tb - tr),
+            totalRemaining: Math.max(0, tb - ts),
+            overallUtilization: tb > 0 ? (ts / tb) * 100 : 0,
+            activeProjectsCount: projects.filter(p => p.status === 'Ongoing').length
+        };
+    }, [projects, financeSummary.totalReceived]);
 
     // Project Info KPI Data
     const projectKPIs = [
@@ -423,13 +435,16 @@ const Dashboard = () => {
                             Refresh
                         </button>
                     </div>
-                    <style>{`.animate-spin { animation: spin 1s linear infinite; } @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
                 </div>
 
                 {/* ── Pending Approvals Banner ─────────────────────────────── */}
                 {(hasDashboardCard(user, 'approvals_card') || isSuperAdmin) && pendingApprovalsAmount > 0 && (
                     <div
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Review ${pendingApprovalsAmount} pending approvals`}
                         onClick={() => navigate('/approvals')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/approvals'); } }}
                         style={{
                             background: '#EFF6FF',
                             border: '1px solid #BFDBFE',
@@ -479,11 +494,11 @@ const Dashboard = () => {
 
                         {/* ── KPI Summary Cards (Financials) ─────────────────────────────── */}
                         {(hasDashboardCard(user, 'overview_stats') || isSuperAdmin) && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                                 {financialKPIs.map((kpi, i) => (
                                     <div key={i} className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${kpi.color}` }}>
                                         <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: kpi.bg, color: kpi.color, flexShrink: 0 }}>
-                                            <kpi.icon size={24} />
+                                            <kpi.icon size={24} aria-hidden="true" />
                                         </div>
                                         <div>
                                             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>{kpi.label}</p>
@@ -496,7 +511,7 @@ const Dashboard = () => {
 
                         {/* ── Charts Row ────────────────────────────────────────── */}
                         {(hasDashboardCard(user, 'budget_overview') || hasDashboardCard(user, 'overview_stats') || isSuperAdmin) && (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '24px', marginBottom: '32px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px', marginBottom: '32px' }}>
 
                                 {/* Section 1: Budget vs Spent Chart */}
                                 <div className="card" style={{ padding: '24px' }}>
@@ -585,7 +600,7 @@ const Dashboard = () => {
                                 ].map((kpi, i) => (
                                     <div key={i} className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <div style={{ padding: '10px', borderRadius: '10px', backgroundColor: kpi.bg, color: kpi.color, flexShrink: 0 }}>
-                                            <kpi.icon size={20} />
+                                            <kpi.icon size={20} aria-hidden="true" />
                                         </div>
                                         <div>
                                             <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px', fontWeight: '600', textTransform: 'uppercase' }}>{kpi.label}</p>
@@ -622,11 +637,11 @@ const Dashboard = () => {
 
                         {/* ── Project Overview KPI Cards ───────────────────────── */}
                         {(isSuperAdmin || isGM) && (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                                 {projectKPIs.map((kpi, i) => (
                                     <div key={i} className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${kpi.color}` }}>
                                         <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: kpi.bg, color: kpi.color, flexShrink: 0 }}>
-                                            <kpi.icon size={24} />
+                                            <kpi.icon size={24} aria-hidden="true" />
                                         </div>
                                         <div>
                                             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>{kpi.label}</p>
@@ -702,8 +717,9 @@ const Dashboard = () => {
                                     <tbody>
                                         {recentProjects.map((p, i) => {
                                             const badge = STATUS_BADGE[p.status] || STATUS_BADGE['Ongoing'];
+                                            const projectId = p._id || p.id;
                                             return (
-                                                <tr key={i} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p._id || p.id}`)}>
+                                                <tr key={i} style={{ cursor: projectId ? 'pointer' : 'default' }} onClick={() => projectId && navigate(`/projects/${projectId}`)} title={projectId ? `Open ${p.name}` : undefined}>
                                                     <td>
                                                         <span style={{ fontWeight: '600', color: 'var(--text-main)', display: 'block' }}>{p.name}</span>
                                                         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {p._id ? p._id.slice(-6).toUpperCase() : 'N/A'}</span>
@@ -764,10 +780,10 @@ const Dashboard = () => {
                                     </thead>
                                     <tbody>
                                         {workflowOverview.map((wf, i) => (
-                                            <tr key={i} style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${wf.project_id}`)}>
+                                            <tr key={i} style={{ cursor: wf.project_id ? 'pointer' : 'default' }} onClick={() => wf.project_id && navigate(`/projects/${wf.project_id}`)}>
                                                 <td>
                                                     <span style={{ fontWeight: '600', color: 'var(--text-main)', display: 'block' }}>{wf.project_name}</span>
-                                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {wf.project_id.slice(-6).toUpperCase()}</span>
+                                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ID: {wf.project_id ? wf.project_id.slice(-6).toUpperCase() : 'N/A'}</span>
                                                 </td>
                                                 <td>
                                                     <span style={{ fontWeight: '600', color: 'var(--text-main)', display: 'block' }}>

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, Activity, Coffee, Briefcase as BriefcaseIcon, UserCircle, LogOut, ChevronDown, CheckCircle, Package } from 'lucide-react';
+import React, { useState } from 'react';
+import { CheckCircle, Package } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { attendanceAPI } from '../../utils/api';
 import Pagination from '../../components/Pagination';
 
 const WS_PAGE_SIZE = 5;
@@ -25,7 +24,7 @@ const WorkspaceView = ({
         projects.forEach(p => {
             (p.tasks || []).forEach(t => {
                 const assignedTo = getStringId(t.assignedTo);
-                if (assignedTo === user.username || assignedTo === user.id) {
+                if (assignedTo === user.username || assignedTo === user._id || assignedTo === user.id) {
                     all.push({
                         ...t,
                         projectId: getStringId(p._id || p.id),
@@ -75,7 +74,7 @@ const WorkspaceView = ({
     return (
         <div className="workspace-view">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                Welcome back, {user?.name || 'Engineer'}
+                Welcome back, {user?.full_name || user?.name || 'Engineer'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Your daily tasks, attendance, and requests at a glance.
@@ -98,8 +97,8 @@ const WorkspaceView = ({
                     {tasks.slice((taskPage - 1) * WS_PAGE_SIZE, taskPage * WS_PAGE_SIZE).map(t => (
                         <div key={t.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div>
-                                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{t.name}</p>
-                                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Due: {t.due} | Priority: <span style={{ color: t.priority === 'High' ? '#EF4444' : '#3B82F6' }}>{t.priority}</span></p>
+                                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '260px' }} title={t.name}>{t.name}</p>
+                                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Due: {t.due} | Priority: <span style={{ color: t.priority === 'High' ? '#EF4444' : t.priority === 'Medium' ? '#F59E0B' : t.priority === 'Low' ? '#10B981' : 'var(--text-muted)' }}>{t.priority}</span></p>
                             </div>
                             <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', backgroundColor: t.status === 'Pending' ? '#FEF3C7' : '#DBEAFE', color: t.status === 'Pending' ? '#B45309' : '#1D4ED8' }}>
                                 {t.status}
@@ -116,16 +115,16 @@ const WorkspaceView = ({
                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Package size={20} color="#3B82F6" /> My Material Requests
                         </h3>
-                        {/* If inventory exists, route there */}
-                        <button className="btn btn-outline" onClick={() => navigate('/inventory')} style={{ padding: '6px 12px', fontSize: '12px' }}>
+                        {/* Route to materials/inventory module */}
+                        <button className="btn btn-outline" onClick={() => navigate('/materials')} style={{ padding: '6px 12px', fontSize: '12px' }}>
                             View Inventory
                         </button>
                     </div>
                     {requests.slice((reqPage - 1) * WS_PAGE_SIZE, reqPage * WS_PAGE_SIZE).map(r => (
                         <div key={r.id} style={{ padding: '12px', border: '1px solid var(--border)', borderRadius: '8px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div>
-                                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px' }}>{r.item}</p>
-                                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Request ID: {r.id} | Date: {r.date}</p>
+                                <p style={{ fontSize: '14px', fontWeight: '600', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '260px' }} title={r.item}>{r.item}</p>
+                                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Date: {r.date}</p>
                             </div>
                             <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', backgroundColor: r.status === 'Pending' ? '#FEF3C7' : '#D1FAE5', color: r.status === 'Pending' ? '#B45309' : '#047857' }}>
                                 {r.status}

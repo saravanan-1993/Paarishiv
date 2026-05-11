@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
     Plus, Search, Filter, MapPin, Calendar,
-    ArrowRight, Loader2, AlertCircle, RefreshCw
+    ArrowRight, Loader2, AlertCircle, RefreshCw, X, Building2
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import CreateProjectModal from '../components/CreateProjectModal';
 import Pagination from '../components/Pagination';
+import { SkeletonCard } from '../components/Skeleton';
 import { useAuth } from '../context/AuthContext';
 import { projectAPI } from '../utils/api';
+import { getStatusStyle } from '../utils/statusColors';
 import { hasPermission } from '../utils/rbac';
 
 // Helper: format budget number → "₹2.5 Cr" or "₹85 L"
@@ -24,26 +26,37 @@ const formatDate = (iso) => {
     return new Date(iso).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 };
 
-const STATUS_STYLE = {
-    Ongoing: { bg: '#ECFDF5', color: '#10B981' },
-    Completed: { bg: '#EFF6FF', color: '#3B82F6' },
-    'On Hold': { bg: '#F3F4F6', color: '#6B7280' },
-    Delayed: { bg: '#FEF2F2', color: '#EF4444' },
-};
+// Map shared status colors to local bg/color shape
+const STATUS_STYLE = new Proxy({}, {
+    get: (_, key) => {
+        const s = getStatusStyle(key);
+        return { bg: s.bg, color: s.text };
+    }
+});
 
 const Projects = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState('All');
+    const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || 'All');
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [projPage, setProjPage] = useState(1);
+    const [projPage, setProjPage] = useState(() => parseInt(searchParams.get('page')) || 1);
     const PROJ_PAGE_SIZE = 12;
+
+    // Sync filter/search/page to URL so they survive refresh and bookmark
+    useEffect(() => {
+        const params = {};
+        if (searchTerm) params.q = searchTerm;
+        if (filterStatus && filterStatus !== 'All') params.status = filterStatus;
+        if (projPage > 1) params.page = String(projPage);
+        setSearchParams(params, { replace: true });
+    }, [searchTerm, filterStatus, projPage]);
 
     // ── Fetch projects from backend ─────────────────────────────────────────
     const fetchProjects = async () => {
@@ -121,10 +134,20 @@ const Projects = () => {
                             <input
                                 type="text"
                                 placeholder="Search by project name, client or location..."
-                                style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '14px' }}
+                                style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '14px' }}
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
+                            {searchTerm && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm('')}
+                                    aria-label="Clear search"
+                                    style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
                         </div>
                         <div style={{ position: 'relative' }}>
                             <button
@@ -176,12 +199,10 @@ const Projects = () => {
                     </div>
                 </div>
 
-                {/* ── Loading state ────────────────────────────────────────── */}
+                {/* ── Loading state (skeleton grid) ───────────────────────── */}
                 {loading && (
-                    <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
-                        <Loader2 size={36} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-                        <p style={{ fontWeight: '600' }}>Loading projects from database...</p>
-                        <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+                        {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} height={220} />)}
                     </div>
                 )}
 
@@ -197,7 +218,7 @@ const Projects = () => {
                 {/* ── Empty state ──────────────────────────────────────────── */}
                 {!loading && !error && filtered.length === 0 && (
                     <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗️</div>
+                        <Building2 size={48} aria-hidden="true" style={{ margin: '0 auto 16px', opacity: 0.4 }} />
                         <h3 style={{ fontWeight: '700', marginBottom: '8px' }}>
                             {searchTerm ? 'No projects match your search' : 'No projects yet'}
                         </h3>
@@ -225,9 +246,7 @@ const Projects = () => {
                                 <div
                                     key={projectId}
                                     className="card project-card"
-                                    style={{ padding: '0', overflow: 'hidden', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer' }}
-                                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
+                                    style={{ padding: '0', overflow: 'hidden', cursor: 'pointer' }}
                                     onClick={() => navigate(`/projects/${projectId}`)}
                                 >
                                     {/* Top colour bar */}
@@ -235,14 +254,14 @@ const Projects = () => {
 
                                     <div style={{ padding: '20px' }}>
                                         {/* Title + Status */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-                                            <div>
-                                                <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '3px' }}>{project.name}</h3>
-                                                <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>{project.client}</p>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', gap: '8px' }}>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <h3 style={{ fontSize: '17px', fontWeight: '800', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={project.name}>{project.name}</h3>
+                                                <p style={{ color: 'var(--text-muted)', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={project.client}>{project.client}</p>
                                             </div>
                                             <span style={{
                                                 padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700',
-                                                textTransform: 'uppercase', backgroundColor: style.bg, color: style.color, flexShrink: 0, marginLeft: '8px'
+                                                textTransform: 'uppercase', backgroundColor: style.bg, color: style.color, flexShrink: 0
                                             }}>
                                                 {status}
                                             </span>
@@ -291,7 +310,7 @@ const Projects = () => {
                                                 </div>
                                             )}
                                             <button
-                                                onClick={() => navigate(`/projects/${projectId}`)}
+                                                onClick={(e) => { e.stopPropagation(); if (projectId) navigate(`/projects/${projectId}`); }}
                                                 style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '13px' }}
                                             >
                                                 Details <ArrowRight size={15} />

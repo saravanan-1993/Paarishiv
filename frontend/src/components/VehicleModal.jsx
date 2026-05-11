@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 import { fleetAPI, employeeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
         vehicleNumber: '',
         vehicleType: 'Tipper',
@@ -63,7 +65,7 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
             onSuccess();
             onClose();
         } catch (err) {
-            alert('Failed to save vehicle');
+            toast.error('Failed to save vehicle');
         } finally {
             setLoading(false);
         }
@@ -121,9 +123,6 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
                                 placeholder="Select Driver"
                                 searchable={true}
                             />
-                            {/* <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                New driver? Add them in <span style={{ color: 'var(--primary)', fontWeight: '700', cursor: 'pointer' }} onClick={() => window.location.href = '/users'}>User Management</span>
-                            </p> */}
                         </div>
                     </div>
 

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import axios from 'axios';
 import { Send, User, MessageSquare, Search, Paperclip, FileIcon, Download, Loader2, X, Bell, BellOff, Info, UserPlus } from 'lucide-react';
 import { chatAPI } from '../utils/api';
 
 const Chat = () => {
     const { user } = useAuth();
+    const toast = useToast();
     const [users, setUsers] = useState([]);
     const [groups, setGroups] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -22,7 +24,15 @@ const Chat = () => {
     const [showAddMembers, setShowAddMembers] = useState(false);
     const [newGroupMembers, setNewGroupMembers] = useState([]);
     const [addingMembers, setAddingMembers] = useState(false);
+    const [lightboxImage, setLightboxImage] = useState(null);
     const messagesEndRef = useRef(null);
+
+    useEffect(() => {
+        if (!lightboxImage) return;
+        const handleEsc = (e) => { if (e.key === 'Escape') setLightboxImage(null); };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [lightboxImage]);
 
     const host = window.location.hostname;
     const API_BASE = '/api';
@@ -79,11 +89,10 @@ const Chat = () => {
             };
 
             ws.onopen = () => {
-                console.log('[Chat WS] Connected');
+                // Connected
             };
 
             ws.onclose = (e) => {
-                console.log('[Chat WS] Closed:', e.code, e.reason);
                 socketRef.current = null;
                 if (!isUnmounted) {
                     reconnectTimer = setTimeout(connectWS, 3000);
@@ -207,13 +216,13 @@ const Chat = () => {
             };
 
             if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-                alert('Chat connection lost. Please refresh the page.');
+                toast.error('Chat connection lost. Please refresh the page.');
                 return;
             }
             socketRef.current.send(JSON.stringify(messageData));
         } catch (err) {
             console.error('Upload failed', err);
-            alert('File upload failed. Please check your connection.');
+            toast.error('File upload failed. Please check your connection.');
         } finally {
             setUploading(false);
             e.target.value = ''; // Reset input
@@ -234,7 +243,7 @@ const Chat = () => {
         if (!newMessage.trim() || !selectedUser) return;
 
         if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-            alert('Chat connection lost. Reconnecting...');
+            toast.warning('Chat connection lost. Reconnecting...');
             return;
         }
 
@@ -251,7 +260,7 @@ const Chat = () => {
             setNewMessage('');
         } catch (err) {
             console.error('Send failed:', err);
-            alert('Failed to send message. Please refresh.');
+            toast.error('Failed to send message. Please refresh.');
         }
     };
 
@@ -284,7 +293,7 @@ const Chat = () => {
             fetchGroups();
         } catch (err) {
             console.error('Failed to add members', err);
-            alert(err?.response?.data?.detail || 'Failed to add members.');
+            toast.error(err?.response?.data?.detail || 'Failed to add members.');
         } finally {
             setAddingMembers(false);
         }
@@ -555,33 +564,60 @@ const Chat = () => {
                                 const isMe = msg.sender === user.username;
                                 const isSystem = msg.sender === 'System' || msg.message_type === 'system' || msg.message_type === 'task_update';
 
-                                if (isSystem) {
-                                    return (
-                                        <div key={idx} style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                                            <div style={{
-                                                padding: '6px 16px',
-                                                borderRadius: '20px',
-                                                backgroundColor: '#FEF3C7',
-                                                color: '#92400E',
-                                                fontSize: '12px',
-                                                fontWeight: '600',
-                                                border: '1px solid #FDE68A',
-                                                textAlign: 'center',
-                                                maxWidth: '90%'
-                                            }}>
-                                                {msg.content}
-                                            </div>
+                                // Date divider: show when this message's date differs from prev message's date
+                                let dateDivider = null;
+                                const curDate = msg.timestamp ? new Date(msg.timestamp) : null;
+                                const prevTs = idx > 0 ? messages[idx - 1].timestamp : null;
+                                const prevDate = prevTs ? new Date(prevTs) : null;
+                                const isNewDay = curDate && (!prevDate || curDate.toDateString() !== prevDate.toDateString());
+                                if (isNewDay) {
+                                    const today = new Date();
+                                    const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+                                    let label;
+                                    if (curDate.toDateString() === today.toDateString()) label = 'Today';
+                                    else if (curDate.toDateString() === yesterday.toDateString()) label = 'Yesterday';
+                                    else label = curDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    dateDivider = (
+                                        <div key={`d-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '12px 0' }} role="separator" aria-label={`Messages from ${label}`}>
+                                            <div style={{ flex: 1, height: '1px', backgroundColor: '#E2E8F0' }} />
+                                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748B', backgroundColor: 'white', padding: '4px 10px', borderRadius: '12px', border: '1px solid #E2E8F0' }}>{label}</span>
+                                            <div style={{ flex: 1, height: '1px', backgroundColor: '#E2E8F0' }} />
                                         </div>
                                     );
                                 }
 
+                                if (isSystem) {
+                                    return (
+                                        <React.Fragment key={idx}>
+                                            {dateDivider}
+                                            <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                                                <div style={{
+                                                    padding: '6px 16px',
+                                                    borderRadius: '20px',
+                                                    backgroundColor: '#FEF3C7',
+                                                    color: '#92400E',
+                                                    fontSize: '12px',
+                                                    fontWeight: '600',
+                                                    border: '1px solid #FDE68A',
+                                                    textAlign: 'center',
+                                                    maxWidth: '90%'
+                                                }}>
+                                                    {msg.content}
+                                                </div>
+                                            </div>
+                                        </React.Fragment>
+                                    );
+                                }
+
                                 return (
-                                    <div key={idx} style={{
-                                        display: 'flex',
-                                        justifyContent: isMe ? 'flex-end' : 'flex-start',
-                                        maxWidth: '85%',
-                                        alignSelf: isMe ? 'flex-end' : 'flex-start'
-                                    }}>
+                                    <React.Fragment key={idx}>
+                                        {dateDivider}
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: isMe ? 'flex-end' : 'flex-start',
+                                            maxWidth: '85%',
+                                            alignSelf: isMe ? 'flex-end' : 'flex-start'
+                                        }}>
                                         <div style={{
                                             padding: '12px 16px',
                                             borderRadius: isMe ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
@@ -607,7 +643,12 @@ const Chat = () => {
                                                     {msg.attachments.map((at, i) => (
                                                         <div key={i} style={{ borderRadius: '8px', overflow: 'hidden', border: isMe ? '1px solid rgba(255,255,255,0.2)' : '1px solid var(--border)' }}>
                                                             {at.type === 'image' ? (
-                                                                <img src={getFileUrl(at.url)} alt={at.name} style={{ maxWidth: '100%', display: 'block' }} />
+                                                                <img
+                                                                    src={getFileUrl(at.url)}
+                                                                    alt={at.name}
+                                                                    onClick={() => setLightboxImage({ url: getFileUrl(at.url), name: at.name })}
+                                                                    style={{ maxWidth: '100%', display: 'block', cursor: 'zoom-in' }}
+                                                                />
                                                             ) : (
                                                                 <a href={getFileUrl(at.url)} download={at.name} target="_blank" rel="noreferrer" style={{
                                                                     display: 'flex',
@@ -639,6 +680,7 @@ const Chat = () => {
                                             </div>
                                         </div>
                                     </div>
+                                    </React.Fragment>
                                 );
                             })}
                             <div ref={messagesEndRef} />
@@ -1096,6 +1138,36 @@ const Chat = () => {
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Image lightbox */}
+            {lightboxImage && (
+                <div
+                    onClick={() => setLightboxImage(null)}
+                    style={{
+                        position: 'fixed', inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.85)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        zIndex: 99999, cursor: 'zoom-out', padding: '20px'
+                    }}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Image preview"
+                >
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}
+                        aria-label="Close image preview"
+                        style={{ position: 'absolute', top: '20px', right: '20px', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px', borderRadius: '50%', cursor: 'pointer', display: 'flex' }}
+                    >
+                        <X size={24} />
+                    </button>
+                    <img
+                        src={lightboxImage.url}
+                        alt={lightboxImage.name}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ maxWidth: '95%', maxHeight: '95vh', objectFit: 'contain', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}
+                    />
                 </div>
             )}
         </div>

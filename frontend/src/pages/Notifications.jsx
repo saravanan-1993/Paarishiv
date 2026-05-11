@@ -4,9 +4,12 @@ import { notificationAPI } from '../utils/api';
 import { useNotifications } from '../context/NotificationContext';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
+import { ENTITY_ROUTES } from '../utils/notificationRoutes';
+import Pagination from '../components/Pagination';
+import { Skeleton } from '../components/Skeleton';
 import {
     Bell, CheckCircle2, AlertCircle, Package, Wallet, Users, Truck, Briefcase,
-    ArrowRight, Filter, CheckCheck, Trash2, RefreshCw, ChevronLeft, ChevronRight,
+    ArrowRight, Filter, CheckCheck, Trash2, RefreshCw,
     Clock, FileText, ShieldCheck
 } from 'lucide-react';
 
@@ -22,24 +25,6 @@ const EVENT_CONFIG = {
     system: { icon: Bell, color: '#6B7280', bg: '#F3F4F6', label: 'System' },
 };
 
-const ENTITY_ROUTES = {
-    project: (id) => `/projects/${id}`,
-    po: () => `/workflow?tab=POs`,
-    grn: () => `/workflow?tab=GRN`,
-    leave: () => `/hr?tab=Leave+Management`,
-    dpr: (id) => {
-        const parts = id?.split(':');
-        return parts?.length === 2 ? `/projects/${parts[0]}` : '/site-reports';
-    },
-    expense: () => `/finance?tab=Payments`,
-    material_request: () => `/materials?tab=Coordination`,
-    manpower: () => `/approvals`,
-    payroll: () => `/hr?tab=Payroll`,
-    bill: () => `/finance?tab=Sales`,
-    vehicle: () => `/fleet?tab=Vehicles`,
-    task: (id) => id ? `/projects/${id}` : '/tasks',
-};
-
 const Notifications = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -51,6 +36,7 @@ const Notifications = () => {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, unread, approval, workflow, material, finance, hr, task, project
     const [filterOpen, setFilterOpen] = useState(false);
+    const [selectedIds, setSelectedIds] = useState([]);
 
     const fetchNotifications = useCallback(async () => {
         setLoading(true);
@@ -92,8 +78,27 @@ const Notifications = () => {
             await notificationAPI.delete(id);
             setNotifications(prev => prev.filter(n => n._id !== id));
             setTotal(t => t - 1);
+            setSelectedIds(prev => prev.filter(x => x !== id));
             refreshCount();
         } catch (err) { console.error(err); }
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedIds.length === 0) return;
+        try {
+            await Promise.allSettled(selectedIds.map(id => notificationAPI.delete(id)));
+            setNotifications(prev => prev.filter(n => !selectedIds.includes(n._id)));
+            setTotal(t => Math.max(0, t - selectedIds.length));
+            setSelectedIds([]);
+            refreshCount();
+        } catch (err) { console.error(err); }
+    };
+
+    const toggleSelectAllVisible = () => {
+        const visibleIds = notifications.map(n => n._id);
+        const allSelected = visibleIds.every(id => selectedIds.includes(id));
+        if (allSelected) setSelectedIds([]);
+        else setSelectedIds(visibleIds);
     };
 
     const handleClick = (notif) => {
@@ -136,12 +141,22 @@ const Notifications = () => {
                     <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Notifications</h1>
                     <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{total} total notifications</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {selectedIds.length > 0 && (
+                        <button onClick={handleBulkDelete} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--danger)', background: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600' }}>
+                            <Trash2 size={14} aria-hidden="true" /> Delete {selectedIds.length}
+                        </button>
+                    )}
+                    {notifications.length > 0 && (
+                        <button onClick={toggleSelectAllVisible} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '13px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            {notifications.every(n => selectedIds.includes(n._id)) ? 'Unselect All' : 'Select All'}
+                        </button>
+                    )}
                     <button onClick={fetchNotifications} className="btn-icon" style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-muted)' }}>
-                        <RefreshCw size={14} /> Refresh
+                        <RefreshCw size={14} aria-hidden="true" /> Refresh
                     </button>
                     <button onClick={handleMarkAllRead} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600' }}>
-                        <CheckCheck size={14} /> Mark all read
+                        <CheckCheck size={14} aria-hidden="true" /> Mark all read
                     </button>
                 </div>
             </div>
@@ -166,9 +181,17 @@ const Notifications = () => {
             {/* Notification List */}
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
                 {loading ? (
-                    <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <div style={{ width: '32px', height: '32px', border: '3px solid #E2E8F0', borderTop: '3px solid var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }}></div>
-                        Loading...
+                    <div aria-busy="true">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                            <div key={i} style={{ padding: '16px 20px', display: 'flex', gap: '14px', borderBottom: '1px solid #F1F5F9' }}>
+                                <Skeleton width={40} height={40} radius={8} />
+                                <div style={{ flex: 1 }}>
+                                    <Skeleton width="30%" height={12} style={{ marginBottom: '8px' }} />
+                                    <Skeleton width="80%" height={14} style={{ marginBottom: '6px' }} />
+                                    <Skeleton width="40%" height={11} />
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : notifications.length === 0 ? (
                     <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -183,6 +206,10 @@ const Notifications = () => {
                             <div
                                 key={n._id}
                                 onClick={() => handleClick(n)}
+                                onKeyDown={(e) => { if (n.entity_type && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleClick(n); } }}
+                                role={n.entity_type ? 'button' : undefined}
+                                tabIndex={n.entity_type ? 0 : -1}
+                                aria-label={n.entity_type ? `Open notification: ${n.title || n.content}` : undefined}
                                 style={{
                                     padding: '16px 20px',
                                     display: 'flex',
@@ -196,6 +223,15 @@ const Notifications = () => {
                                 }}
                                 className="notif-row"
                             >
+                                {/* Bulk select checkbox */}
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.includes(n._id)}
+                                    onChange={(e) => { e.stopPropagation(); setSelectedIds(prev => prev.includes(n._id) ? prev.filter(x => x !== n._id) : [...prev, n._id]); }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label={`Select notification: ${n.title || n.content}`}
+                                    style={{ marginTop: '4px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)', flexShrink: 0 }}
+                                />
                                 {/* Unread dot */}
                                 {!n.is_read && (
                                     <div style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--primary)' }} />
@@ -222,7 +258,7 @@ const Notifications = () => {
                                             <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 6px', borderRadius: '10px', backgroundColor: '#FEE2E2', color: '#EF4444' }}>HIGH</span>
                                         )}
                                     </div>
-                                    <p style={{ fontSize: '13px', color: n.is_read ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: '1.5', marginBottom: '4px' }}>
+                                    <p style={{ fontSize: '13px', color: n.is_read ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: '1.5', marginBottom: '4px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }} title={n.content}>
                                         {n.content}
                                     </p>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -254,31 +290,17 @@ const Notifications = () => {
 
             {/* Pagination */}
             {pages > 1 && (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginTop: '20px' }}>
-                    <button
-                        disabled={page <= 1}
-                        onClick={() => setPage(p => p - 1)}
-                        style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: page > 1 ? 'pointer' : 'not-allowed', opacity: page > 1 ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
-                    >
-                        <ChevronLeft size={14} /> Prev
-                    </button>
-                    <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>
-                        Page {page} of {pages}
-                    </span>
-                    <button
-                        disabled={page >= pages}
-                        onClick={() => setPage(p => p + 1)}
-                        style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: page < pages ? 'pointer' : 'not-allowed', opacity: page < pages ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px' }}
-                    >
-                        Next <ChevronRight size={14} />
-                    </button>
-                </div>
+                <Pagination
+                    currentPage={page}
+                    totalItems={total}
+                    pageSize={30}
+                    onPageChange={setPage}
+                />
             )}
 
             <style>{`
                 .notif-row:hover { background-color: #F8FAFC !important; }
                 .notif-del:hover { color: #EF4444 !important; background-color: #FEF2F2 !important; }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             `}</style>
         </div>
     );

@@ -7,6 +7,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { ENTITY_ROUTES } from '../utils/notificationRoutes';
 
 const EVENT_ICON_MAP = {
     approval: ShieldCheck,
@@ -30,21 +31,6 @@ const EVENT_COLOR_MAP = {
     fleet: { bg: '#F3F4F6', color: '#6B7280' },
     project: { bg: '#E0F2FE', color: '#0EA5E9' },
     system: { bg: '#F3F4F6', color: '#6B7280' },
-};
-
-const ENTITY_ROUTES = {
-    project: (id) => `/projects/${id}`,
-    po: () => `/workflow?tab=POs`,
-    grn: () => `/workflow?tab=GRN`,
-    leave: () => `/hr?tab=Leave+Management`,
-    dpr: (id) => { const p = id?.split(':'); return p?.length === 2 ? `/projects/${p[0]}` : '/site-reports'; },
-    expense: () => `/finance?tab=Payments`,
-    material_request: () => `/materials?tab=Coordination`,
-    manpower: () => `/approvals`,
-    payroll: () => `/hr?tab=Payroll`,
-    bill: () => `/finance?tab=Sales`,
-    vehicle: () => `/fleet?tab=Vehicles`,
-    task: (id) => id ? `/projects/${id}` : '/tasks',
 };
 
 const formatTime = (iso) => {
@@ -128,20 +114,20 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                 >
                     {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
-                {companyLogo && (
+                {/* {companyLogo && (
                     <img
                         src={companyLogo.startsWith('http') || companyLogo.startsWith('/static') ? companyLogo : `/api${companyLogo}`}
                         alt="Logo"
                         style={{ height: '36px', objectFit: 'contain', borderRadius: '6px' }}
                     />
-                )}
+                )} */}
             </div>
 
             <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                 <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button className="icon-btn" title="Help Guide" onClick={() => navigate('/settings?tab=Profile')} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                    {/* <button className="icon-btn" title="My Profile" onClick={() => navigate('/settings?tab=Profile')} style={{ background: 'none', border: 'none', padding: '8px', color: 'var(--text-muted)', cursor: 'pointer' }}>
                         <Info size={20} />
-                    </button>
+                    </button> */}
 
                     <div style={{ position: 'relative' }} ref={notifRef}>
                         <button
@@ -196,6 +182,10 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                                                 <div
                                                     key={n._id}
                                                     onClick={() => handleNotifClick(n)}
+                                                    onKeyDown={(e) => { if (n.entity_type && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleNotifClick(n); } }}
+                                                    role={n.entity_type ? 'button' : undefined}
+                                                    tabIndex={n.entity_type ? 0 : -1}
+                                                    aria-label={n.entity_type ? `Open notification: ${n.title || n.content}` : undefined}
                                                     style={{
                                                         padding: '12px 16px', borderBottom: '1px solid #F1F5F9',
                                                         display: 'flex', gap: '10px', alignItems: 'flex-start',
@@ -265,11 +255,11 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                     }}
                 >
                     <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.name}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.full_name || user?.name || user?.username}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{user?.role}</div>
                     </div>
                     {user?.avatar ? (
-                        <img src={user.avatar} alt={user.name} style={{
+                        <img src={user.avatar} alt={user.full_name || user.name || user.username} style={{
                             width: '38px', height: '38px', borderRadius: '10px',
                             objectFit: 'cover', boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
                         }} />
@@ -281,7 +271,7 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                             fontWeight: '800', fontSize: '15px',
                             boxShadow: '0 4px 6px rgba(37, 99, 235, 0.2)'
                         }}>
-                            {user?.name?.charAt(0) || 'U'}
+                            {(user?.full_name || user?.name || user?.username || 'U').charAt(0).toUpperCase()}
                         </div>
                     )}
                     <ChevronDown size={14} style={{ color: 'var(--text-muted)', marginLeft: '4px', transform: profileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
@@ -295,10 +285,10 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                             zIndex: 100, overflow: 'hidden', padding: '8px'
                         }}>
                             <div style={{ padding: '12px', borderBottom: '1px solid #F1F5F9', marginBottom: '4px' }}>
-                                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.name}</p>
+                                <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>{user?.full_name || user?.name || user?.username}</p>
                             </div>
 
-                            <button className="profile-item" onClick={() => { navigate('/settings'); setProfileOpen(false); }}
+                            <button className="profile-item" onClick={() => { navigate('/settings?tab=Profile'); setProfileOpen(false); }}
                                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', borderRadius: '8px', border: 'none', background: 'none', color: 'var(--text-main)', fontSize: '13px', fontWeight: '500', cursor: 'pointer', transition: 'all 0.2s' }}>
                                 <User size={16} /> My Profile
                             </button>

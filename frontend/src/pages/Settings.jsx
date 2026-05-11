@@ -18,12 +18,14 @@ import {
     CheckCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { hasSubTabAccess, hasPermission } from '../utils/rbac';
 import { settingsAPI, profileAPI, notificationAPI } from '../utils/api';
 import { Loader2 } from 'lucide-react';
 
 const Settings = () => {
     const { user, updateUser, logout } = useAuth();
+    const toast = useToast();
     const canEditSettings = hasPermission(user, 'Settings', 'edit');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -60,6 +62,11 @@ const Settings = () => {
         apiKey: '',
         apiSecret: ''
     });
+    const [showCloudinarySecret, setShowCloudinarySecret] = useState(false);
+    const [showSMTPPassword, setShowSMTPPassword] = useState(false);
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     // Security / Password State
     const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -197,7 +204,7 @@ const Settings = () => {
             setTimeout(() => setProfileSaved(false), 3000);
         } catch (err) {
             console.error('Failed to save profile', err);
-            alert('Failed to save profile changes.');
+            toast.error('Failed to save profile changes.');
         } finally {
             setLoading(false);
         }
@@ -222,7 +229,7 @@ const Settings = () => {
             updateUser({ avatar: res.data.url });
         } catch (err) {
             console.error('Failed to upload avatar', err);
-            alert('Failed to upload photo. Please check Cloudinary settings.');
+            toast.error('Failed to upload photo. Please check Cloudinary settings.');
         } finally {
             setLoading(false);
         }
@@ -232,10 +239,10 @@ const Settings = () => {
         setLoading(true);
         try {
             await settingsAPI.updateCompany(companyInfo);
-            alert("Company Information saved successfully!");
+            toast.success('Company Information saved successfully!');
             window.dispatchEvent(new CustomEvent('companyInfoUpdated'));
         } catch (err) {
-            alert("Failed to save company information");
+            toast.error('Failed to save company information');
         } finally {
             setLoading(false);
         }
@@ -245,21 +252,32 @@ const Settings = () => {
         setLoading(true);
         try {
             await settingsAPI.updateCloudinary(cloudinaryConfig);
-            alert("Cloudinary settings saved successfully!");
+            toast.success('Cloudinary settings saved successfully!');
         } catch (err) {
-            alert("Failed to save Cloudinary settings");
+            toast.error('Failed to save Cloudinary settings');
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleTestCloudinary = () => {
+        const cn = (cloudinaryConfig?.cloudName || cloudinaryConfig?.cloud_name || '').trim();
+        const ak = (cloudinaryConfig?.apiKey || cloudinaryConfig?.api_key || '').trim();
+        const as = (cloudinaryConfig?.apiSecret || cloudinaryConfig?.api_secret || '').trim();
+        if (!cn || !ak || !as) {
+            toast.warning('Please fill in Cloud Name, API Key, and API Secret before testing the connection.');
+            return;
+        }
+        toast.info('Cloudinary credentials look complete. Save the settings and upload a test image to verify the connection.');
     };
 
     const handleSaveSMTP = async () => {
         setLoading(true);
         try {
             await settingsAPI.updateSMTP(smtpConfig);
-            alert("SMTP settings saved successfully!");
+            toast.success('SMTP settings saved successfully!');
         } catch (err) {
-            alert("Failed to save SMTP settings");
+            toast.error('Failed to save SMTP settings');
         } finally {
             setLoading(false);
         }
@@ -452,7 +470,6 @@ const Settings = () => {
                                 </div>
                             </div>
                         </div>
-                        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                     </div>
                 )}
 
@@ -465,17 +482,29 @@ const Settings = () => {
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Current Password</label>
                                 <div style={{ position: 'relative' }}>
-                                    <input type="password" value={passwordForm.currentPassword} onChange={e => setPasswordForm(p => ({...p, currentPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                                    <Lock size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                    <input type={showCurrentPassword ? 'text' : 'password'} value={passwordForm.currentPassword} onChange={e => setPasswordForm(p => ({...p, currentPassword: e.target.value}))} style={{ width: '100%', padding: '12px 44px 12px 12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <button type="button" onClick={() => setShowCurrentPassword(v => !v)} aria-label={showCurrentPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+                                        {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
                                 </div>
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>New Password</label>
-                                <input type="password" value={passwordForm.newPassword} onChange={e => setPasswordForm(p => ({...p, newPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} placeholder="Minimum 6 characters" />
+                                <div style={{ position: 'relative' }}>
+                                    <input type={showNewPassword ? 'text' : 'password'} value={passwordForm.newPassword} onChange={e => setPasswordForm(p => ({...p, newPassword: e.target.value}))} style={{ width: '100%', padding: '12px 44px 12px 12px', borderRadius: '8px', border: '1px solid var(--border)' }} placeholder="Minimum 6 characters" />
+                                    <button type="button" onClick={() => setShowNewPassword(v => !v)} aria-label={showNewPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+                                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Confirm New Password</label>
-                                <input type="password" value={passwordForm.confirmPassword} onChange={e => setPasswordForm(p => ({...p, confirmPassword: e.target.value}))} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                <div style={{ position: 'relative' }}>
+                                    <input type={showConfirmPassword ? 'text' : 'password'} value={passwordForm.confirmPassword} onChange={e => setPasswordForm(p => ({...p, confirmPassword: e.target.value}))} style={{ width: '100%', padding: '12px 44px 12px 12px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    <button type="button" onClick={() => setShowConfirmPassword(v => !v)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}>
+                                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
                             </div>
                             {passwordMsg && (
                                 <p style={{ fontSize: '14px', fontWeight: '600', color: passwordMsg.includes('success') ? '#10B981' : '#EF4444' }}>{passwordMsg}</p>
@@ -586,7 +615,7 @@ const Settings = () => {
                                                 const res = await settingsAPI.uploadLogo(formData);
                                                 setCompanyInfo({ ...companyInfo, logo: res.data.url });
                                             } catch (err) {
-                                                alert("Failed to upload logo");
+                                                toast.error('Failed to upload logo');
                                             } finally {
                                                 setLoading(false);
                                             }
@@ -616,7 +645,11 @@ const Settings = () => {
                                 <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>Cloudinary API</h3>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Media storage for project site images and documents</p>
                             </div>
-                            <span style={{ padding: '4px 12px', backgroundColor: '#e0f2fe', color: '#0369a1', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>API CONNECTED</span>
+                            {((cloudinaryConfig?.cloudName || cloudinaryConfig?.cloud_name) && (cloudinaryConfig?.apiKey || cloudinaryConfig?.api_key) && (cloudinaryConfig?.apiSecret || cloudinaryConfig?.api_secret)) ? (
+                                <span style={{ padding: '4px 12px', backgroundColor: '#dcfce7', color: '#15803d', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>CONFIGURED</span>
+                            ) : (
+                                <span style={{ padding: '4px 12px', backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>NOT CONFIGURED</span>
+                            )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div>
@@ -639,12 +672,22 @@ const Settings = () => {
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>API Secret</label>
-                                <input
-                                    type="password"
-                                    value={cloudinaryConfig.apiSecret}
-                                    onChange={(e) => setCloudinaryConfig({ ...cloudinaryConfig, apiSecret: e.target.value })}
-                                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)' }}
-                                />
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showCloudinarySecret ? 'text' : 'password'}
+                                        value={cloudinaryConfig.apiSecret}
+                                        onChange={(e) => setCloudinaryConfig({ ...cloudinaryConfig, apiSecret: e.target.value })}
+                                        style={{ width: '100%', padding: '12px 44px 12px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCloudinarySecret(v => !v)}
+                                        aria-label={showCloudinarySecret ? 'Hide secret' : 'Show secret'}
+                                        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                                    >
+                                        {showCloudinarySecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
                                 {canEditSettings && <button
@@ -655,7 +698,7 @@ const Settings = () => {
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} SAVE API KEYS
                                 </button>}
-                                <button className="btn btn-outline"><Cloud size={16} /> TEST CONNECTION</button>
+                                <button className="btn btn-outline" onClick={handleTestCloudinary} type="button"><Cloud size={16} /> TEST CONNECTION</button>
                             </div>
                         </div>
                     </div>
@@ -668,20 +711,23 @@ const Settings = () => {
                                 <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>SMTP Email Configuration</h3>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Configure outgoing email server for notifications and reports</p>
                             </div>
-                            <span style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                padding: '6px 12px',
-                                backgroundColor: '#ECFDF5',
-                                color: '#059669',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: '700'
-                            }}>
-                                <CheckCircle2 size={14} />
-                                Configured
-                            </span>
+                            {(smtpConfig?.host && smtpConfig?.username) ? (
+                                <span style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 12px', backgroundColor: '#ECFDF5', color: '#059669',
+                                    borderRadius: '6px', fontSize: '12px', fontWeight: '700'
+                                }}>
+                                    <CheckCircle2 size={14} aria-hidden="true" /> Configured
+                                </span>
+                            ) : (
+                                <span style={{
+                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 12px', backgroundColor: '#FEE2E2', color: '#991B1B',
+                                    borderRadius: '6px', fontSize: '12px', fontWeight: '700'
+                                }}>
+                                    Not Configured
+                                </span>
+                            )}
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
@@ -715,13 +761,23 @@ const Settings = () => {
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', marginBottom: '8px' }}>Password (leave blank to keep current)</label>
-                                <input
-                                    type="password"
-                                    value={smtpConfig.password}
-                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, password: e.target.value })}
-                                    placeholder="Leave blank to keep saved password"
-                                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
-                                />
+                                <div style={{ position: 'relative' }}>
+                                    <input
+                                        type={showSMTPPassword ? 'text' : 'password'}
+                                        value={smtpConfig.password}
+                                        onChange={(e) => setSmtpConfig({ ...smtpConfig, password: e.target.value })}
+                                        placeholder="Leave blank to keep saved password"
+                                        style={{ width: '100%', padding: '12px 44px 12px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSMTPPassword(v => !v)}
+                                        aria-label={showSMTPPassword ? 'Hide password' : 'Show password'}
+                                        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                                    >
+                                        {showSMTPPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
                                 <p style={{ fontSize: '11px', color: '#10B981', marginTop: '6px', fontWeight: '600' }}>✓ Password is saved — only fill this to change it</p>
                             </div>
                             <div style={{ gridColumn: 'span 2' }}>

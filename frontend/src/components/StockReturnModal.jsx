@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowDownLeft, Loader2, Briefcase, Package } from 'lucide-react';
 import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import PremiumSelect from './PremiumSelect';
 
 const StockReturnModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [projects, setProjects] = useState([]);
     const [projectInventory, setProjectInventory] = useState([]);
@@ -50,8 +52,8 @@ const StockReturnModal = ({ isOpen, onClose, onSuccess }) => {
         const proj = projects.find(p => (p._id || p.id) === formData.project_id);
         const invItem = projectInventory.find(i => i.material_name === formData.material_name);
 
-        if (!proj || !invItem) return alert('Invalid selection');
-        if (formData.quantity > invItem.stock) return alert(`Maximum available at site is ${invItem.stock}`);
+        if (!proj || !invItem) return toast.warning('Invalid selection');
+        if (formData.quantity > invItem.stock) return toast.warning(`Maximum available at site is ${invItem.stock}`);
 
         setIsSaving(true);
         try {
@@ -66,7 +68,7 @@ const StockReturnModal = ({ isOpen, onClose, onSuccess }) => {
             onSuccess();
         } catch (err) {
             console.error('Return error:', err);
-            alert('Failed to process return');
+            toast.error('Failed to process return');
         } finally {
             setIsSaving(false);
         }

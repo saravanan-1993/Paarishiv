@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
     CheckCircle2, Clock, PlayCircle, Plus, Search, Filter,
-    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell, Eye
+    MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell, Eye, X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { useSearchParams } from 'react-router-dom';
 import { hasPermission } from '../../utils/rbac';
 import { projectAPI, employeeAPI } from '../../utils/api';
 import CompleteTaskModal from '../../components/CompleteTaskModal';
@@ -13,13 +15,24 @@ import CustomSelect from '../../components/CustomSelect';
 
 const Tasks = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
     const canCreateTasks = hasPermission(user, 'Projects', 'delete') || hasPermission(user, 'Tasks', 'edit');
 
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [projectFilter, setProjectFilter] = useState('All');
+    const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || 'All');
+    const [projectFilter, setProjectFilter] = useState(() => searchParams.get('project') || 'All');
+
+    // Sync filter state to URL
+    useEffect(() => {
+        const params = {};
+        if (searchTerm) params.q = searchTerm;
+        if (statusFilter && statusFilter !== 'All') params.status = statusFilter;
+        if (projectFilter && projectFilter !== 'All') params.project = projectFilter;
+        setSearchParams(params, { replace: true });
+    }, [searchTerm, statusFilter, projectFilter]);
     const [projectsData, setProjectsData] = useState([]);
     const [employeesMap, setEmployeesMap] = useState({});
 
@@ -164,7 +177,7 @@ const Tasks = () => {
             fetchTasks();
         } catch (err) {
             console.error('Failed to update task status', err);
-            alert('Failed to update task status.');
+            toast.error('Failed to update task status.');
         }
     };
 
@@ -172,10 +185,10 @@ const Tasks = () => {
         try {
             await projectAPI.notifyTask(task.pId, task.id);
             setNotifiedTaskIds(prev => new Set([...prev, `${task.pId}-${task.id}`]));
-            alert('Admin has been notified successfully!');
+            toast.success('Admin has been notified successfully!');
         } catch (err) {
             console.error('Failed to notify admin:', err);
-            alert('Failed to notify admin. Please check your connection.');
+            toast.error('Failed to notify admin. Please check your connection.');
         }
     };
 
@@ -196,10 +209,12 @@ const Tasks = () => {
 
         if (method === 'whatsapp') {
             if (!phone) {
-                alert(`No contact number found for ${assignedId}.`);
+                toast.warning(`No contact number found for ${assignedId}.`);
                 return;
             }
-            const cleanPhone = phone.replace(/\D/g, '');
+            let cleanPhone = phone.replace(/\D/g, '');
+            // If 10-digit number without country code, default to India (+91)
+            if (cleanPhone.length === 10) cleanPhone = '91' + cleanPhone;
             const encodedText = encodeURIComponent(`Hello,\nHere are the details for your assigned task:\n\n${taskDetails}`);
             window.open(`https://wa.me/${cleanPhone}?text=${encodedText}`, '_blank');
         } else if (method === 'email') {
@@ -207,7 +222,7 @@ const Tasks = () => {
                 // Call Server side email share
                 const res = await projectAPI.shareTaskEmail(task.pId, task.id);
                 if (res.data?.success) {
-                    alert(`✅ Task details shared successfully via Email to ${employee?.fullName || assignedId}`);
+                    toast.success(`Task details shared via Email to ${employee?.fullName || assignedId}`);
                 }
             } catch (err) {
                 console.error('Failed to share via email', err);
@@ -218,7 +233,7 @@ const Tasks = () => {
                     const encodedBody = encodeURIComponent(`Hello,\nHere are the details for your assigned task:\n\n${taskDetails}`);
                     window.open(`mailto:${email}?subject=${encodedSubject}&body=${encodedBody}`);
                 } else {
-                    alert('Failed to send email. No recipient address available.');
+                    toast.error('Failed to send email. No recipient address available.');
                 }
             }
         }
@@ -242,7 +257,7 @@ const Tasks = () => {
             </div>
 
             {/* ── KPI Row ────────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
                 <div 
                     className="card kpi-card-clickable" 
                     onClick={() => setStatusFilter('All')}
@@ -305,8 +320,13 @@ const Tasks = () => {
                         placeholder="Search tasks by name or project..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        style={{ width: '100%', padding: '10px 10px 10px 40px', borderRadius: '12px', border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none' }}
+                        style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '12px', border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '14px', outline: 'none' }}
                     />
+                    {searchTerm && (
+                        <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center', zIndex: 1 }}>
+                            <X size={15} />
+                        </button>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>

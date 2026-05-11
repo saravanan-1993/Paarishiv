@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { projectAPI, employeeAPI, hrmsAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import { X, UserPlus, Upload, Camera, FileText, Building2, Edit3, Briefcase } from 'lucide-react';
 import CustomSelect from './CustomSelect';
 
 
 const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = null }) => {
+    const toast = useToast();
     const isEdit = !!employee;
 
     const [formData, setFormData] = useState({
@@ -142,7 +144,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!selectedRole) {
-            alert("Please select a role.");
+            toast.warning('Please select a role.');
             return;
         }
 
@@ -197,7 +199,7 @@ const AddEmployeeModal = ({ isOpen, onClose, onEmployeeAdded, roles, employee = 
             onClose();
         } catch (err) {
             console.error(isEdit ? 'Failed to update employee' : 'Failed to create employee', err);
-            alert(err.response?.data?.detail || `Failed to ${isEdit ? 'update' : 'create'} employee. Please check if the Employee Code or Email already exists.`);
+            toast.error(err.response?.data?.detail || `Failed to ${isEdit ? 'update' : 'create'} employee. Please check if the Employee Code or Email already exists.`);
         }
     };
 

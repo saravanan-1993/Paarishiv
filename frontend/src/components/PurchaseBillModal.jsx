@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, FileText, Calendar, Building2, IndianRupee, Loader2, ClipboardCheck, ArrowDown } from 'lucide-react';
 import { grnAPI, billingAPI, purchaseOrderAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 
 const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [grns, setGrns] = useState([]);
     const [pos, setPos] = useState([]);
@@ -93,7 +95,7 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.grn_id || !formData.bill_no) {
-            alert('Please select a GRN and provide a Bill Number');
+            toast.warning('Please select a GRN and provide a Bill Number');
             return;
         }
 
@@ -111,7 +113,7 @@ const PurchaseBillModal = ({ isOpen, onClose, onSuccess }) => {
         } catch (err) {
             console.error('Failed to create purchase bill:', err);
             const errorMsg = err.response?.data?.detail || 'Failed to save bill. Please try again.';
-            alert(errorMsg);
+            toast.error(errorMsg);
         } finally {
             setIsSaving(false);
         }

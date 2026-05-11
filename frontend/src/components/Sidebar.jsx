@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { chatAPI, approvalsAPI, projectAPI, settingsAPI, notificationAPI } from '../utils/api';
+import { buildLogoUrl } from '../utils/logoUrl';
 import {
     LayoutDashboard,
     Briefcase,
@@ -94,7 +95,9 @@ const menuItems = [
         subItems: [
             { label: 'Dashboard', tabId: 'Dashboard' },
             { label: 'Trips', tabId: 'Trips' },
+            { label: 'Trip Requests', tabId: 'Trip Requests' },
             { label: 'Vehicles', tabId: 'Vehicles' },
+            { label: 'Drivers', tabId: 'Drivers' },
             { label: 'Maintenance', tabId: 'Maintenance' },
             { label: 'Reports', tabId: 'Reports' },
         ]
@@ -127,16 +130,22 @@ const menuItems = [
         icon: CheckCircle2,
         label: 'Approvals',
         path: '/approvals',
-        adminOnly: true,
         subItems: [
             { label: 'Leaves', tabId: 'Leaves' },
             { label: 'Purchase Orders', tabId: 'Purchase Orders' },
             { label: 'Materials', tabId: 'Materials' },
             { label: 'Expenses', tabId: 'Expenses' },
             { label: 'Manpower', tabId: 'Manpower' },
+            { label: 'DPR', tabId: 'DPR' },
+            { label: 'SC Bills', tabId: 'SC Bills' },
+            { label: 'Labour Pay', tabId: 'Labour Pay' },
+            { label: 'Stock Returns', tabId: 'Stock Returns' },
+            { label: 'Transfers', tabId: 'Transfers' },
+            { label: 'Vendor Payments', tabId: 'Vendor Payments' },
+            { label: 'Trip Requests', tabId: 'Trip Requests' },
         ]
     },
-    { icon: History, label: 'System Logs', path: '/logs', adminOnly: true },
+    { icon: History, label: 'System Logs', path: '/logs' },
     {
         icon: Settings,
         label: 'Settings',
@@ -144,6 +153,7 @@ const menuItems = [
         subItems: [
             { label: 'Profile', tabId: 'Profile' },
             { label: 'Company Profile', tabId: 'Company Profile' },
+            { label: 'Notifications', tabId: 'Notifications' },
             { label: 'Security', tabId: 'Security' },
             { label: 'Cloudinary', tabId: 'Cloudinary' },
             { label: 'SMTP', tabId: 'SMTP' },
@@ -153,7 +163,7 @@ const menuItems = [
 
 const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
     const [collapsed, setCollapsed] = useState(false);
-    const [expandedMenus, setExpandedMenus] = useState({ 'Procurement': true });
+    const [expandedMenus, setExpandedMenus] = useState({});
     const [unreadCount, setUnreadCount] = useState(0);
     const [notifUnreadCount, setNotifUnreadCount] = useState(0);
     const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
@@ -164,7 +174,29 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
         logo: ''
     });
     const navigate = useNavigate();
+    const location = useLocation();
     const { user, logout } = useAuth();
+
+    // Derive current active path from URL (reactive). Falls back to parent prop for compatibility.
+    const currentPath = location.pathname;
+    const currentTab = useMemo(() => new URLSearchParams(location.search).get('tab'), [location.search]);
+
+    // Auto-expand the parent menu containing the current route
+    React.useEffect(() => {
+        const parent = menuItems.find(item =>
+            item.subItems && (currentPath === item.path || currentPath.startsWith(item.path + '/'))
+        );
+        if (parent) {
+            setExpandedMenus(prev => ({ ...prev, [parent.label]: true }));
+        }
+    }, [currentPath]);
+
+    // Keep parent's activeTab in sync with URL so highlighting works on direct/refresh/back nav
+    React.useEffect(() => {
+        if (setActiveTab && currentPath !== activeTab) {
+            setActiveTab(currentPath);
+        }
+    }, [currentPath, activeTab, setActiveTab]);
 
     React.useEffect(() => {
         const handleRolesUpdate = () => setRolesVersion(v => v + 1);
@@ -252,17 +284,25 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
             } catch (err) {}
         };
 
-        fetchUnread();
-        fetchApprovals();
-        fetchTasks();
-        fetchNotifCount();
-        const interval = setInterval(() => {
+        const refreshAll = () => {
             fetchUnread();
             fetchApprovals();
             fetchTasks();
             fetchNotifCount();
-        }, 15000);
-        return () => clearInterval(interval);
+        };
+        refreshAll();
+        const interval = setInterval(() => {
+            // Pause polling when tab is hidden to save bandwidth
+            if (typeof document !== 'undefined' && document.hidden) return;
+            refreshAll();
+        }, 60000);
+        // Refresh immediately when tab regains focus
+        const onVisibility = () => { if (!document.hidden) refreshAll(); };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
     }, [user]);
 
     const handleNavigation = (path) => {
@@ -355,7 +395,7 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                         }}>
                             {companyInfo.logo ? (
                                 <img
-                                    src={companyInfo.logo.startsWith('http') || companyInfo.logo.startsWith('/static') || companyInfo.logo.startsWith('/api') ? companyInfo.logo : `/api${companyInfo.logo}`}
+                                    src={buildLogoUrl(companyInfo.logo)}
                                     alt="Logo"
                                     style={{ width: '85%', height: '85%', objectFit: 'contain' }}
                                 />
@@ -384,7 +424,9 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                     overflowY: 'auto',
                     overflowX: 'hidden'
                 }}>
-                    {filteredItems.map((item, index) => (
+                    {filteredItems.map((item, index) => {
+                        const isItemActive = currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path + '/'));
+                        return (
                         <React.Fragment key={index}>
                             <div
                                 onClick={() => {
@@ -403,18 +445,18 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                                     cursor: 'pointer',
                                     marginBottom: '4px',
                                     transition: 'var(--transition)',
-                                    backgroundColor: activeTab === item.path ? 'var(--primary)' : 'transparent',
-                                    color: activeTab === item.path ? '#FFFFFF' : 'var(--sidebar-text)',
+                                    backgroundColor: isItemActive ? 'var(--primary)' : 'transparent',
+                                    color: isItemActive ? '#FFFFFF' : 'var(--sidebar-text)',
                                     justifyContent: collapsed ? 'center' : 'flex-start',
                                     position: 'relative',
-                                    borderLeft: activeTab === item.path ? '4px solid #FFFFFF' : '4px solid transparent'
+                                    borderLeft: isItemActive ? '4px solid #FFFFFF' : '4px solid transparent'
                                 }}
                                 className="menu-item"
                             >
                                 <item.icon size={20} style={{ minWidth: '20px' }} />
                                 {!collapsed && (
                                     <>
-                                        <span style={{ fontSize: '14px', fontWeight: activeTab === item.path ? '600' : '500', flex: 1 }}>
+                                        <span style={{ fontSize: '14px', fontWeight: isItemActive ? '600' : '500', flex: 1 }}>
                                             {item.label}
                                         </span>
                                         {item.subItems && item.subItems.length > 0 && (
@@ -515,10 +557,10 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                             {!collapsed && expandedMenus[item.label] && item.subItems && item.subItems.length > 0 && (
                                 <div style={{ marginBottom: '8px' }}>
                                     {item.subItems.map((sub, sIdx) => {
-                                        const subPath = sub.path || `${item.path}?tab=${sub.tabId}`;
+                                        const subPath = sub.path || `${item.path}?tab=${encodeURIComponent(sub.tabId)}`;
                                         const isSubActive = sub.path
-                                            ? window.location.pathname === sub.path
-                                            : (window.location.pathname === item.path && window.location.search.includes(`tab=${sub.tabId}`));
+                                            ? currentPath === sub.path
+                                            : (currentPath === item.path && currentTab === sub.tabId);
 
                                         return (
                                             <div
@@ -547,7 +589,8 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
                                 </div>
                             )}
                         </React.Fragment>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 <div className="sidebar-footer" style={{

@@ -6,10 +6,13 @@ import {
 } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI, projectAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission } from '../utils/rbac';
 import SubcontractorBillModal from '../components/SubcontractorBillModal';
 import MBookViewModal from '../components/MBookViewModal';
 import SubcontractorPaymentModal from '../components/SubcontractorPaymentModal';
+import { fmt } from '../utils/format';
 
 const statusConfig = {
     'Draft': { bg: '#F3F4F6', color: '#374151', label: 'Draft' },
@@ -25,15 +28,11 @@ const typeConfig = {
     'day_based': { bg: '#FEF3C7', color: '#92400E', label: 'Day Based' },
 };
 
-const fmt = (n) => {
-    if (!n && n !== 0) return '\u20B90';
-    if (n >= 10000000) return `\u20B9${(n / 10000000).toFixed(2)} Cr`;
-    if (n >= 100000) return `\u20B9${(n / 100000).toFixed(2)} L`;
-    return `\u20B9${Number(n).toLocaleString('en-IN')}`;
-};
 
 const SubcontractorBilling = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const canEdit = hasPermission(user, 'Subcontractor Billing', 'edit');
     const canDelete = hasPermission(user, 'Subcontractor Billing', 'delete');
 
@@ -132,24 +131,25 @@ const SubcontractorBilling = () => {
     }, [allPayments, filterProject, filterContractor, searchTerm]);
 
     const handleSubmitForApproval = async (bill) => {
-        if (!window.confirm(`Submit Bill ${bill.bill_no} for approval?`)) return;
+        if (!(await confirm({ title: 'Submit for Approval', message: `Submit Bill ${bill.bill_no} for approval?`, confirmText: 'Submit' }))) return;
         try {
             await subcontractorBillingAPI.submit(bill.id);
             loadData();
         } catch (err) {
             console.error('Failed to submit bill:', err);
-            alert('Failed to submit bill for approval. Please try again.');
+            toast.error('Failed to submit bill for approval. Please try again.');
         }
     };
 
     const handleDeleteBill = async (bill) => {
-        if (!window.confirm(`Are you sure you want to delete Bill ${bill.bill_no}? This action cannot be undone.`)) return;
+        if (!(await confirm({ title: 'Delete Bill', message: `Are you sure you want to delete Bill ${bill.bill_no}? This action cannot be undone.`, confirmText: 'Delete', danger: true }))) return;
         try {
             await subcontractorBillingAPI.delete(bill.id);
             loadData();
+            toast.success(`Bill ${bill.bill_no} deleted`);
         } catch (err) {
             console.error('Failed to delete bill:', err);
-            alert('Failed to delete bill. Please try again.');
+            toast.error('Failed to delete bill. Please try again.');
         }
     };
 
@@ -243,7 +243,7 @@ const SubcontractorBilling = () => {
             </div>
 
             {/* Summary Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                 {[
                     { label: 'Total Bills', value: summary.total, icon: FileText, color: '#3B82F6' },
                     { label: 'Pending Approval', value: summary.pending, icon: Clock, color: '#F59E0B' },
@@ -297,8 +297,13 @@ const SubcontractorBilling = () => {
                                 placeholder="Search by Bill No or Contractor..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                                style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
                             />
+                            {searchTerm && (
+                                <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                    <XCircle size={15} />
+                                </button>
+                            )}
                         </div>
                         <select
                             value={filterProject}

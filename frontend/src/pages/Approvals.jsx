@@ -9,12 +9,18 @@ import { approvalsAPI } from '../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasFeature, hasSubTabAccess } from '../utils/rbac';
 import PODetailModal from '../components/PODetailModal';
 import MaterialRequestDetailModal from '../components/MaterialRequestDetailModal';
+import PromptModal from '../components/PromptModal';
 
 const Approvals = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
+    const [rejectPrompt, setRejectPrompt] = useState(null); // { onSubmit }
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('leaves');
@@ -31,7 +37,13 @@ const Approvals = () => {
         'Materials': 'materials',
         'Expenses': 'expenses',
         'Manpower': 'manpower',
-        'DPR': 'dprs'
+        'DPR': 'dprs',
+        'SC Bills': 'subcontractor_bills',
+        'Labour Pay': 'labour_payments',
+        'Stock Returns': 'stock_returns',
+        'Transfers': 'material_transfers',
+        'Vendor Payments': 'payment_requests',
+        'Trip Requests': 'trip_requests'
     }), []);
 
     useEffect(() => {
@@ -47,11 +59,23 @@ const Approvals = () => {
         // Find the label for the URL or just use the ID if already normalized
         const label = Object.keys(tabMapping).find(key => tabMapping[key] === tabId) || tabId;
         setActiveTab(tabId);
-        setSearchParams({ tab: label });
+        // Preserve persisted filter/search/view params when switching tabs
+        const next = new URLSearchParams(searchParams);
+        next.set('tab', label);
+        setSearchParams(next, { replace: true });
     };
-    const [activeStatusTab, setActiveStatusTab] = useState('Pending'); // "Pending" or "All"
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filterStatus, setFilterStatus] = useState('All'); // the dropdown filter for History
+    const [activeStatusTab, setActiveStatusTab] = useState(() => searchParams.get('view') || 'Pending'); // "Pending" or "All"
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+    const [filterStatus, setFilterStatus] = useState(() => searchParams.get('filter') || 'All'); // the dropdown filter for History
+
+    // Persist UI state to URL (preserves ?tab=)
+    useEffect(() => {
+        const next = new URLSearchParams(searchParams);
+        if (searchQuery) next.set('q', searchQuery); else next.delete('q');
+        if (filterStatus && filterStatus !== 'All') next.set('filter', filterStatus); else next.delete('filter');
+        if (activeStatusTab && activeStatusTab !== 'Pending') next.set('view', activeStatusTab); else next.delete('view');
+        setSearchParams(next, { replace: true });
+    }, [searchQuery, filterStatus, activeStatusTab]);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const filterRef = React.useRef(null);
 
@@ -138,17 +162,23 @@ const Approvals = () => {
 
     const handleBulkApprove = async () => {
         if (selectedIds.length === 0) return;
-        if (!window.confirm(`Approve ${selectedIds.length} selected items?`)) return;
+        if (!(await confirm({ title: 'Bulk Approve', message: `Approve ${selectedIds.length} selected items?`, confirmText: 'Approve All' }))) return;
         setBulkLoading(true);
         try {
-            for (const id of selectedIds) {
-                await approvalsAPI.action(activeTab, id, 'approve', {});
-            }
+            const results = await Promise.allSettled(
+                selectedIds.map(id => approvalsAPI.action(activeTab, id, 'approve', {}))
+            );
+            const failed = results.filter(r => r.status === 'rejected').length;
             setSelectedIds([]);
             await fetchData();
+            if (failed > 0) {
+                toast.warning(`${failed} of ${selectedIds.length} items failed to approve`);
+            } else {
+                toast.success(`${selectedIds.length} items approved`);
+            }
         } catch (err) {
             console.error('Bulk approve error:', err);
-            alert('Some items failed to approve');
+            toast.error('Some items failed to approve');
         }
         setBulkLoading(false);
     };
@@ -167,14 +197,7 @@ const Approvals = () => {
         }
     };
 
-    const handleAction = async (type, id, action) => {
-        let payload = {};
-        if (action === 'reject') {
-            const reason = window.prompt("Optional: Enter a reason for rejection:");
-            if (reason === null) return;
-            if (reason.trim()) payload.reason = reason.trim();
-        }
-
+    const performAction = async (type, id, action, payload) => {
         setActionLoading(`${id}-${action}`);
         try {
             await approvalsAPI.action(type, id, action, payload);
@@ -183,14 +206,29 @@ const Approvals = () => {
                 [type]: prev[type].filter(item => item._id !== id && item.id !== id)
             }));
             const label = type === 'labour_payments' ? 'Labour Payment' : type === 'subcontractor_bills' ? 'SC Bill' : type.replace('_', ' ');
-            alert(`${label} ${action === 'approve' ? 'approved' : 'rejected'} successfully. Notification sent.`);
+            if (action === 'approve') toast.success(`${label} approved`);
+            else toast.info(`${label} rejected`);
         } catch (error) {
             console.error('Error performing action:', error);
             const detail = error.response?.data?.detail;
-            alert(typeof detail === 'string' ? detail : 'Failed to process approval.');
+            toast.error(typeof detail === 'string' ? detail : 'Failed to process approval.');
         } finally {
             setActionLoading(null);
         }
+    };
+
+    const handleAction = async (type, id, action) => {
+        if (action === 'reject') {
+            setRejectPrompt({
+                onSubmit: (reason) => {
+                    const payload = {};
+                    if (reason && reason.trim()) payload.reason = reason.trim();
+                    performAction(type, id, action, payload);
+                }
+            });
+            return;
+        }
+        await performAction(type, id, action, {});
     };
 
     const tabs = [
@@ -208,25 +246,32 @@ const Approvals = () => {
         ...(canSeeTripRequestsTab ? [{ id: 'trip_requests', label: 'Trip Requests', count: data.trip_requests?.length || 0, icon: Truck, color: '#7c3aed' }] : []),
     ];
 
-    const handleDprAction = async (dpr, action) => {
-        // Bug 4.7 - DPR uses project_id:dpr_id format
+    const performDprAction = async (dpr, action, payload) => {
         const compositeId = `${dpr.project_id}:${dpr.id}`;
-        let payload = {};
-        if (action === 'reject') {
-            const reason = window.prompt("Optional: Enter a reason for rejection:");
-            if (reason === null) return;
-            if (reason.trim()) payload.reason = reason.trim();
-        }
         setActionLoading(`${dpr.id}-${action}`);
         try {
             await approvalsAPI.action('dprs', compositeId, action, payload);
             await fetchData();
         } catch (error) {
             console.error('Error performing DPR action:', error);
-            alert(error?.response?.data?.detail || 'Failed to process DPR approval.');
+            toast.error(error?.response?.data?.detail || 'Failed to process DPR approval.');
         } finally {
             setActionLoading(null);
         }
+    };
+
+    const handleDprAction = async (dpr, action) => {
+        if (action === 'reject') {
+            setRejectPrompt({
+                onSubmit: (reason) => {
+                    const payload = {};
+                    if (reason && reason.trim()) payload.reason = reason.trim();
+                    performDprAction(dpr, action, payload);
+                }
+            });
+            return;
+        }
+        await performDprAction(dpr, action, {});
     };
 
     const filteredData = (data[activeTab] || []).filter(item => {
@@ -714,7 +759,7 @@ const Approvals = () => {
                 </div>
                 <div>
                     <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>AMOUNT</p>
-                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)' }}>{'\u20B9'}{(item.payable_amount || 0).toLocaleString('en-IN')}</p>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)' }}>{'₹'}{(item.payable_amount || 0).toLocaleString('en-IN')}</p>
                 </div>
                 <div>
                     <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>DATE</p>
@@ -902,7 +947,7 @@ const Approvals = () => {
                     }}>{item.status}</span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px', background: '#f8fafc', borderRadius: '10px', padding: '14px' }}>
                     <div>
                         <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>FROM</p>
                         <p style={{ fontSize: '13px', fontWeight: '700' }}>{item.from_location || '—'}</p>
@@ -1028,7 +1073,7 @@ const Approvals = () => {
                 </div>
                 <div>
                     <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>DAY COST</p>
-                    <p style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>{'\u20B9'}{(item.day_cost || 0).toLocaleString('en-IN')}</p>
+                    <p style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>{'₹'}{(item.day_cost || 0).toLocaleString('en-IN')}</p>
                 </div>
                 <div>
                     <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>REQUESTED BY</p>
@@ -1296,11 +1341,16 @@ const Approvals = () => {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     style={{
-                                        padding: '10px 16px 10px 40px', borderRadius: '12px',
+                                        padding: '10px 40px 10px 40px', borderRadius: '12px',
                                         border: '1px solid #e2e8f0', width: '250px',
                                         fontSize: '14px', outline: 'none'
                                     }}
                                 />
+                                {searchQuery && (
+                                    <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                        <XCircle size={16} />
+                                    </button>
+                                )}
                             </div>
 
                             {activeStatusTab === 'All' && (
@@ -1424,11 +1474,6 @@ const Approvals = () => {
                     ))}
                 </div>
             </div>
-
-            <style>{`
-                .animate-spin { animation: spin 1s linear infinite; }
-                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            `}</style>
 
             <PODetailModal
                 isOpen={!!selectedPO}
@@ -1626,6 +1671,19 @@ const Approvals = () => {
                 </div>
                 );
             })()}
+
+            <PromptModal
+                isOpen={!!rejectPrompt}
+                onClose={() => setRejectPrompt(null)}
+                onSubmit={(reason) => rejectPrompt?.onSubmit?.(reason)}
+                title="Reject Request"
+                message="Optionally provide a reason for rejecting. The requester will see this note."
+                placeholder="e.g. Budget exceeded, insufficient justification, duplicate request…"
+                confirmText="Reject"
+                cancelText="Cancel"
+                danger
+                multiline
+            />
         </div>
     );
 };

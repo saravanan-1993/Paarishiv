@@ -34,6 +34,8 @@ import DPRModal from '../components/DPRModal';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import EditProjectModal from '../components/EditProjectModal';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, materialAPI, inventoryAPI } from '../utils/api';
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
@@ -52,6 +54,7 @@ const fmtAmt = (n) => {
 
 
 const TaskStatusDropdown = ({ task, onStatusChange }) => {
+    const confirm = useConfirm();
     const [isOpen, setIsOpen] = useState(false);
     const getOptions = (status) => {
         if (status === 'Pending') return ['In Progress', 'Completed'];
@@ -115,14 +118,14 @@ const TaskStatusDropdown = ({ task, onStatusChange }) => {
                         {options.map((opt, idx) => (
                             <div
                                 key={opt}
-                                onClick={() => {
+                                onClick={async () => {
                                     if (task.status !== opt) {
                                         if (opt === 'Completed') {
-                                            if (window.confirm("Are you sure? Once marked as COMPLETED, this task status cannot be modified again.")) {
+                                            if (await confirm({ title: 'Mark as Completed', message: 'Once marked as COMPLETED, this task status cannot be modified again. Continue?', confirmText: 'Mark Completed' })) {
                                                 onStatusChange(task.id, opt);
                                             }
                                         } else {
-                                            if (window.confirm(`Are you sure you want to move task to ${opt}?`)) {
+                                            if (await confirm({ title: 'Change Status', message: `Move task to ${opt}?`, confirmText: 'Move' })) {
                                                 onStatusChange(task.id, opt);
                                             }
                                         }
@@ -327,6 +330,8 @@ const ProjectDetails = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const isEngineer = !hasPermission(user, 'Projects', 'delete') && hasPermission(user, 'Projects', 'edit');
     const canEditProjects = hasPermission(user, 'Projects', 'edit');
     const canDeleteProjects = hasPermission(user, 'Projects', 'delete');
@@ -409,6 +414,7 @@ const ProjectDetails = () => {
     const [labourSummary, setLabourSummary] = useState(null);
     const [isUrgentMaterialOpen, setIsUrgentMaterialOpen] = useState(false);
     const [isReturnWarehouseOpen, setIsReturnWarehouseOpen] = useState(false);
+    const [returnSubmitting, setReturnSubmitting] = useState(false);
     const [siteMaterials, setSiteMaterials] = useState([]);
     const [siteMaterialsLoading, setSiteMaterialsLoading] = useState(false);
 
@@ -427,7 +433,7 @@ const ProjectDetails = () => {
             reloadProject();
         } catch (err) {
             console.error('Failed to update project status:', err);
-            alert('Failed to update project status.');
+            toast.error('Failed to update project status.');
         }
     };
 
@@ -444,28 +450,28 @@ const ProjectDetails = () => {
             reloadProject();
         } catch (err) {
             console.error('Failed to update task:', err);
-            alert('Failed to update task status');
+            toast.error('Failed to update task status');
         }
     };
 
     const handleNotifyAdmin = async (task) => {
         try {
             await projectAPI.notifyTask(project._id, task.id);
-            alert('Admin has been notified successfully! 🚀');
+            toast.success('Admin has been notified successfully!');
         } catch (err) {
             console.error('Failed to notify admin:', err);
-            alert('Failed to notify admin. Please check your connection.');
+            toast.error('Failed to notify admin. Please check your connection.');
         }
     };
 
     const handleTaskDelete = async (taskId) => {
-        if (!window.confirm("Are you sure you want to delete this task?")) return;
+        if (!(await confirm({ title: 'Delete Task', message: 'Are you sure you want to delete this task?', confirmText: 'Delete', danger: true }))) return;
         try {
             await projectAPI.deleteTask(project._id, taskId);
             reloadProject();
         } catch (err) {
             console.error('Failed to delete task:', err);
-            alert('Failed to delete task');
+            toast.error('Failed to delete task');
         }
     };
 
@@ -475,7 +481,7 @@ const ProjectDetails = () => {
             reloadProject();
         } catch (err) {
             console.error('Failed to update DPR status:', err);
-            alert('Failed to update status.');
+            toast.error('Failed to update status.');
         }
     };
 
@@ -593,7 +599,6 @@ const ProjectDetails = () => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px', color: 'var(--text-muted)' }}>
             <Loader2 size={40} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
             <p style={{ fontWeight: '600', fontSize: '16px' }}>Loading project details...</p>
-            <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
         </div>
     );
 
@@ -696,7 +701,7 @@ const ProjectDetails = () => {
                 </div>
 
                 {/* ── Tabs ──────────────────────────────────────────────────────── */}
-                <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: '32px', gap: '4px', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <div style={{ display: 'flex', borderBottom: '2px solid var(--border)', marginBottom: '32px', gap: '4px', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'thin' }}>
                     {tabs.map((tab) => {
                         const TabIcon = tab.icon;
                         const isActive = activeTab === tab.name || (activeTab === 'Tasks' && tab.name.includes('Tasks')) || (activeTab === 'DPR' && tab.name.includes('DPR'));
@@ -858,7 +863,7 @@ const ProjectDetails = () => {
                                 )}
                             </div>
                         ) : (
-                            <div style={{ overflowX: 'visible', paddingBottom: '100px' }}>
+                            <div style={{ overflowX: 'auto', paddingBottom: '100px' }}>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -1287,12 +1292,12 @@ const ProjectDetails = () => {
                         {labourSummary && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
                                 {canSeeWages && (
-                                    <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Cost</span><span style={{ fontSize: 18, fontWeight: 800 }}>{'\u20B9'}{(labourSummary.total_cost || 0).toLocaleString('en-IN')}</span></div>
+                                    <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Cost</span><span style={{ fontSize: 18, fontWeight: 800 }}>{'₹'}{(labourSummary.total_cost || 0).toLocaleString('en-IN')}</span></div>
                                 )}
                                 <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Days Recorded</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_days_recorded || 0}</span></div>
                                 <div style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>Total Heads</span><span style={{ fontSize: 18, fontWeight: 800 }}>{labourSummary.total_heads || 0}</span></div>
                                 {Object.entries(labourSummary.categories || {}).map(([cat, data]) => (
-                                    <div key={cat} style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>{cat}</span><span style={{ fontSize: 18, fontWeight: 800 }}>{data.total_heads}{canSeeWages ? ` \u00B7 \u20B9${data.cost.toLocaleString('en-IN')}` : ''}</span></div>
+                                    <div key={cat} style={labourStatStyle}><span style={{ color: '#64748B', fontSize: 12 }}>{cat}</span><span style={{ fontSize: 18, fontWeight: 800 }}>{data.total_heads}{canSeeWages ? ` \u00B7 ₹${data.cost.toLocaleString('en-IN')}` : ''}</span></div>
                                 ))}
                             </div>
                         )}
@@ -1346,7 +1351,7 @@ const ProjectDetails = () => {
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '12px 14px', fontSize: 14, textAlign: 'center', fontWeight: 800 }}>{rec.total_count}</td>
-                                                {canSeeWages && <td style={{ padding: '12px 14px', fontSize: 13, textAlign: 'right', fontWeight: 700 }}>{'\u20B9'}{(rec.day_cost || 0).toLocaleString('en-IN')}</td>}
+                                                {canSeeWages && <td style={{ padding: '12px 14px', fontSize: 13, textAlign: 'right', fontWeight: 700 }}>{'₹'}{(rec.day_cost || 0).toLocaleString('en-IN')}</td>}
                                                 <td style={{ padding: '12px 14px', fontSize: 13, color: '#64748B' }}>{rec.marked_by}</td>
                                                 <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                                                     <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: sc.bg, color: sc.color }}>{status}</span>
@@ -1415,28 +1420,26 @@ const ProjectDetails = () => {
                         </div>
                         <div style={{ padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                             <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(false)}>Cancel</button>
-                            <button className="btn btn-primary" id="return-submit-btn" onClick={async () => {
-                                const btn = document.getElementById('return-submit-btn');
-                                if (btn.disabled) return;
-                                btn.disabled = true;
-                                btn.textContent = 'Submitting...';
+                            <button className="btn btn-primary" disabled={returnSubmitting} onClick={async () => {
+                                if (returnSubmitting) return;
                                 const items = siteMaterials.map((m, i) => {
                                     const qty = parseFloat(document.getElementById(`return-qty-${i}`)?.value) || 0;
                                     return qty > 0 ? { name: m.material_name, quantity: qty, unit: m.unit || 'Nos' } : null;
                                 }).filter(Boolean);
-                                if (!items.length) { alert('Select at least one material to return'); btn.disabled = false; btn.textContent = 'Submit Return Request'; return; }
+                                if (!items.length) { toast.warning('Select at least one material to return'); return; }
+                                setReturnSubmitting(true);
                                 try {
                                     await inventoryAPI.createReturnRequest({ project_name: project.name, items, notes: '' });
-                                    alert('Return request submitted for admin approval');
+                                    toast.success('Return request submitted for admin approval');
                                     setIsReturnWarehouseOpen(false);
                                     loadSiteMaterials();
                                 } catch (err) {
-                                    alert(err.response?.data?.detail || 'Failed to submit return request');
-                                    btn.disabled = false;
-                                    btn.textContent = 'Submit Return Request';
+                                    toast.error(err.response?.data?.detail || 'Failed to submit return request');
+                                } finally {
+                                    setReturnSubmitting(false);
                                 }
                             }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <ArrowUpFromLine size={16} /> Submit Return Request
+                                <ArrowUpFromLine size={16} /> {returnSubmitting ? 'Submitting...' : 'Submit Return Request'}
                             </button>
                         </div>
                     </div>

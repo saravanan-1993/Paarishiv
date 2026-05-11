@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { fleetAPI, projectAPI, employeeAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission, hasFeature, hasSubTabAccess } from '../utils/rbac';
 import VehicleModal from '../components/VehicleModal';
 import TripModal from '../components/TripModal';
@@ -19,6 +21,8 @@ import Pagination from '../components/Pagination';
 
 const Fleet = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const canEditFleet = hasPermission(user, 'Fleet Management', 'edit');
     const canDeleteFleet = hasPermission(user, 'Fleet Management', 'delete');
     const canRequestTrip = hasFeature(user, 'request_trip') || hasPermission(user, 'Fleet Management', 'view');
@@ -115,29 +119,31 @@ const Fleet = () => {
     };
 
     const handleDeleteTrip = async (tripId) => {
-        if (!window.confirm('Are you sure you want to delete this trip?')) return;
+        if (!(await confirm({ title: 'Delete Trip', message: 'Are you sure you want to delete this trip?', confirmText: 'Delete', danger: true }))) return;
         try {
             await fleetAPI.deleteTrip(tripId);
             fetchData();
+            toast.success('Trip deleted');
         } catch (err) {
-            alert('Failed to delete trip');
+            toast.error('Failed to delete trip');
         }
     };
 
     const handleDeleteVehicle = async (vehicleId) => {
-        if (!window.confirm('Are you sure you want to delete this vehicle?')) return;
+        if (!(await confirm({ title: 'Delete Vehicle', message: 'Are you sure you want to delete this vehicle?', confirmText: 'Delete', danger: true }))) return;
         try {
             await fleetAPI.deleteVehicle(vehicleId);
             fetchData();
+            toast.success('Vehicle deleted');
         } catch (err) {
-            alert('Failed to delete vehicle');
+            toast.error('Failed to delete vehicle');
         }
     };
 
     const renderDashboard = () => (
         <div className="animate-fade-in">
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '32px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>
                 {[
                     { label: "Today's Trips", value: stats.summary?.todayTrips || 0, icon: Truck, color: '#3B82F6' },
                     { label: "Today's Revenue", value: `₹${(stats.summary?.todayRevenue || 0).toLocaleString()}`, icon: IndianRupee, color: '#10B981' },
@@ -277,8 +283,13 @@ const Fleet = () => {
                                 placeholder="Search by Trip ID, Vehicle, Driver, Customer..."
                                 value={tripSearch}
                                 onChange={(e) => { setTripSearch(e.target.value); setTripPage(1); }}
-                                style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }}
                             />
+                            {tripSearch && (
+                                <button type="button" onClick={() => { setTripSearch(''); setTripPage(1); }} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                    <XCircle size={15} />
+                                </button>
+                            )}
                         </div>
                         <button
                             className={`btn ${tripFilterOpen ? 'btn-primary' : 'btn-outline'}`}
@@ -381,9 +392,9 @@ const Fleet = () => {
                                                 <CheckCircle size={16} />
                                             </button>
                                         )}
-                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>}
-                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>}
-                                        {canDeleteFleet && <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>}
+                                        {canEditFleet && <button className="icon-btn" aria-label="Add expenses" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>}
+                                        {canEditFleet && <button className="icon-btn" aria-label="Edit trip" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>}
+                                        {canDeleteFleet && <button className="icon-btn" aria-label="Delete trip" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>}
                                     </div>
                                 </td>
                             </tr>
@@ -434,8 +445,8 @@ const Fleet = () => {
                         <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
                             <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }} onClick={() => { setSelectedTrip(v); setActiveTab('Trips'); }}>History</button>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                                {canEditFleet && <button className="icon-btn" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>}
-                                {canDeleteFleet && <button className="icon-btn" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>}
+                                {canEditFleet && <button className="icon-btn" aria-label="Edit vehicle" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>}
+                                {canDeleteFleet && <button className="icon-btn" aria-label="Delete vehicle" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>}
                             </div>
                         </div>
                     </div>
@@ -509,13 +520,13 @@ const Fleet = () => {
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                        {canEditFleet && <button className="icon-btn" onClick={() => { setSelectedDriver(driver); setIsDriverModalOpen(true); }} title="Edit Driver"><Edit2 size={16} /></button>}
+                                        {canEditFleet && <button className="icon-btn" aria-label="Edit driver" onClick={() => { setSelectedDriver(driver); setIsDriverModalOpen(true); }} title="Edit Driver"><Edit2 size={16} /></button>}
                                         {canDeleteFleet && <button className="icon-btn" style={{ color: '#EF4444' }} onClick={async () => {
-                                            if (window.confirm('Are you sure you want to delete this driver?')) {
+                                            if (await confirm({ title: 'Delete Driver', message: 'Are you sure you want to delete this driver?', confirmText: 'Delete', danger: true })) {
                                                 try {
                                                     await employeeAPI.delete(driver.id || driver._id);
                                                     fetchData();
-                                                } catch (err) { alert('Failed to delete driver'); }
+                                                } catch (err) { toast.error('Failed to delete driver'); }
                                             }
                                         }} title="Delete Driver"><Trash2 size={16} /></button>}
                                     </div>
@@ -534,7 +545,7 @@ const Fleet = () => {
 
     const handleAssignSubmit = async (req) => {
         if (!assignForm.vehicleNumber || !assignForm.driverName) {
-            alert('Please select vehicle and driver.');
+            toast.warning('Please select vehicle and driver.');
             return;
         }
         try {
@@ -545,9 +556,9 @@ const Fleet = () => {
             setAssigningRequest(null);
             setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' });
             fetchData();
-            alert('Vehicle assigned! Trip created and expense recorded to project.');
+            toast.success('Vehicle assigned! Trip created and expense recorded to project.');
         } catch (err) {
-            alert(err?.response?.data?.detail || 'Failed to assign vehicle.');
+            toast.error(err?.response?.data?.detail || 'Failed to assign vehicle.');
         }
     };
 
@@ -1076,7 +1087,7 @@ const Fleet = () => {
                 <TripRequestModal
                     isOpen={isTripRequestModalOpen}
                     onClose={() => setIsTripRequestModalOpen(false)}
-                    onSuccess={() => { fetchData(); alert('Trip request submitted! It will appear in Approvals for review.'); }}
+                    onSuccess={() => { fetchData(); toast.success('Trip request submitted! It will appear in Approvals for review.'); }}
                 />
             </div>
         </div>

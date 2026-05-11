@@ -22,10 +22,10 @@ const HRView = ({ stats }) => {
                 Overview of Employee Attendance, Leaves, and Workforce metrics.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #3B82F6' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#EFF6FF', color: '#3B82F6', flexShrink: 0 }}>
-                        <Users size={24} />
+                        <Users size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Active Employees</p>
@@ -35,7 +35,7 @@ const HRView = ({ stats }) => {
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #10B981' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#ECFDF5', color: '#10B981', flexShrink: 0 }}>
-                        <UserCheck size={24} />
+                        <UserCheck size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Present Today</p>
@@ -45,7 +45,7 @@ const HRView = ({ stats }) => {
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #F59E0B' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#FEF3C7', color: '#F59E0B', flexShrink: 0 }}>
-                        <Calendar size={24} />
+                        <Calendar size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Pending Leave</p>
@@ -53,9 +53,9 @@ const HRView = ({ stats }) => {
                     </div>
                 </div>
 
-                <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #EF4444' }}>
-                    <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#FEF2F2', color: '#EF4444', flexShrink: 0 }}>
-                        <Clock size={24} />
+                <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${(hrmsStats.latecomers || 0) > 0 ? '#EF4444' : '#10B981'}` }}>
+                    <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: (hrmsStats.latecomers || 0) > 0 ? '#FEF2F2' : '#ECFDF5', color: (hrmsStats.latecomers || 0) > 0 ? '#EF4444' : '#10B981', flexShrink: 0 }}>
+                        <Clock size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Latecomers</p>
@@ -64,13 +64,13 @@ const HRView = ({ stats }) => {
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <Calendar size={20} color="#F59E0B" /> Leave Requests Actions
                         </h3>
-                        <button className="btn btn-outline" onClick={() => navigate('/hrms')} style={{ padding: '6px 12px', fontSize: '12px' }}>
+                        <button className="btn btn-outline" onClick={() => navigate('/hr')} style={{ padding: '6px 12px', fontSize: '12px' }}>
                             Go to HRMS
                         </button>
                     </div>
@@ -91,7 +91,7 @@ const HRView = ({ stats }) => {
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', backgroundColor: '#FDF2F8', borderRadius: '8px' }}>
                                     <Cake size={16} color="#EC4899" />
                                     <span style={{ fontSize: '14px', fontWeight: '600' }}>{b.name}</span>
-                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>({b.employeeCode})</span>
+                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>({b.employeeCode || b.employee_code || ''})</span>
                                 </div>
                             ))}
                         </div>

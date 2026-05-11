@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { employeeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import { X, UserPlus, Phone, CreditCard, Calendar, Save, Loader2, Edit3, ShieldCheck } from 'lucide-react';
 
 const DriverModal = ({ isOpen, onClose, onSaved, driver = null }) => {
+    const toast = useToast();
     const isEdit = !!driver;
     const [submitting, setSubmitting] = useState(false);
 
@@ -89,7 +91,7 @@ const DriverModal = ({ isOpen, onClose, onSaved, driver = null }) => {
             onClose();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to save driver details');
+            toast.error(err.response?.data?.detail || 'Failed to save driver details');
         } finally {
             setSubmitting(false);
         }

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Droplets } from 'lucide-react';
 import { fleetAPI, projectAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Sites' }) => {
+    const toast = useToast();
     const [formData, setFormData] = useState({
         qty: '',
         rate: '',
@@ -43,12 +45,12 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
             const qty = parseFloat(formData.qty) || 0;
             const rate = parseFloat(formData.rate) || 0;
             if (qty <= 0 || rate <= 0) {
-                alert('Please enter valid quantity and rate');
+                toast.warning('Please enter valid quantity and rate');
                 setLoading(false);
                 return;
             }
             if (!formData.site) {
-                alert('Please select a site/project');
+                toast.warning('Please select a site/project');
                 setLoading(false);
                 return;
             }
@@ -69,7 +71,7 @@ const FuelStockModal = ({ isOpen, onClose, onStockAdded, projectName = 'All Site
         } catch (err) {
             console.error('Error adding fuel stock:', err);
             const detail = err.response?.data?.detail;
-            alert(typeof detail === 'string' ? detail : 'Failed to add fuel stock');
+            toast.error(typeof detail === 'string' ? detail : 'Failed to add fuel stock');
         } finally {
             setLoading(false);
         }

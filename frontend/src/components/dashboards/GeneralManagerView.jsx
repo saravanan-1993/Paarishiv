@@ -14,40 +14,40 @@ const GeneralManagerView = ({ projects, pendingApprovalsAmount }) => {
                 Overview of Projects, Attendance, Payroll, and Site Operations.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #3B82F6' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#EFF6FF', color: '#3B82F6', flexShrink: 0 }}>
-                        <Briefcase size={24} />
+                        <Briefcase size={24} aria-hidden="true" />
                     </div>
                     <div>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Active Projects</p>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Total Projects</p>
                         <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>{projects?.length || 0}</h3>
                     </div>
                 </div>
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #10B981' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#ECFDF5', color: '#10B981', flexShrink: 0 }}>
-                        <Users size={24} />
+                        <Users size={24} aria-hidden="true" />
                     </div>
                     <div>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Attendance Overvew</p>
-                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>Live</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Ongoing Projects</p>
+                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>{projects?.filter(p => p.status === 'Ongoing').length || 0}</h3>
                     </div>
                 </div>
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #F59E0B' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#FEF3C7', color: '#F59E0B', flexShrink: 0 }}>
-                        <FileText size={24} />
+                        <FileText size={24} aria-hidden="true" />
                     </div>
                     <div>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Payroll Summary</p>
-                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>Current</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Completed Projects</p>
+                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>{projects?.filter(p => p.status === 'Completed').length || 0}</h3>
                     </div>
                 </div>
 
-                <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #EF4444' }}>
-                    <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#FEF2F2', color: '#EF4444', flexShrink: 0 }}>
-                        <CheckCircle size={24} />
+                <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: `4px solid ${(pendingApprovalsAmount || 0) > 0 ? '#EF4444' : '#10B981'}` }}>
+                    <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: (pendingApprovalsAmount || 0) > 0 ? '#FEF2F2' : '#ECFDF5', color: (pendingApprovalsAmount || 0) > 0 ? '#EF4444' : '#10B981', flexShrink: 0 }}>
+                        <CheckCircle size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Pending Approvals</p>

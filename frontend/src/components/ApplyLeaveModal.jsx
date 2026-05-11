@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { employeeAPI, hrmsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { hasPermission } from '../utils/rbac';
 import CustomSelect from './CustomSelect';
 import { User, Calendar, Briefcase, Tag } from 'lucide-react';
 
 const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [employees, setEmployees] = useState([]);
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState({
@@ -45,9 +47,9 @@ const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (loading) return;
-        if (!formData.fromDate || !formData.toDate) { alert('Please select both From and To dates'); return; }
-        if (formData.toDate < formData.fromDate) { alert('To Date cannot be before From Date'); return; }
-        if (!formData.leaveType) { alert('Please select leave type'); return; }
+        if (!formData.fromDate || !formData.toDate) { toast.warning('Please select both From and To dates'); return; }
+        if (formData.toDate < formData.fromDate) { toast.warning('To Date cannot be before From Date'); return; }
+        if (!formData.leaveType) { toast.warning('Please select leave type'); return; }
 
         setLoading(true);
         try {
@@ -74,7 +76,7 @@ const ApplyLeaveModal = ({ isOpen, onClose, onLeaveApplied }) => {
             onClose();
         } catch (err) {
             console.error('Failed to apply leave:', err);
-            alert(err.message || 'Failed to submit leave request. Please try again.');
+            toast.error(err.message || 'Failed to submit leave request. Please try again.');
         } finally {
             setLoading(false);
         }

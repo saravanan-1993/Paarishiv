@@ -7,6 +7,7 @@ const PurchaseOfficerView = () => {
     const navigate = useNavigate();
     const [pendingRequests, setPendingRequests] = useState(0);
     const [activePOs, setActivePOs] = useState(0);
+    const [vendorOrderCount, setVendorOrderCount] = useState(0);
 
     useEffect(() => {
         // Fetch material requests that are approved by coordinator and waiting for PO
@@ -23,6 +24,8 @@ const PurchaseOfficerView = () => {
             const pos = res.data || [];
             const active = pos.filter(p => !['Completed', 'Closed', 'Rejected'].includes(p.status));
             setActivePOs(active.length);
+            const inDelivery = pos.filter(p => ['Approved', 'Dispatched', 'In Transit'].includes(p.status));
+            setVendorOrderCount(inDelivery.length);
         }).catch(err => {
             console.error("Failed to fetch POs", err);
         });
@@ -37,10 +40,10 @@ const PurchaseOfficerView = () => {
                 Overview of Purchase Requests, Purchase Orders, and Vendor Deliveries.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '32px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #F59E0B' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#FEF3C7', color: '#F59E0B', flexShrink: 0 }}>
-                        <Clock size={24} />
+                        <Clock size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Pending PO Requests</p>
@@ -50,7 +53,7 @@ const PurchaseOfficerView = () => {
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #10B981' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#ECFDF5', color: '#10B981', flexShrink: 0 }}>
-                        <CheckCircle size={24} />
+                        <CheckCircle size={24} aria-hidden="true" />
                     </div>
                     <div>
                         <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Active POs</p>
@@ -60,16 +63,16 @@ const PurchaseOfficerView = () => {
 
                 <div className="card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '14px', borderLeft: '4px solid #3B82F6' }}>
                     <div style={{ padding: '12px', borderRadius: '10px', backgroundColor: '#EFF6FF', color: '#3B82F6', flexShrink: 0 }}>
-                        <Truck size={24} />
+                        <Truck size={24} aria-hidden="true" />
                     </div>
                     <div>
-                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Vendor Order Status</p>
-                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>Tracking</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', fontWeight: '600', textTransform: 'uppercase' }}>Orders In Delivery</p>
+                        <h3 style={{ fontSize: '24px', fontWeight: '700', lineHeight: 1 }}>{vendorOrderCount}</h3>
                     </div>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
                 <div className="card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -83,8 +86,8 @@ const PurchaseOfficerView = () => {
                         {pendingRequests > 0 ? (
                             <div style={{ backgroundColor: '#F0FDF4', padding: '16px', borderRadius: '12px', border: '1px solid #BBF7D0' }}>
                                 <p style={{ fontSize: '14px', fontWeight: '700', color: '#166534', marginBottom: '8px' }}>{pendingRequests} Approved Requests Waiting</p>
-                                <button className="btn btn-primary" onClick={() => navigate('/workflow')} style={{ width: '100%', justifyContent: 'center', backgroundColor: '#16A34A', border: 'none' }}>
-                                    PROCESS REQUESTS
+                                <button className="btn btn-primary" onClick={() => navigate('/workflow')} style={{ width: '100%', justifyContent: 'center' }}>
+                                    Process Requests
                                 </button>
                             </div>
                         ) : (
@@ -94,11 +97,11 @@ const PurchaseOfficerView = () => {
                         <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
                             <h4 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Quick Actions</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                <button className="btn btn-outline" onClick={() => navigate('/workflow?action=new_po')} style={{ fontSize: '12px', justifyContent: 'center' }}>
-                                    <ShoppingCart size={16} /> NEW PO
+                                <button className="btn btn-outline" onClick={() => navigate('/workflow?tab=POs')} style={{ fontSize: '12px', justifyContent: 'center' }}>
+                                    <ShoppingCart size={16} aria-hidden="true" /> New PO
                                 </button>
-                                <button className="btn btn-outline" onClick={() => navigate('/materials')} style={{ fontSize: '12px', justifyContent: 'center' }}>
-                                    <Plus size={16} /> STOCK REQ
+                                <button className="btn btn-outline" onClick={() => navigate('/materials?tab=Warehouse')} style={{ fontSize: '12px', justifyContent: 'center' }}>
+                                    <Plus size={16} aria-hidden="true" /> Stock Req
                                 </button>
                             </div>
                         </div>
@@ -117,8 +120,8 @@ const PurchaseOfficerView = () => {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         <div style={{ background: 'white', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', textAlign: 'center' }}>
                             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Need time off or personal leave?</p>
-                            <button className="btn btn-primary" onClick={() => navigate('/hr')} style={{ width: '100%', justifyContent: 'center', gap: '8px' }}>
-                                <Plus size={18} /> APPLY FOR LEAVE
+                            <button className="btn btn-primary" onClick={() => navigate(`/hr?tab=${encodeURIComponent('Leave Management')}`)} style={{ width: '100%', justifyContent: 'center', gap: '8px' }}>
+                                <Plus size={18} aria-hidden="true" /> Apply for Leave
                             </button>
                         </div>
                     </div>

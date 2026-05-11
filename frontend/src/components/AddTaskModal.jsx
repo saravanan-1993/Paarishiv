@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, ClipboardList, User, Calendar, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import { projectAPI, employeeAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 import CustomTimePicker from './CustomTimePicker';
 import { Briefcase } from 'lucide-react';
 
 const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) => {
+    const toast = useToast();
     // Helper to get a string ID from potential populated object
     const getStringId = (val, fallback = '') => {
         if (!val) return fallback;
@@ -107,44 +109,44 @@ const AddTaskModal = ({ isOpen, onClose, project, projects = [], onTaskAdded }) 
 
     const handleSubmit = async () => {
         if (!form.name.trim()) {
-            alert('Task description is required.');
+            toast.warning('Task description is required.');
             return;
         }
         if (!form.startDate) {
-            alert('Start date is required.');
+            toast.warning('Start date is required.');
             return;
         }
         if (!form.dueDate) {
-            alert('Due date is required.');
+            toast.warning('Due date is required.');
             return;
         }
         if (!form.dueTime) {
-            alert('Due time is required.');
+            toast.warning('Due time is required.');
             return;
         }
         if (form.startDate && form.dueDate && form.dueDate < form.startDate) {
-            alert('Due date cannot be before start date.');
+            toast.warning('Due date cannot be before start date.');
             return;
         }
         setLoading(true);
         try {
             const targetProjectId = getStringId(project?._id || project?.id || selectedProjectId);
             if (!targetProjectId) {
-                alert('Please select a project first.');
+                toast.warning('Please select a project first.');
                 return;
             }
             await projectAPI.addTask(targetProjectId, {
                 ...form,
                 assignedTo: form.assignedTo || engineerId,
             });
-            alert(`Notification sent: Task assigned to ${engineerDisplayName || 'engineer'}`);
+            toast.success(`Task assigned to ${engineerDisplayName || 'engineer'}`);
             // Reset form
             setForm({ name: '', assignedTo: '', priority: 'Medium', startDate: '', dueDate: '', dueTime: '18:00', status: 'Pending', instructions: '' });
             onTaskAdded?.();  // Refresh project data in parent
             onClose();
         } catch (err) {
             console.error(err);
-            alert(err?.response?.data?.detail || 'Failed to add task. Please try again.');
+            toast.error(err?.response?.data?.detail || 'Failed to add task. Please try again.');
         } finally {
             setLoading(false);
         }

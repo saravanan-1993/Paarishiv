@@ -16,17 +16,13 @@ import CustomSelect from '../components/CustomSelect';
 import { projectAPI, financeAPI, billingAPI, grnAPI, fleetAPI, settingsAPI, subcontractorBillingAPI } from '../utils/api';
 import { hasSubTabAccess, hasPermission } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import PurchaseBillModal from '../components/PurchaseBillModal';
 import Pagination from '../components/Pagination';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
-const fmt = (n) => {
-    if (!n && n !== 0) return '₹0';
-    if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
-    if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
-    return `₹${Number(n).toLocaleString('en-IN')}`;
-};
+import { fmt } from '../utils/format';
 
 const generateSalesInvoicePDF = (data, companyInfo) => {
     const doc = new jsPDF();
@@ -234,16 +230,18 @@ const generateSalesInvoicePDF = (data, companyInfo) => {
 
 const Finance = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const canEditAccounts = hasPermission(user, 'Accounts', 'edit');
     const canDeleteAccounts = hasPermission(user, 'Accounts', 'delete');
     const handleMarkBillPaid = async (bill) => {
-        if (!window.confirm(`Mark Bill ${bill.bill_no} as fully PAID?`)) return;
+        if (!(await confirm({ title: 'Mark as Paid', message: `Mark Bill ${bill.bill_no} as fully PAID?`, confirmText: 'Mark Paid' }))) return;
         try {
             await billingAPI.markPaid(bill.id, { collection_amount: bill.total_amount - (bill.collection_amount || 0) });
             loadData();
         } catch (err) {
             console.error('Failed to update status:', err);
-            alert('Failed to update status. Please try again.');
+            toast.error('Failed to update status. Please try again.');
         }
     };
 
@@ -301,8 +299,11 @@ const Finance = () => {
     useEffect(() => {
         if (urlTab && availableTabs.some(t => t.id === urlTab)) {
             setActiveTab(urlTab);
+        } else if (!availableTabs.some(t => t.id === activeTab) && availableTabs.length > 0) {
+            // If current active tab isn't in availableTabs (permission filtered), fall back to first available
+            setActiveTab(availableTabs[0].id);
         }
-    }, [urlTab, availableTabs]);
+    }, [urlTab, availableTabs, activeTab]);
 
     const handleTabChange = (tabId) => {
         setActiveTab(tabId);
@@ -604,7 +605,7 @@ const Finance = () => {
             doc.save(fileName);
         } catch (err) {
             console.error('PDF generation error:', err);
-            alert('Failed to generate PDF.');
+            toast.error('Failed to generate PDF.');
         }
     };
 
@@ -632,7 +633,7 @@ const Finance = () => {
             loadData(); // Refresh data
         } catch (err) {
             console.error('Error recording expense:', err);
-            alert('Failed to record expense. Please try again.');
+            toast.error('Failed to record expense. Please try again.');
         }
     };
 
@@ -713,7 +714,7 @@ const Finance = () => {
     const handleDownloadCSV = () => {
         const entries = getLedgerEntries();
         if (entries.length === 0) {
-            alert('No data to download');
+            toast.warning('No data to download');
             return;
         }
 
@@ -766,7 +767,7 @@ const Finance = () => {
         try {
             const entries = getLedgerEntries();
             if (entries.length === 0) {
-                alert('No data to download');
+                toast.warning('No data to download');
                 return;
             }
 
@@ -889,7 +890,7 @@ const Finance = () => {
             setIsDownloadDropdownOpen(false);
         } catch (err) {
             console.error('PDF Generation failed:', err);
-            alert(`PDF error: ${err.message}. Please use CSV download.`);
+            toast.error(`PDF error: ${err.message}. Please use CSV download.`);
         }
     };
 
@@ -971,10 +972,14 @@ const Finance = () => {
     const totalCosts = totalAllExpenses + fleetExpense;
     const profitLoss = totalIncome - totalCosts;
 
+    const totalReceivables = Math.max(0, totalBilled - totalCollected);
+    const totalPayables = purchaseBillOutstanding + purchaseOutstanding;
+
     const kpiCards = [
         { label: 'PROJECT VALUE', value: fmt(totalProjectValue), icon: FileText, color: '#3B82F6', bgColor: '#EFF6FF' },
         { label: 'TOTAL BILLED', value: fmt(totalBilled), icon: Receipt, color: '#6366F1', bgColor: '#EEF2FF' },
-        { label: 'OUTSTANDING', value: fmt((totalBilled - totalCollected) + purchaseBillOutstanding + purchaseOutstanding), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
+        { label: 'RECEIVABLES (AR)', value: fmt(totalReceivables), icon: AlertCircle, color: '#EF4444', bgColor: '#FEF2F2' },
+        { label: 'PAYABLES (AP)', value: fmt(totalPayables), icon: AlertCircle, color: '#F59E0B', bgColor: '#FFFBEB' },
         { label: 'COLLECTION (MTD)', value: fmt(collectionThisMonth), icon: Calendar, color: '#0EA5E9', bgColor: '#F0F9FF' },
         { label: 'COLLECTION (TODAY)', value: fmt(collectionToday), icon: TrendingUp, color: '#10B981', bgColor: '#F0FDF4' },
         { label: 'PAYMENTS (MTD)', value: fmt(paymentsThisMonth), icon: ArrowDownRight, color: '#F43F5E', bgColor: '#FFF1F2' },
@@ -1203,9 +1208,6 @@ const Finance = () => {
                         <button className="btn btn-outline" onClick={() => setIsExpenseModalOpen(true)}>
                             <Plus size={18} /> New Payment
                         </button>
-                        {/* <button className="btn btn-outline" onClick={() => setIsPurchaseBillModalOpen(true)}>
-                            <Plus size={18} /> Record Purchase Bill
-                        </button> */}
                         <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
                             <Plus size={18} /> New Sales Bill
                         </button>
@@ -1275,24 +1277,49 @@ const Finance = () => {
                     <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                         <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
                         <p style={{ fontWeight: '600' }}>Loading financial data…</p>
-                        <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
                     </div>
                 )}
 
                 {/* ── Overview Tab ──────────────────────────────────────────────── */}
                 {!loading && activeTab === 'Overview' && (
                     <div className="card animate-fade-in" style={{ padding: '32px' }}>
-                        <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '24px' }}>Overview</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
-                            {kpiCards.map((kpi, i) => (
-                                <div key={i} style={{ padding: '20px', borderRadius: '12px', backgroundColor: kpi.bgColor, border: `1px solid ${kpi.color}33` }}>
-                                    <div style={{ color: kpi.color, marginBottom: '8px' }}>
-                                        <kpi.icon size={24} />
-                                    </div>
-                                    <h4 style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '700', marginBottom: '4px' }}>{kpi.label}</h4>
-                                    <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)' }}>{kpi.value}</div>
-                                </div>
-                            ))}
+                        <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '8px' }}>Project-wise Financial Summary</h3>
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px' }}>Breakdown of receivables and payables per project.</p>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="data-table" style={{ width: '100%', minWidth: '700px' }}>
+                                <thead>
+                                    <tr>
+                                        <th>Project</th>
+                                        <th style={{ textAlign: 'right' }}>Total Billed</th>
+                                        <th style={{ textAlign: 'right' }}>Collected</th>
+                                        <th style={{ textAlign: 'right' }}>Outstanding</th>
+                                        <th style={{ textAlign: 'right' }}>Expenses</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {projects.map(p => {
+                                        const pName = p.name;
+                                        const pBills = bills.filter(b => b.project === pName);
+                                        const pExpenses = expenses.filter(e => e.project === pName);
+                                        const billed = pBills.reduce((s, b) => s + (parseFloat(b.total_amount) || 0), 0);
+                                        const collected = pBills.reduce((s, b) => s + (parseFloat(b.collection_amount) || 0), 0);
+                                        const outstanding = Math.max(0, billed - collected);
+                                        const exp = pExpenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+                                        return (
+                                            <tr key={p.id || p._id}>
+                                                <td style={{ fontWeight: 600 }}>{pName}</td>
+                                                <td style={{ textAlign: 'right' }}>{fmt(billed)}</td>
+                                                <td style={{ textAlign: 'right', color: '#10B981' }}>{fmt(collected)}</td>
+                                                <td style={{ textAlign: 'right', color: outstanding > 0 ? '#EF4444' : 'var(--text-muted)' }}>{fmt(outstanding)}</td>
+                                                <td style={{ textAlign: 'right' }}>{fmt(exp)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {projects.length === 0 && (
+                                        <tr><td colSpan="5" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>No projects to display.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
 
                         {/* Profit & Loss Summary */}
@@ -1456,9 +1483,21 @@ const Finance = () => {
                                         if (collected >= totalAmt && totalAmt > 0) paymentStatus = 'Paid';
                                         else if (collected > 0) paymentStatus = 'Partial';
 
-                                        // Overdue logic if Due Date exists and is past
-                                        if (bill.due_date && new Date(bill.due_date) < new Date() && paymentStatus !== 'Paid') {
-                                            paymentStatus = 'Overdue';
+                                        // Overdue logic + aging bucket
+                                        let agingDays = null;
+                                        let agingBucket = null;
+                                        if (bill.due_date && paymentStatus !== 'Paid') {
+                                            const due = new Date(bill.due_date);
+                                            const today = new Date();
+                                            const diffDays = Math.floor((today - due) / (1000 * 60 * 60 * 24));
+                                            if (diffDays > 0) {
+                                                paymentStatus = 'Overdue';
+                                                agingDays = diffDays;
+                                                if (diffDays <= 30) agingBucket = { label: '1-30d', color: '#F59E0B', bg: '#FFFBEB' };
+                                                else if (diffDays <= 60) agingBucket = { label: '31-60d', color: '#EA580C', bg: '#FFF7ED' };
+                                                else if (diffDays <= 90) agingBucket = { label: '61-90d', color: '#DC2626', bg: '#FEF2F2' };
+                                                else agingBucket = { label: '90+d', color: '#991B1B', bg: '#FECACA' };
+                                            }
                                         }
 
                                         return (
@@ -1469,6 +1508,11 @@ const Finance = () => {
                                                 </td>
                                                 <td style={{ fontSize: '13px' }}>
                                                     {bill.due_date ? new Date(bill.due_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                                    {agingBucket && (
+                                                        <span title={`${agingDays} days overdue`} style={{ marginLeft: '6px', display: 'inline-block', padding: '2px 6px', borderRadius: '8px', fontSize: '10px', fontWeight: '800', backgroundColor: agingBucket.bg, color: agingBucket.color }}>
+                                                            {agingBucket.label}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td style={{ fontWeight: '600' }}>{bill.project}</td>
                                                 <td style={{ fontSize: '13px' }}>
@@ -2122,7 +2166,7 @@ const Finance = () => {
                                     {/* Debit / Credit / Net — show on All and Client */}
                                     {(ledgerType === 'All' || ledgerType === 'Client') && (
                                         <div style={{
-                                            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16,
+                                            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16,
                                             marginBottom: 16, backgroundColor: '#F8FAFC', padding: 20,
                                             borderRadius: 12, border: '1px solid var(--border)'
                                         }}>
@@ -2234,7 +2278,7 @@ const Finance = () => {
                                                             {/* Vendor Header */}
                                                             <div style={{ padding: '16px 20px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
                                                                 <div style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', marginBottom: 8 }}>{vendorName}</div>
-                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
                                                                     <div style={{ padding: '8px 12px', borderRadius: 8, backgroundColor: 'white', border: '1px solid #E2E8F0' }}>
                                                                         <div style={{ fontSize: 10, color: '#64748B', fontWeight: 600 }}>TOTAL PURCHASED</div>
                                                                         <div style={{ fontSize: 16, fontWeight: 900, color: '#8B5CF6' }}>{fmt(data.purchased)}</div>

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Camera, MapPin, Loader2, Save, Users, Calendar, Clock, UserX, Shield as ShieldIcon } from 'lucide-react';
 import { projectAPI, employeeAPI, surpriseVisitAPI, labourAPI, labourAttendanceAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
+    const toast = useToast();
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [projects, setProjects] = useState([]);
@@ -107,7 +109,7 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!selectedProject) return alert('Please select a project');
+        if (!selectedProject) return toast.warning('Please select a project');
 
         setSubmitting(true);
         try {
@@ -146,12 +148,12 @@ const SurpriseVisitModal = ({ isOpen, onClose, onSaved }) => {
             if (photo) formData.append('photo', photo);
 
             await surpriseVisitAPI.create(formData);
-            alert('Surprise visit marked successfully!');
+            toast.success('Surprise visit marked successfully!');
             onSaved();
             onClose();
         } catch (err) {
             console.error(err);
-            alert(err.response?.data?.detail || 'Failed to save surprise visit');
+            toast.error(err.response?.data?.detail || 'Failed to save surprise visit');
         } finally {
             setSubmitting(false);
         }

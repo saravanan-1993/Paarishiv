@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission, hasSubTabAccess, getRoles, saveRoles, fetchAndSyncRoles } from '../utils/rbac';
 import AddEmployeeModal from '../components/AddEmployeeModal';
 import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
@@ -26,6 +28,8 @@ import Pagination from '../components/Pagination';
 
 const HRMS = () => {
     const { user } = useAuth();
+    const toast = useToast();
+    const confirm = useConfirm();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -51,6 +55,7 @@ const HRMS = () => {
     const [employees, setEmployees] = useState([]);
     const [attendance, setAttendance] = useState([]);
     const [leaves, setLeaves] = useState([]);
+    const [leaveFilter, setLeaveFilter] = useState('All');
     const canEditHRMS = hasPermission(user, 'HRMS', 'edit');
     const canDeleteHRMS = hasPermission(user, 'HRMS', 'delete');
     const isAdmin = canEditHRMS;
@@ -108,7 +113,7 @@ const HRMS = () => {
     const iconMapping = {
         'Dashboard': LayoutDashboard, 'Projects': Briefcase, 'Tasks': ListTodo,
         'Accounts': Wallet, 'Procurement': ShoppingCart, 'HRMS': Users,
-        'Inventory Management': Package, 'Reports': FileText, 'System Logs': History, 'Settings': SettingsIcon2
+        'Inventory Management': Package, 'Reports': FileText, 'System Logs': History, 'Settings': SettingsIcon
     };
 
     const loadRoles = () => {
@@ -135,9 +140,9 @@ const HRMS = () => {
     };
 
     const handleDeleteUser = async (userId) => {
-        if (!window.confirm('Are you sure you want to delete this user?')) return;
+        if (!(await confirm({ title: 'Delete User', message: 'Are you sure you want to delete this user?', confirmText: 'Delete', danger: true }))) return;
         try { await employeeAPI.delete(userId); fetchUmUsers(); }
-        catch (err) { console.error('Delete failed', err); alert('Failed to delete user'); }
+        catch (err) { console.error('Delete failed', err); toast.error('Failed to delete user'); }
     };
 
     const handleEditUser = (u) => {
@@ -148,7 +153,7 @@ const HRMS = () => {
 
     const handleCreateUser = async () => {
         if (!newUser.fullName || !newUser.employeeCode || (!editingUser && !newUser.password)) {
-            alert('Please fill in required fields (Name, Code, Password)'); return;
+            toast.warning('Please fill in required fields (Name, Code, Password)'); return;
         }
         try {
             if (editingUser) { await employeeAPI.update(editingUser.id, newUser); }
@@ -159,7 +164,7 @@ const HRMS = () => {
         } catch (err) {
             const detail = err.response?.data?.detail;
             const errorMsg = Array.isArray(detail) ? detail.map(d => `${d.loc.join('.')}: ${d.msg}`).join('\n') : detail || 'Failed to save user';
-            alert(errorMsg);
+            toast.error(errorMsg);
         }
     };
 
@@ -177,9 +182,9 @@ const HRMS = () => {
         setEditingRole(null); setIsRoleModalOpen(false);
     };
 
-    const handleDeleteRole = (roleName) => {
-        if (roleName === 'Administrator' || roleName === 'Super Admin') { alert(`Cannot delete ${roleName} role`); return; }
-        if (window.confirm(`Are you sure you want to delete the ${roleName} role?`)) {
+    const handleDeleteRole = async (roleName) => {
+        if (roleName === 'Administrator' || roleName === 'Super Admin') { toast.warning(`Cannot delete ${roleName} role`); return; }
+        if (await confirm({ title: 'Delete Role', message: `Are you sure you want to delete the ${roleName} role?`, confirmText: 'Delete', danger: true })) {
             const updated = umRoles.filter(r => r.name !== roleName);
             setUmRoles(updated);
             saveRoles(updated.map(r => ({ name: r.name, description: r.description, tags: r.tags, permissions: r.permissions.map(p => ({ name: p.name, actions: p.actions, subTabs: p.subTabs })), dashboardCards: r.dashboardCards || [], features: r.features || [] })));
@@ -458,12 +463,12 @@ const HRMS = () => {
                 status: d.status
             }));
             await hrmsAPI.saveAttendance(records);
-            alert('Attendance saved successfully');
+            toast.success('Attendance saved successfully');
             fetchAttendance(selectedDate);
             fetchInitialData();
         } catch (err) {
             console.error('Save attendance failed', err);
-            alert('Failed to save attendance');
+            toast.error('Failed to save attendance');
         } finally {
             setLoading(false);
         }
@@ -480,12 +485,12 @@ const HRMS = () => {
                 status: data.status
             };
             await hrmsAPI.saveAttendance([record]);
-            alert(`Attendance saved for ${data.fullName}`);
+            toast.success(`Attendance saved for ${data.fullName}`);
             fetchAttendance(selectedDate);
             fetchInitialData();
         } catch (err) {
             console.error('Save attendance failed', err);
-            alert('Failed to save attendance');
+            toast.error('Failed to save attendance');
         }
     };
 
@@ -515,26 +520,26 @@ const HRMS = () => {
     };
 
     const generatePayrollRecord = async () => {
-        if (!window.confirm(`Generate payroll for ${selectedMonth}?`)) return;
+        if (!(await confirm({ title: 'Generate Payroll', message: `Generate payroll for ${selectedMonth}?`, confirmText: 'Generate' }))) return;
         try {
             await hrmsAPI.generatePayroll(selectedMonth);
             fetchPayroll(selectedMonth);
             fetchInitialData();
-            alert('Payroll generated successfully');
+            toast.success('Payroll generated successfully');
         } catch (err) {
-            alert('Failed to generate payroll');
+            toast.error('Failed to generate payroll');
         }
     };
 
     const handleToggleEmployeeStatus = async (emp) => {
-        if (!window.confirm(`Change status for ${emp.fullName}?`)) return;
+        if (!(await confirm({ title: 'Change Status', message: `Change status for ${emp.fullName}?`, confirmText: 'Change' }))) return;
         try {
             const newStatus = emp.status === 'Active' ? 'Inactive' : 'Active';
             await employeeAPI.update(emp.id || emp._id, { status: newStatus });
             fetchInitialData();
         } catch (err) {
             console.error('Failed to change status', err);
-            alert('Failed to change status');
+            toast.error('Failed to change status');
         }
     };
 
@@ -663,8 +668,8 @@ const HRMS = () => {
                                     <td>
                                         {l.status === 'Pending' && hasPermission(user, 'HRMS', 'edit') && (
                                             <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button onClick={() => handleLeaveAction(l.id, 'Approved')} className="icon-btn" style={{ color: '#10B981', padding: '4px' }}><Check size={16} /></button>
-                                                <button onClick={() => handleLeaveAction(l.id, 'Rejected')} className="icon-btn" style={{ color: '#EF4444', padding: '4px' }}><X size={16} /></button>
+                                                <button onClick={() => handleLeaveAction(l.id, 'Approved')} className="icon-btn" aria-label="Approve leave" title="Approve" style={{ color: '#10B981', padding: '4px' }}><Check size={16} /></button>
+                                                <button onClick={() => handleLeaveAction(l.id, 'Rejected')} className="icon-btn" aria-label="Reject leave" title="Reject" style={{ color: '#EF4444', padding: '4px' }}><X size={16} /></button>
                                             </div>
                                         )}
                                         {l.status === 'Pending' && !hasPermission(user, 'HRMS', 'edit') && (
@@ -764,8 +769,13 @@ const HRMS = () => {
                             placeholder="Search by name or code..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
+                            style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
                         />
+                        {searchQuery && (
+                            <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                <X size={15} />
+                            </button>
+                        )}
                     </div>
                     <CustomSelect
                         options={[
@@ -826,6 +836,7 @@ const HRMS = () => {
                                         <button
                                             className="icon-btn"
                                             title="View Details"
+                                            aria-label="View employee details"
                                             onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: emp.department || emp.designation || '' }); setIsEmployeeDetailsOpen(true); }}
                                             style={{ background: '#f0f9ff', color: '#0369a1', borderRadius: '8px', border: '1px solid #bae6fd', padding: '8px', transition: 'all 0.2s' }}
                                         >
@@ -833,7 +844,8 @@ const HRMS = () => {
                                         </button>
                                         <button
                                             className="icon-btn"
-                                            title="Generate Payslip"
+                                            title="View Salary & Payslip"
+                                            aria-label="View salary and payslip"
                                             onClick={() => { setSelectedEmployee({ ...emp, id: emp.id || emp._id, name: emp.fullName, mobile: emp.phone, dept: emp.department || emp.designation || '', basicSalary: emp.basicSalary, bankAccount: emp.bankAccount, designation: emp.designation, role: emp.roles?.[0] || '' }); setIsEmployeeDetailsOpen(true); }}
                                             style={{ background: '#ecfdf5', color: '#059669', borderRadius: '8px', border: '1px solid #a7f3d0', padding: '8px', transition: 'all 0.2s' }}
                                         >
@@ -842,6 +854,7 @@ const HRMS = () => {
                                         <button
                                             className="icon-btn"
                                             title="Attendance Log"
+                                            aria-label="View attendance log"
                                             onClick={() => { setActiveTab('Attendance'); }}
                                             style={{ background: '#f5f3ff', color: '#7c3aed', borderRadius: '8px', border: '1px solid #ddd6fe', padding: '8px', transition: 'all 0.2s' }}
                                         >
@@ -850,6 +863,7 @@ const HRMS = () => {
                                         {canEditHRMS && (<button
                                             className="icon-btn"
                                             title="Edit Employee"
+                                            aria-label="Edit employee"
                                             onClick={() => handleEditEmployee(emp)}
                                             style={{ background: '#fff7ed', color: '#f59e0b', borderRadius: '8px', border: '1px solid #fed7aa', padding: '8px', transition: 'all 0.2s' }}
                                         >
@@ -858,6 +872,7 @@ const HRMS = () => {
                                         {canEditHRMS && (<button
                                             className="icon-btn"
                                             title={emp.status === 'Active' ? 'Deactivate Employee' : 'Activate Employee'}
+                                            aria-label={emp.status === 'Active' ? 'Deactivate employee' : 'Activate employee'}
                                             onClick={() => handleToggleEmployeeStatus(emp)}
                                             style={{
                                                 background: emp.status === 'Active' ? '#fef2f2' : '#f0fdf4',
@@ -1098,15 +1113,44 @@ const HRMS = () => {
         </div>
     );
 
-    const renderLeaves = () => (
+    const renderLeaves = () => {
+        const filteredLeaves = (leaves || []).filter(l => leaveFilter === 'All' || l.status === leaveFilter);
+        const statusCounts = {
+            All: (leaves || []).length,
+            Pending: (leaves || []).filter(l => l.status === 'Pending').length,
+            Approved: (leaves || []).filter(l => l.status === 'Approved').length,
+            Rejected: (leaves || []).filter(l => l.status === 'Rejected').length,
+        };
+        return (
         <div className="animate-fade-in">
-            <div className="card" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="card" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)' }}>Leave Applications</h3>
-                {user && (
-                    <button className="btn btn-primary" onClick={() => setIsApplyLeaveOpen(true)}>
-                        <Plus size={18} /> APPLY LEAVE
-                    </button>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div role="tablist" aria-label="Filter leaves" style={{ display: 'flex', backgroundColor: '#F1F5F9', padding: '4px', borderRadius: '10px' }}>
+                        {['All', 'Pending', 'Approved', 'Rejected'].map(s => (
+                            <button
+                                key={s}
+                                role="tab"
+                                aria-selected={leaveFilter === s}
+                                onClick={() => setLeaveFilter(s)}
+                                style={{
+                                    padding: '6px 14px', borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: '700',
+                                    background: leaveFilter === s ? 'white' : 'transparent',
+                                    color: leaveFilter === s ? 'var(--primary)' : '#64748b',
+                                    boxShadow: leaveFilter === s ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {s} ({statusCounts[s] || 0})
+                            </button>
+                        ))}
+                    </div>
+                    {user && (
+                        <button className="btn btn-primary" onClick={() => setIsApplyLeaveOpen(true)}>
+                            <Plus size={18} aria-hidden="true" /> APPLY LEAVE
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -1122,7 +1166,7 @@ const HRMS = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {(leaves || []).length > 0 ? leaves.map((l, i) => (
+                        {filteredLeaves.length > 0 ? filteredLeaves.map((l, i) => (
                             <tr key={l.id || i}>
                                 <td style={{ fontWeight: '600' }}>{l.employeeName || 'Unknown'}</td>
                                 <td><span className="badge badge-info">{l.leaveType}</span></td>
@@ -1172,7 +1216,8 @@ const HRMS = () => {
                 </table>
             </div>
         </div>
-    );
+        );
+    };
 
     const renderPayroll = () => (
         <div className="animate-fade-in">
@@ -1373,15 +1418,14 @@ const HRMS = () => {
                                             className="btn btn-success btn-sm"
                                             style={{ padding: '6px 12px', fontSize: '11px', fontWeight: '800' }}
                                             onClick={async () => {
-                                                if (!window.confirm("Mark this manpower request as arranged and completed?")) return;
-                                                console.log("Processing Manpower Req:", req);
+                                                if (!(await confirm({ title: 'Confirm Arrangement', message: 'Mark this manpower request as arranged and completed?', confirmText: 'Mark Arranged' }))) return;
                                                 try {
                                                     await approvalsAPI.action('manpower', req._id, 'complete');
-                                                    alert('Manpower arranged successfully!');
+                                                    toast.success('Manpower arranged successfully!');
                                                     fetchManpowerRequests();
                                                 } catch (err) {
                                                     const errorMsg = err.response?.data?.detail || err.message || 'Failed to update status';
-                                                    alert(`Error: ${errorMsg}`);
+                                                    toast.error(`Error: ${errorMsg}`);
                                                 }
                                             }}
                                         >
@@ -1449,7 +1493,6 @@ const HRMS = () => {
                     <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>
                         <Loader2 size={36} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
                         <p style={{ fontWeight: '600' }}>Fetching HRMS data...</p>
-                        <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
                     </div>
                 ) : (
                     <>
@@ -1597,7 +1640,7 @@ const HRMS = () => {
                                     {/* Add New User button hidden */}
                                 </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                                     {[
                                         { label: 'Total Users', value: umUsers.length, icon: Shield, color: '#3B82F6' },
                                         { label: 'Super Admins', value: umUsers.filter(u => u.role === 'Super Admin' || u.role === 'Admin' || u.role === 'Administrator').length, icon: ShieldCheck, color: '#10B981' },
@@ -1846,10 +1889,9 @@ const HRMS = () => {
                 onConfirm={async (empId, data) => {
                     // Logic to update local state or call API to mark as paid
                     try {
-                        console.log('Processed Payroll Data:', data);
                         // After generating, fetch updated payroll
                         fetchPayroll(selectedMonth);
-                        alert(`Payroll generated successfully for ${payrollEmployee?.name}. Net Amount: ₹${data.netSalary.toLocaleString()}`);
+                        toast.success(`Payroll generated for ${payrollEmployee?.name}. Net Amount: ₹${data.netSalary.toLocaleString('en-IN')}`);
                     } catch (err) {
                         console.error('Failed to confirm individual payroll', err);
                     }

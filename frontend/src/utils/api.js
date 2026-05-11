@@ -34,7 +34,15 @@ api.interceptors.response.use(
             const loginTime = parseInt(localStorage.getItem('erp_login_time') || '0');
             const justLoggedIn = (Date.now() - loginTime) < 5000;
             if (!isPublicEndpoint && !isOnLoginPage && !justLoggedIn) {
+                // Save the user's current URL so we can return them here after login
+                try {
+                    const returnTo = window.location.pathname + window.location.search;
+                    if (returnTo && returnTo !== '/' && returnTo !== '/login') {
+                        sessionStorage.setItem('erp_post_login_redirect', returnTo);
+                    }
+                } catch (e) { /* ignore storage errors */ }
                 localStorage.removeItem('erp_user');
+                localStorage.removeItem('erp_token');
                 localStorage.removeItem('erp_login_time');
                 window.location.href = '/login';
             }

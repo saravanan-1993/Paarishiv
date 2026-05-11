@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { X, Package, Plus, Trash2, Loader2, Briefcase } from 'lucide-react';
 import { projectAPI, materialAPI, inventoryAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
 import { useAuth } from '../context/AuthContext';
 
 const StockRequestModal = ({ isOpen, onClose, onSuccess }) => {
     const { user } = useAuth();
+    const toast = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [projects, setProjects] = useState([]);
     const [materials, setMaterials] = useState([]);
@@ -56,7 +58,7 @@ const StockRequestModal = ({ isOpen, onClose, onSuccess }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.project_id) return alert('Please select a project');
+        if (!formData.project_id) return toast.warning('Please select a project');
 
         setIsSaving(true);
         try {
@@ -69,7 +71,7 @@ const StockRequestModal = ({ isOpen, onClose, onSuccess }) => {
             onSuccess();
         } catch (err) {
             console.error('Request error:', err);
-            alert('Failed to submit request');
+            toast.error('Failed to submit request');
         } finally {
             setIsSaving(false);
         }

@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, MapPin, User, LayoutDashboard, Calendar, Package, Download, ArrowRight, PlayCircle } from 'lucide-react';
 import { projectAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { hasPermission } from '../utils/rbac';
 import DPRViewModal from '../components/DPRViewModal';
 import { jsPDF } from 'jspdf';
@@ -62,11 +63,12 @@ const SiteReports = () => {
         companyName: 'CIVIL ERP',
         logo: ''
     });
-    const [toast, setToast] = useState(null);
-
+    const toast = useToast();
     const showToast = (msg, type = 'success') => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 3000);
+        if (type === 'error') toast.error(msg);
+        else if (type === 'warning') toast.warning(msg);
+        else if (type === 'info') toast.info(msg);
+        else toast.success(msg);
     };
 
     const fetchData = async () => {
@@ -289,22 +291,6 @@ const SiteReports = () => {
 
     return (
         <div className="site-reports-container" style={{ position: 'relative' }}>
-            {/* Toast Notification */}
-            {toast && (
-                <div style={{
-                    position: 'fixed', top: '24px', right: '24px', zIndex: 9999,
-                    padding: '14px 22px', borderRadius: '14px', fontWeight: '700', fontSize: '14px',
-                    backgroundColor: toast.type === 'error' ? '#FEF2F2' : '#F0FDF4',
-                    color: toast.type === 'error' ? '#DC2626' : '#16A34A',
-                    border: `1px solid ${toast.type === 'error' ? '#FECACA' : '#BBF7D0'}`,
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    animation: 'slideIn 0.3s ease'
-                }}>
-                    <span style={{ fontSize: '18px' }}>{toast.type === 'error' ? '❌' : '✅'}</span>
-                    {toast.msg}
-                </div>
-            )}
             <div className="animate-fade-in" style={{ padding: '24px' }}>
 
                 {/* Header section */}
@@ -336,8 +322,13 @@ const SiteReports = () => {
                         <div style={{ position: 'relative', flex: '1 1 200px' }}>
                             <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                             <input type="text" placeholder={`Search in ${activeTab}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ padding: '10px 16px 10px 40px', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '14px', width: '100%', backgroundColor: 'white' }}
+                                style={{ padding: '10px 40px 10px 40px', borderRadius: '10px', border: '1px solid var(--border)', fontSize: '14px', width: '100%', backgroundColor: 'white' }}
                             />
+                            {searchTerm && (
+                                <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                    <XCircle size={15} />
+                                </button>
+                            )}
                         </div>
                         <button className="btn btn-primary" onClick={handleDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', flex: '1 1 auto', justifyContent: 'center' }}>
                             <Download size={18} /> EXPORT PDF

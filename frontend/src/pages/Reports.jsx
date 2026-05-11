@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
     FileText, Download, Printer, Eye, BarChart2, IndianRupee, Users,
     Package, HardHat, TrendingUp, Calendar, Filter, Search, X,
@@ -11,13 +11,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI, inventoryAPI, grnAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
-
-const fmt = (n) => {
-    if (!n && n !== 0) return '₹0';
-    if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
-    if (n >= 100000) return `₹${(n / 100000).toFixed(2)} L`;
-    return `₹${Number(n).toLocaleString('en-IN')}`;
-};
+import { fmt } from '../utils/format';
 
 // ─── Report template catalogue ─────────────────────────────────────────────
 const REPORT_TEMPLATES = [
@@ -25,74 +19,74 @@ const REPORT_TEMPLATES = [
         id: 'R001', category: 'Financial', title: 'Project Budget Summary',
         description: 'Budget vs. actual spend across all active projects.',
         icon: IndianRupee, color: '#3B82F6', bg: '#EFF6FF',
-        frequency: 'Monthly', lastGenerated: '20 Feb 2026',
+        frequency: 'Monthly',
     },
     {
         id: 'R002', category: 'Financial', title: 'Accounts Payable Report',
         description: 'Outstanding invoices, vendor dues and payment schedule.',
         icon: IndianRupee, color: '#8B5CF6', bg: '#F5F3FF',
-        frequency: 'Weekly', lastGenerated: '18 Feb 2026',
+        frequency: 'Weekly',
     },
     {
         id: 'R003', category: 'Project', title: 'Project Progress Report',
         description: 'Task completion rates, milestones, and DPR summary.',
         icon: Building2, color: '#10B981', bg: '#ECFDF5',
-        frequency: 'Weekly', lastGenerated: '20 Feb 2026',
+        frequency: 'Weekly',
     },
     {
         id: 'R004', category: 'Project', title: 'DPR Consolidated',
         description: 'Daily progress report consolidation across all sites.',
         icon: FileText, color: '#059669', bg: '#ECFDF5',
-        frequency: 'Daily', lastGenerated: '21 Feb 2026',
+        frequency: 'Daily',
     },
     {
         id: 'R005', category: 'HRMS', title: 'Attendance & Labour Report',
         description: 'Employee and daily-wage labour attendance for the period.',
         icon: Users, color: '#F59E0B', bg: '#FFFBEB',
-        frequency: 'Monthly', lastGenerated: '01 Feb 2026',
+        frequency: 'Monthly',
     },
     {
         id: 'R006', category: 'HRMS', title: 'Payroll Summary',
         description: 'Net payable, deductions, and allowance breakdown.',
         icon: IndianRupee, color: '#EF4444', bg: '#FEF2F2',
-        frequency: 'Monthly', lastGenerated: '01 Feb 2026',
+        frequency: 'Monthly',
     },
     {
         id: 'R007', category: 'Inventory', title: 'Material Stock Report',
         description: 'Current stock levels, consumption, and reorder alerts.',
         icon: Package, color: '#6366F1', bg: '#EEF2FF',
-        frequency: 'Weekly', lastGenerated: '18 Feb 2026',
+        frequency: 'Weekly',
     },
     {
         id: 'R008', category: 'Inventory', title: 'GRN Analytics',
         description: 'Detailed analysis of goods received and supply chain logs.',
         icon: Package, color: '#14B8A6', bg: '#F0FDFA',
-        frequency: 'Weekly', lastGenerated: '18 Feb 2026',
+        frequency: 'Weekly',
     },
     /* Plant report hidden */
     {
         id: 'R010', category: 'Financial', title: 'Expense Analytics',
         description: 'Detailed breakdown of site and office expenditures.',
         icon: IndianRupee, color: '#EC4899', bg: '#FDF2F8',
-        frequency: 'Monthly', lastGenerated: '23 Feb 2026',
+        frequency: 'Monthly',
     },
     {
         id: 'R011', category: 'Financial', title: 'Trial Balance',
         description: 'Summary of all ledger balances (Debit vs Credit).',
         icon: Calculator, color: '#10B981', bg: '#ECFDF5',
-        frequency: 'Monthly', lastGenerated: 'Today',
+        frequency: 'Monthly',
     },
     {
         id: 'R012', category: 'Financial', title: 'Party Outstanding',
         description: 'Client receivables and vendor payables summary.',
         icon: Wallet, color: '#F59E0B', bg: '#FFFBEB',
-        frequency: 'Weekly', lastGenerated: 'Today',
+        frequency: 'Weekly',
     },
     {
         id: 'R013', category: 'Financial', title: 'Project Financial Summary',
         description: 'Consolidated sales, collections and purchases per project.',
         icon: Briefcase, color: '#3B82F6', bg: '#EFF6FF',
-        frequency: 'Monthly', lastGenerated: 'Today',
+        frequency: 'Monthly',
     },
 ];
 
@@ -130,6 +124,7 @@ const ReportPreview = ({
     materialStockReport = [], expenseData = [], attendanceData = [], bills = [], payables = [],
     payrollData = []
 }) => {
+    const navigate = useNavigate();
     const [companyInfo, setCompanyInfo] = useState({ companyName: 'CIVIL ERP' });
 
     useEffect(() => {
@@ -279,7 +274,7 @@ const ReportPreview = ({
                             </h1>
                             <h2 style={{ fontSize: '18px', fontWeight: '800' }}>{report.title}</h2>
                             <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                                Generated: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                Generated: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                         </div>
                     </div>
@@ -815,7 +810,7 @@ const ReportPreview = ({
                             <HardHat size={48} style={{ color: '#F59E0B', margin: '0 auto 16px' }} />
                             <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>Equipment Utilisation Report</h4>
                             <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>View detailed equipment data in Fleet Management &gt; Reports tab.</p>
-                            <button className="btn btn-primary" onClick={() => { setPreviewReport(null); window.location.href = '/fleet?tab=Reports'; }} style={{ padding: '10px 24px' }}>Go to Fleet Reports</button>
+                            <button className="btn btn-primary" onClick={() => { onClose?.(); navigate('/fleet?tab=Reports'); }} style={{ padding: '10px 24px' }}>Go to Fleet Reports</button>
                         </div>
                     )}
                 </div>
@@ -844,6 +839,7 @@ const ReportPreview = ({
 
 const Reports = () => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeCategory, setActiveCategory] = useState('All');
@@ -1111,7 +1107,7 @@ const Reports = () => {
         <>
             <div className="animate-fade-in" style={{ padding: '0 10px 60px 10px' }}>
                 {loading && (
-                    <div style={{ position: 'fixed', top: '100px', right: '40px', zIndex: 100, display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'white', padding: '8px 16px', borderRadius: '30px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
+                    <div style={{ position: 'fixed', top: '88px', right: '20px', zIndex: 80, display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'white', padding: '8px 16px', borderRadius: '30px', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', pointerEvents: 'none' }}>
                         <Loader2 size={16} className="animate-spin" />
                         <span style={{ fontSize: '12px', fontWeight: '700' }}>Syncing Live Data...</span>
                     </div>
@@ -1157,7 +1153,7 @@ const Reports = () => {
                 </div>
 
                 {/* ── KPIs ─────────────────────────────────────────── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '32px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '32px' }}>
                     {kpis.map((kpi, i) => (
                         <div key={i} className="card" style={{ padding: '22px', display: 'flex', gap: '16px', alignItems: 'center', borderLeft: `4px solid ${kpi.color}` }}>
                             <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: kpi.bg, color: kpi.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1180,8 +1176,13 @@ const Reports = () => {
                             placeholder="Search reports..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            style={{ width: '100%', padding: '11px 12px 11px 38px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', backgroundColor: '#f8fafc' }}
+                            style={{ width: '100%', padding: '11px 38px 11px 38px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px', backgroundColor: '#f8fafc' }}
                         />
+                        {searchTerm && (
+                            <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                         {CATEGORIES.map(cat => (
@@ -1203,7 +1204,7 @@ const Reports = () => {
                 </div>
 
                 {/* ── Report Cards ─────────────────────────────────── */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
                     {filtered.map((rpt) => (
                         <div
                             key={rpt.id}
@@ -1233,8 +1234,7 @@ const Reports = () => {
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0', borderTop: '1px solid #F1F5F9' }}>
                                 <div>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Last: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: '8px' }}>• {rpt.frequency}</span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>{rpt.frequency}</span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <button

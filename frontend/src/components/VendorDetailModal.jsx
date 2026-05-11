@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, AlertCircle, ShoppingCart, Truck, Package, IndianRupee, History, FileText, Download } from 'lucide-react';
 import { vendorAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
+    const toast = useToast();
     const [ledgerData, setLedgerData] = useState({ ledger: [], stats: { total_po: 0, total_received: 0, total_paid: 0, balance: 0 } });
     const [loading, setLoading] = useState(false);
 
@@ -20,7 +22,7 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
 
     const handleDownloadLedger = () => {
         if (!ledgerData.ledger || ledgerData.ledger.length === 0) {
-            alert("No ledger data available to download.");
+            toast.warning('No ledger data available to download.');
             return;
         }
 
@@ -108,7 +110,7 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
             doc.save(`Vendor_Ledger_${vendor.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
         } catch (error) {
             console.error('PDF generation error:', error);
-            alert('Failed to generate report.');
+            toast.error('Failed to generate report.');
         }
     };
 

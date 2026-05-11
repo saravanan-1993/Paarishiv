@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import { ChevronDown, Search, Check, Plus } from 'lucide-react';
+import PromptModal from './PromptModal';
 
 const CustomSelect = ({
     options = [],
@@ -20,6 +21,7 @@ const CustomSelect = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [addPromptOpen, setAddPromptOpen] = useState(false);
     const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
     const dropdownRef = useRef(null);
     const buttonRef = useRef(null);
@@ -317,16 +319,10 @@ const CustomSelect = ({
                         {creatable && !searchQuery.trim() && (
                             <button
                                 type="button"
-                                onClick={async (e) => {
+                                onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    const newValue = window.prompt(`Enter new ${label ? label.replace(' *', '').toLowerCase() : 'value'}:`);
-                                    if (newValue && newValue.trim()) {
-                                        if (onAdd) await onAdd(newValue.trim());
-                                        onChange(newValue.trim());
-                                        setIsOpen(false);
-                                        setSearchQuery('');
-                                    }
+                                    setAddPromptOpen(true);
                                 }}
                                 style={{
                                     width: '100%',
@@ -353,6 +349,24 @@ const CustomSelect = ({
                 </div>,
                 document.body
             )}
+            <PromptModal
+                isOpen={addPromptOpen}
+                onClose={() => setAddPromptOpen(false)}
+                onSubmit={async (val) => {
+                    const v = (val || '').trim();
+                    if (!v) return;
+                    if (onAdd) await onAdd(v);
+                    onChange(v);
+                    setIsOpen(false);
+                    setSearchQuery('');
+                }}
+                title={`Add new ${label ? label.replace(' *', '').toLowerCase() : 'value'}`}
+                message={`Enter a value to add to ${label ? label.replace(' *', '') : 'this list'}.`}
+                placeholder="Type here..."
+                confirmText="Add"
+                required
+                multiline={false}
+            />
         </div>
     );
 };
