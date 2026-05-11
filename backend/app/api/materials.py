@@ -17,10 +17,27 @@ async def get_materials(db = Depends(get_database)):
 @router.get("/project/{project_name}")
 async def get_project_inventory(project_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    if current_user.get("role") == "Site Engineer":
-        projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
-        project_names = [p.get("name") for p in projects if p.get("name")]
-        
+    user_role = (current_user.get("role") or "").lower().replace(" ", "")
+    if user_role == "siteengineer":
+        username = current_user.get("username")
+        user_id = current_user.get("id") or current_user.get("_id", "")
+        or_conditions = [
+            {"engineer_id": username},
+            {"engineer_id": str(user_id)},
+        ]
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": username}, {"username": username}]
+            })
+            if employee:
+                or_conditions.append({"engineer_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"engineer_id": employee["employeeCode"]})
+        except Exception:
+            pass
+        assigned_projects = await db.projects.find({"$or": or_conditions}).to_list(100)
+        project_names = [p.get("name") for p in assigned_projects if p.get("name")]
+
         if project_name == "all":
             query["project_name"] = {"$in": project_names}
         elif project_name in project_names:
@@ -164,9 +181,26 @@ async def get_material_ledger(project_name: str, material_name: str, db = Depend
         
         # Determine allowed projects
         allowed_projects = None
-        if current_user.get("role") == "Site Engineer":
-            projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
-            allowed_projects = [p.get("name") for p in projects if p.get("name")]
+        ledger_user_role = (current_user.get("role") or "").lower().replace(" ", "")
+        if ledger_user_role == "siteengineer":
+            username = current_user.get("username")
+            user_id = current_user.get("id") or current_user.get("_id", "")
+            or_conds = [
+                {"engineer_id": username},
+                {"engineer_id": str(user_id)},
+            ]
+            try:
+                emp = await db.employees.find_one({
+                    "$or": [{"employeeCode": username}, {"username": username}]
+                })
+                if emp:
+                    or_conds.append({"engineer_id": str(emp["_id"])})
+                    if emp.get("employeeCode"):
+                        or_conds.append({"engineer_id": emp["employeeCode"]})
+            except Exception:
+                pass
+            assigned = await db.projects.find({"$or": or_conds}).to_list(100)
+            allowed_projects = [p.get("name") for p in assigned if p.get("name")]
             
             # If not in allowed projects, skip
             if current_grn_project not in allowed_projects:
@@ -205,7 +239,7 @@ async def get_material_ledger(project_name: str, material_name: str, db = Depend
         to_proj = parts[1] if len(parts) > 1 else ""
         
         # If user is a Site Engineer, ensure they have access to either from_proj or to_proj
-        if current_user.get("role") == "Site Engineer" and allowed_projects is not None:
+        if ledger_user_role == "siteengineer" and allowed_projects is not None:
             if from_proj not in allowed_projects and to_proj not in allowed_projects:
                 continue
                 

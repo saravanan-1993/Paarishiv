@@ -203,7 +203,7 @@ async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(
     """Fetch all DPRs from all projects for Coordinator/Admin."""
     if not role_in(current_user.get("role", ""), ["Project Coordinator", "Super Admin", "Administrator"]):
         raise HTTPException(status_code=403, detail="Not authorized")
-    
+
     # Pre-fetch employees to resolve IDs/usernames to names
     employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "username": 1, "employeeCode": 1}).to_list(1000)
     emp_map = {}
@@ -213,7 +213,29 @@ async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(
         if "username" in e: emp_map[e["username"]] = full_name
         if "employeeCode" in e: emp_map[e["employeeCode"]] = full_name
 
-    projects = await db.projects.find({}, {"name": 1, "dprs": 1}).to_list(1000)
+    # For Coordinators, only fetch DPRs from their assigned projects
+    project_query = {"dprs": {"$exists": True}}
+    user_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
+    if "coordinator" in user_role_norm and user_role_norm not in ("superadmin", "administrator"):
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id") or current_user.get("_id", "")
+        or_conditions = [
+            {"coordinator_id": emp_username},
+            {"coordinator_id": str(emp_id)},
+        ]
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
+            })
+            if employee:
+                or_conditions.append({"coordinator_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"coordinator_id": employee["employeeCode"]})
+        except Exception:
+            pass
+        project_query["$or"] = or_conditions
+
+    projects = await db.projects.find(project_query, {"name": 1, "dprs": 1}).to_list(1000)
     all_dprs = []
     for p in projects:
         project_name = p.get("name", "Unknown")

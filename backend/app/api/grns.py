@@ -45,13 +45,32 @@ def grn_helper(grn) -> dict:
 @router.get("/", response_model=List[dict])
 async def get_grns(current_user: dict = Depends(get_current_user)):
     query = {}
-    if current_user.get("role") == "Site Engineer":
-        projects = await db.projects.find({"engineer_id": current_user.get("username")}).to_list(100)
+    user_role = (current_user.get("role") or "").lower().replace(" ", "")
+    if user_role == "siteengineer":
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id") or current_user.get("_id")
+        or_conditions = [
+            {"engineer_id": emp_username},
+            {"engineer_id": emp_id}
+        ]
+        # Also match by employee record
+        try:
+            employee = await db.employees.find_one({
+                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
+            })
+            if employee:
+                or_conditions.append({"engineer_id": str(employee["_id"])})
+                if employee.get("employeeCode"):
+                    or_conditions.append({"engineer_id": employee["employeeCode"]})
+        except Exception:
+            pass
+
+        projects = await db.projects.find({"$or": or_conditions}).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
-        
+
         pos = await db.purchase_orders.find({"project_name": {"$in": project_names}}).to_list(100)
         po_ids = [str(po["_id"]) for po in pos]
-        
+
         query["po_id"] = {"$in": po_ids}
 
     grns = await db.grns.find(query).sort("created_at", -1).to_list(100)

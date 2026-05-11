@@ -4,17 +4,24 @@ import { X, Calendar, Clock, DollarSign, CheckCircle } from 'lucide-react';
 const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
     const [isProcessing, setIsProcessing] = useState(false);
     
-    // Initial values from employee object or defaults
-    const [totalDays, setTotalDays] = useState(employee?.payrollData?.totalDays || 30);
-    const [presentDays, setPresentDays] = useState(employee?.payrollData?.presentDays || 28);
-    const [leaveDays, setLeaveDays] = useState(employee?.payrollData?.lopDays || 2);
+    // Values from actual payroll/attendance data
+    const [totalDays, setTotalDays] = useState(employee?.payrollData?.totalDays ?? 30);
+    const [presentDays, setPresentDays] = useState(employee?.payrollData?.presentDays ?? 0);
+    const [leaveDays, setLeaveDays] = useState(employee?.payrollData?.lopDays ?? 0);
     const [lopAmount, setLopAmount] = useState(0);
     const [advanceAmount, setAdvanceAmount] = useState(0);
 
     const base = parseFloat(employee?.basicSalary) || 0;
     const allow = parseFloat(employee?.hra) || 0;
 
-    const net = (base + allow) - lopAmount - advanceAmount;
+    const defaultPf = Math.round(base * 0.12);
+    const defaultPt = Math.round(base * 0.05);
+    const [pfAmount, setPfAmount] = useState(employee?.payrollData?.pfAmount ?? defaultPf);
+    const [ptAmount, setPtAmount] = useState(employee?.payrollData?.ptAmount ?? defaultPt);
+
+    const grossEarnings = base + allow;
+    const totalDeductions = pfAmount + ptAmount + lopAmount + advanceAmount;
+    const net = grossEarnings - totalDeductions;
 
     if (!isOpen || !employee) return null;
 
@@ -27,6 +34,10 @@ const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
                 leaveDays,
                 lopAmount,
                 advanceAmount,
+                pfAmount,
+                ptAmount,
+                grossEarnings,
+                totalDeductions,
                 netSalary: net
             });
             setIsProcessing(false);
@@ -97,8 +108,40 @@ const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
                             </div>
                             
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                <span style={{ fontSize: '14px', color: 'var(--text-main)' }}>Allowances</span>
+                                <span style={{ fontSize: '14px', color: 'var(--text-main)' }}>Allowances (HRA)</span>
                                 <span style={{ fontSize: '14px', fontWeight: '700' }}>₹{allow.toLocaleString('en-IN')}</span>
+                            </div>
+
+                            <div style={{ marginTop: '8px', marginBottom: '8px', paddingTop: '8px', borderTop: '1px dashed var(--border)' }}>
+                                <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase' }}>Deductions</div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '14px', color: '#6366F1', fontWeight: '600' }}>Provident Fund (PF)</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#6366F1' }}>- ₹</span>
+                                    <input
+                                        type="number"
+                                        value={pfAmount}
+                                        onChange={(e) => setPfAmount(parseFloat(e.target.value) || 0)}
+                                        placeholder="0"
+                                        style={{ width: '85px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #c7d2fe', textAlign: 'right', fontWeight: '700', color: '#6366F1', outline: 'none' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '14px', color: '#8B5CF6', fontWeight: '600' }}>Professional Tax</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#8B5CF6' }}>- ₹</span>
+                                    <input
+                                        type="number"
+                                        value={ptAmount}
+                                        onChange={(e) => setPtAmount(parseFloat(e.target.value) || 0)}
+                                        placeholder="0"
+                                        style={{ width: '85px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd6fe', textAlign: 'right', fontWeight: '700', color: '#8B5CF6', outline: 'none' }}
+                                    />
+                                </div>
                             </div>
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
@@ -140,7 +183,7 @@ const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
                         <Clock size={20} color="#D97706" style={{ marginTop: '2px' }} />
                         <div>
                             <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#92400E', marginBottom: '4px' }}>Review before confirming</h4>
-                            <p style={{ fontSize: '13px', color: '#B45309' }}>You can adjust attendance, LOP, and Salary Advance deductions above. Net payable will update automatically.</p>
+                            <p style={{ fontSize: '13px', color: '#B45309' }}>You can adjust attendance, PF, Professional Tax, LOP, and Salary Advance deductions above. Net payable will update automatically.</p>
                         </div>
                     </div>
                 </div>

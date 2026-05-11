@@ -264,21 +264,30 @@ async def generate_payroll(month: str, db = Depends(get_database)):
     
     for emp in employees:
         emp_id = str(emp["_id"])
+        emp_code = emp.get("employeeCode", "")
+        emp_username = emp.get("username", "")
+        # Match attendance by any identifier (ObjectId, employeeCode, or username)
+        att_match = {"$or": [{"employeeId": emp_id}]}
+        if emp_code:
+            att_match["$or"].append({"employeeId": emp_code})
+        if emp_username and emp_username != emp_code:
+            att_match["$or"].append({"employeeId": emp_username})
+
         # 2. Count present days and leaves from attendance
         present_days = await db.attendance.count_documents({
-            "employeeId": emp_id,
+            **att_match,
             "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Present"
         })
-        
+
         leave_days = await db.attendance.count_documents({
-            "employeeId": emp_id,
+            **att_match,
             "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Leave"
         })
-        
+
         lop_days = await db.attendance.count_documents({
-            "employeeId": emp_id,
+            **att_match,
             "date": {"$regex": f"^{re.escape(month)}"},
             "status": "Absent"
         })

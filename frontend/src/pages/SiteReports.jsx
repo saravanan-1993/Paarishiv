@@ -15,6 +15,8 @@ const PAGE_SIZE = 15;
 
 const SiteReports = () => {
     const { user } = useAuth();
+    const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
+    const isAdminRole = ['administrator', 'superadmin', 'purchaseofficer'].includes(userRoleNorm);
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -72,7 +74,8 @@ const SiteReports = () => {
         try {
             // Fetch projects for filter
             const projRes = await projectAPI.getAll();
-            setProjects(projRes.data || []);
+            const projList = projRes.data || [];
+            setProjects(projList);
 
             if (activeTab === 'DPR') {
                 const res = await projectAPI.getAllDPRs();
@@ -326,7 +329,7 @@ const SiteReports = () => {
                         <div style={{ flex: '1 1 150px' }}>
                             <CustomSelect
                                 label="Project Filter"
-                                options={[{ value: 'all', label: 'All Projects' }, ...projects.map(p => ({ value: p.name, label: p.name }))]}
+                                options={[{ value: 'all', label: isAdminRole ? 'All Projects' : 'All My Projects' }, ...projects.map(p => ({ value: p.name, label: p.name }))]}
                                 value={selectedProject} onChange={setSelectedProject} icon={MapPin}
                             />
                         </div>

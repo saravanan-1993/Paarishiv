@@ -107,11 +107,40 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
         query["status"] = status
     
     # Check if user is Coordinator, Admin, or Purchase Officer
-    allowed_roles = ["Project Coordinator", "Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
-    if role_in(current_user.get("role", ""), allowed_roles):
+    user_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
+    admin_roles = ["Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
+    if role_in(current_user.get("role", ""), admin_roles):
         if project_name and project_name != "all":
             query["project_name"] = project_name
-    elif current_user.get("role") == "Site Engineer":
+    elif "coordinator" in user_role_norm:
+        # Coordinator: only show requests from their assigned projects
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id") or current_user.get("_id", "")
+        project_query = {"$or": [
+            {"coordinator_id": emp_username},
+            {"coordinator_id": str(emp_id)},
+        ]}
+        try:
+            emp = await db.employees.find_one({"$or": [{"employeeCode": emp_username}, {"username": emp_username}]})
+            if emp:
+                project_query["$or"].append({"coordinator_id": str(emp["_id"])})
+                if emp.get("employeeCode"):
+                    project_query["$or"].append({"coordinator_id": emp["employeeCode"]})
+        except Exception:
+            pass
+        assigned_projects = await db.projects.find(project_query).to_list(100)
+        assigned_names = [p.get("name") for p in assigned_projects if p.get("name")]
+        if project_name and project_name != "all":
+            if project_name in assigned_names:
+                query["project_name"] = project_name
+            else:
+                return []
+        else:
+            if assigned_names:
+                query["project_name"] = {"$in": assigned_names}
+            else:
+                return []
+    elif user_role_norm == "siteengineer":
         # Bug 5.2 - Check multiple fields for Site Engineer project matching
         username = current_user.get("username")
         user_id = current_user.get("_id", "")
@@ -123,6 +152,8 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
         emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
         if emp and emp.get("siteId"):
             project_query["$or"].append({"_id": emp["siteId"]})
+        if emp and emp.get("employeeCode"):
+            project_query["$or"].append({"engineer_id": emp["employeeCode"]})
         projects = await db.projects.find(project_query).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
 
@@ -566,7 +597,7 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
     if project_name:
         query["project_name"] = project_name
         
-    if current_user.get("role") == "Site Engineer":
+    if (current_user.get("role") or "").lower().replace(" ", "") == "siteengineer":
         # Bug 5.2 - Check multiple fields for Site Engineer project matching
         username = current_user.get("username")
         user_id = current_user.get("_id", "")
@@ -577,6 +608,8 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
         emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
         if emp and emp.get("siteId"):
             project_query["$or"].append({"_id": emp["siteId"]})
+        if emp and emp.get("employeeCode"):
+            project_query["$or"].append({"engineer_id": emp["employeeCode"]})
         projects = await db.projects.find(project_query).to_list(100)
         project_names = [p.get("name") for p in projects if p.get("name")]
         if project_names:
@@ -711,8 +744,35 @@ def _transfer_helper(r):
 
 @router.get("/transfers/pending")
 async def get_pending_transfers(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Get all transfer requests — all statuses."""
-    requests = await db.material_transfer_requests.find({}).sort("created_at", -1).to_list(200)
+    """Get all transfer requests — filtered by assigned projects for coordinators."""
+    query = {}
+    xf_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
+    if "coordinator" in xf_role_norm and xf_role_norm not in ("superadmin", "administrator"):
+        emp_username = current_user.get("username")
+        emp_id = current_user.get("id") or current_user.get("_id", "")
+        or_conditions = [
+            {"coordinator_id": emp_username},
+            {"coordinator_id": str(emp_id)},
+        ]
+        try:
+            emp = await db.employees.find_one({"$or": [{"employeeCode": emp_username}, {"username": emp_username}]})
+            if emp:
+                or_conditions.append({"coordinator_id": str(emp["_id"])})
+                if emp.get("employeeCode"):
+                    or_conditions.append({"coordinator_id": emp["employeeCode"]})
+        except Exception:
+            pass
+        assigned = await db.projects.find({"$or": or_conditions}).to_list(100)
+        assigned_names = [p.get("name") for p in assigned if p.get("name")]
+        if assigned_names:
+            query["$or"] = [
+                {"from_project": {"$in": assigned_names}},
+                {"to_project": {"$in": assigned_names}},
+            ]
+        else:
+            return []
+
+    requests = await db.material_transfer_requests.find(query).sort("created_at", -1).to_list(200)
     return [_transfer_helper(r) for r in requests]
 
 async def get_lifo_rate(db, material_name, project_name):
