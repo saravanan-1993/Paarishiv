@@ -242,8 +242,8 @@ async def get_payables(db = Depends(get_database)):
 
 async def create_expense_from_payment_request(pr_doc: dict, db, current_user: dict):
     """Execute actual expense creation from an approved payment request.
-    Called by the approvals handler when a payment request is approved.
-    For multi-vendor GRNs, creates separate expenses per vendor."""
+    Payment request already has correct vendor-specific payee and items
+    (split happens at payables level, not here)."""
     def _f(val, fallback=0):
         try:
             return float(val) if val is not None else float(fallback)
@@ -251,84 +251,27 @@ async def create_expense_from_payment_request(pr_doc: dict, db, current_user: di
             return float(fallback)
 
     is_pending = pr_doc.get("payment_type") == "Pending"
-    grn_id = pr_doc.get("grn_id")
-
-    # Check if this is a multi-vendor PO — split expenses per vendor
-    po = None
-    is_multi = False
-    po_item_vendor_map = {}
-    if grn_id and ObjectId.is_valid(grn_id):
-        grn_doc = await db.grns.find_one({"_id": ObjectId(grn_id)})
-        if grn_doc and grn_doc.get("po_id") and ObjectId.is_valid(grn_doc["po_id"]):
-            po = await db.purchase_orders.find_one({"_id": ObjectId(grn_doc["po_id"])})
-            if po and po.get("is_multi_vendor"):
-                is_multi = True
-                for pit in po.get("items", []):
-                    if pit.get("name") and pit.get("vendor_name"):
-                        po_item_vendor_map[pit["name"]] = pit["vendor_name"]
-
-    if is_multi and po_item_vendor_map:
-        # Group items by vendor
-        items = pr_doc.get("items") or []
-        vendor_groups = {}
-        for item in items:
-            v = po_item_vendor_map.get(item.get("name"), pr_doc.get("payee", "Unknown"))
-            if v not in vendor_groups:
-                vendor_groups[v] = []
-            vendor_groups[v].append(item)
-
-        total_amount = _f(pr_doc.get("total_amount")) or _f(pr_doc.get("amount"))
-
-        for v_name, v_items in vendor_groups.items():
-            v_total = sum(
-                _f(it.get("price", 0)) * (float(it.get("received_qty", 0)) - float(it.get("rejected_qty", 0)))
-                for it in v_items
-            )
-            if v_total <= 0:
-                v_total = total_amount * (len(v_items) / max(len(items), 1))
-            expense_data = ExpenseBase(
-                date=pr_doc.get("date"),
-                project=pr_doc.get("project") or "General",
-                category=pr_doc.get("category") or "Material Purchase",
-                amount=v_total,
-                base_amount=v_total,
-                gst_amount=0,
-                invoice_no=pr_doc.get("invoice_no"),
-                paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
-                payee=v_name.strip(),
-                description=pr_doc.get("description") or "",
-                reference=pr_doc.get("reference") or "",
-                grn_id=grn_id,
-                voucher_no=pr_doc.get("voucher_no"),
-                receipt_url=pr_doc.get("receipt_url"),
-                mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
-                items=v_items,
-                total_amount=v_total,
-                status="Pending" if is_pending else "Paid",
-            )
-            await create_expense(expense_data, db, current_user)
-    else:
-        expense_data = ExpenseBase(
-            date=pr_doc.get("date"),
-            project=pr_doc.get("project") or "General",
-            category=pr_doc.get("category") or "Material Purchase",
-            amount=_f(pr_doc.get("amount")),
-            base_amount=_f(pr_doc.get("base_amount")),
-            gst_amount=_f(pr_doc.get("gst_amount")),
-            invoice_no=pr_doc.get("invoice_no"),
-            paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
-            payee=(pr_doc.get("payee") or "").strip(),
-            description=pr_doc.get("description") or "",
-            reference=pr_doc.get("reference") or "",
-            grn_id=pr_doc.get("grn_id"),
-            voucher_no=pr_doc.get("voucher_no"),
-            receipt_url=pr_doc.get("receipt_url"),
-            mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
-            items=pr_doc.get("items") or [],
-            total_amount=_f(pr_doc.get("total_amount")),
-            status="Pending" if is_pending else "Paid",
-        )
-        await create_expense(expense_data, db, current_user)
+    expense_data = ExpenseBase(
+        date=pr_doc.get("date"),
+        project=pr_doc.get("project") or "General",
+        category=pr_doc.get("category") or "Material Purchase",
+        amount=_f(pr_doc.get("amount")),
+        base_amount=_f(pr_doc.get("base_amount")),
+        gst_amount=_f(pr_doc.get("gst_amount")),
+        invoice_no=pr_doc.get("invoice_no"),
+        paymentMode="Pending" if is_pending else (pr_doc.get("paymentMode") or "Cash"),
+        payee=(pr_doc.get("payee") or "").strip(),
+        description=pr_doc.get("description") or "",
+        reference=pr_doc.get("reference") or "",
+        grn_id=pr_doc.get("grn_id"),
+        voucher_no=pr_doc.get("voucher_no"),
+        receipt_url=pr_doc.get("receipt_url"),
+        mark_as_paid=bool(pr_doc.get("mark_as_paid", False)),
+        items=pr_doc.get("items") or [],
+        total_amount=_f(pr_doc.get("total_amount")),
+        status="Pending" if is_pending else "Paid",
+    )
+    await create_expense(expense_data, db, current_user)
 
 
 @router.post("/expenses", dependencies=[Depends(RBACPermission("Accounts", "edit", "Payments"))])
