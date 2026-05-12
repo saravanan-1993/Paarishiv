@@ -12,6 +12,9 @@ import CompleteTaskModal from '../../components/CompleteTaskModal';
 import AddTaskModal from '../../components/AddTaskModal';
 import TaskDetailsModal from '../../components/TaskDetailsModal';
 import CustomSelect from '../../components/CustomSelect';
+import Pagination from '../../components/Pagination';
+
+const TASKS_PAGE_SIZE = 20;
 
 const Tasks = () => {
     const { user } = useAuth();
@@ -24,6 +27,8 @@ const Tasks = () => {
     const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
     const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || 'All');
     const [projectFilter, setProjectFilter] = useState(() => searchParams.get('project') || 'All');
+    const [page, setPage] = useState(1);
+    useEffect(() => { setPage(1); }, [searchTerm, statusFilter, projectFilter]);
 
     // Sync filter state to URL
     useEffect(() => {
@@ -365,7 +370,7 @@ const Tasks = () => {
                     </thead>
                     <tbody>
                         {filteredTasks.length > 0 ? (
-                            filteredTasks.map((t) => (
+                            filteredTasks.slice((page - 1) * TASKS_PAGE_SIZE, page * TASKS_PAGE_SIZE).map((t) => (
                                 <tr key={`${t.pId}-${t.id}`}>
                                     <td>
                                         <div style={{ fontWeight: '600', color: 'var(--text-main)' }}>{t.name}</div>
@@ -519,6 +524,12 @@ const Tasks = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination
+                    currentPage={page}
+                    totalItems={filteredTasks.length}
+                    pageSize={TASKS_PAGE_SIZE}
+                    onPageChange={setPage}
+                />
             </div>
 
             {/* Complete Task Modal */}

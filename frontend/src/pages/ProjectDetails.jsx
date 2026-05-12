@@ -42,6 +42,9 @@ import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal
 import DPRViewModal from '../components/DPRViewModal';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
+const PD_PAGE_SIZE = 20;
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -352,6 +355,14 @@ const ProjectDetails = () => {
     const [projError, setProjError] = useState('');
     const [employeesMap, setEmployeesMap] = useState({});
 
+    // Pagination states for project sub-tables
+    const [tasksPage, setTasksPage] = useState(1);
+    const [salesPage, setSalesPage] = useState(1);
+    const [receiptsPage, setReceiptsPage] = useState(1);
+    const [purchasePage, setPurchasePage] = useState(1);
+    const [expensesPage, setExpensesPage] = useState(1);
+    const [labourPage, setLabourPage] = useState(1);
+
     // Helper to resolve employee name from ID
     const resolveEmployeeName = (id) => {
         if (!id || id === 'Unassigned') return 'Unassigned';
@@ -405,6 +416,7 @@ const ProjectDetails = () => {
     const [finData, setFinData] = useState(null);
     const [finLoading, setFinLoading] = useState(false);
     const [finTab, setFinTab] = useState('sales');
+    useEffect(() => { setSalesPage(1); setReceiptsPage(1); setPurchasePage(1); setExpensesPage(1); }, [finTab]);
 
     // Labour Attendance state
     const [labourRecords, setLabourRecords] = useState([]);
@@ -878,7 +890,7 @@ const ProjectDetails = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {taskList.map((task, i) => (
+                                        {taskList.slice((tasksPage - 1) * PD_PAGE_SIZE, tasksPage * PD_PAGE_SIZE).map((task, i) => (
                                             <tr key={i}>
                                                 <td style={{ color: 'var(--text-muted)', fontWeight: '600', fontSize: '12px' }}>{task.id || `T-${i + 1}`}</td>
                                                 <td style={{ fontWeight: '600' }}>{task.name}</td>
@@ -937,6 +949,7 @@ const ProjectDetails = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={tasksPage} totalItems={taskList.length} pageSize={PD_PAGE_SIZE} onPageChange={setTasksPage} />
                             </div>
                         )}
                     </div>
@@ -1060,7 +1073,7 @@ const ProjectDetails = () => {
                                         ) : (
                                             <table className="data-table">
                                                 <thead><tr><th>Bill No</th><th>Date</th><th>Description</th><th>Amount</th><th>GST</th><th>Total</th><th>Received</th><th>Status</th></tr></thead>
-                                                <tbody>{finData.sales_bills.map((b, i) => (
+                                                <tbody>{finData.sales_bills.slice((salesPage - 1) * PD_PAGE_SIZE, salesPage * PD_PAGE_SIZE).map((b, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{b.bill_no}</td>
                                                         <td style={{ fontSize: '13px' }}>{b.date || b.created_at?.slice(0, 10)}</td>
@@ -1074,6 +1087,7 @@ const ProjectDetails = () => {
                                                 ))}</tbody>
                                             </table>
                                         )}
+                                        <Pagination currentPage={salesPage} totalItems={finData.sales_bills.length} pageSize={PD_PAGE_SIZE} onPageChange={setSalesPage} />
                                     </div>
                                 )}
 
@@ -1085,7 +1099,7 @@ const ProjectDetails = () => {
                                         ) : (
                                             <table className="data-table">
                                                 <thead><tr><th>Date</th><th>Amount</th><th>Mode</th><th>From</th><th>Description</th></tr></thead>
-                                                <tbody>{finData.receipts.map((r, i) => (
+                                                <tbody>{finData.receipts.slice((receiptsPage - 1) * PD_PAGE_SIZE, receiptsPage * PD_PAGE_SIZE).map((r, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontSize: '13px' }}>{r.date}</td>
                                                         <td style={{ fontWeight: '800', color: '#10B981' }}>{fmtAmt(r.amount)}</td>
@@ -1096,6 +1110,7 @@ const ProjectDetails = () => {
                                                 ))}</tbody>
                                             </table>
                                         )}
+                                        <Pagination currentPage={receiptsPage} totalItems={finData.receipts.length} pageSize={PD_PAGE_SIZE} onPageChange={setReceiptsPage} />
                                     </div>
                                 )}
 
@@ -1107,7 +1122,7 @@ const ProjectDetails = () => {
                                         ) : (
                                             <table className="data-table">
                                                 <thead><tr><th>Bill No</th><th>Date</th><th>Vendor</th><th>Items</th><th>Tax</th><th>Total</th><th>Status</th></tr></thead>
-                                                <tbody>{finData.purchase_bills.map((pb, i) => (
+                                                <tbody>{finData.purchase_bills.slice((purchasePage - 1) * PD_PAGE_SIZE, purchasePage * PD_PAGE_SIZE).map((pb, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{pb.bill_no}</td>
                                                         <td style={{ fontSize: '13px' }}>{pb.bill_date}</td>
@@ -1120,6 +1135,7 @@ const ProjectDetails = () => {
                                                 ))}</tbody>
                                             </table>
                                         )}
+                                        <Pagination currentPage={purchasePage} totalItems={finData.purchase_bills.length} pageSize={PD_PAGE_SIZE} onPageChange={setPurchasePage} />
                                     </div>
                                 )}
 
@@ -1131,7 +1147,7 @@ const ProjectDetails = () => {
                                         ) : (
                                             <table className="data-table">
                                                 <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Paid By</th></tr></thead>
-                                                <tbody>{finData.expenses.map((e, i) => (
+                                                <tbody>{finData.expenses.slice((expensesPage - 1) * PD_PAGE_SIZE, expensesPage * PD_PAGE_SIZE).map((e, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontSize: '13px' }}>{e.date}</td>
                                                         <td><span className="badge badge-info">{e.category || '—'}</span></td>
@@ -1142,6 +1158,7 @@ const ProjectDetails = () => {
                                                 ))}</tbody>
                                             </table>
                                         )}
+                                        <Pagination currentPage={expensesPage} totalItems={finData.expenses.length} pageSize={PD_PAGE_SIZE} onPageChange={setExpensesPage} />
                                     </div>
                                 )}
                             </>
@@ -1328,7 +1345,7 @@ const ProjectDetails = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {labourRecords.map(rec => {
+                                        {labourRecords.slice((labourPage - 1) * PD_PAGE_SIZE, labourPage * PD_PAGE_SIZE).map(rec => {
                                             const status = rec.approval_status || (rec.verified ? 'Approved' : 'Pending');
                                             const statusColors = {
                                                 'Pending': { bg: '#FEF3C7', color: '#92400E' },
@@ -1367,6 +1384,7 @@ const ProjectDetails = () => {
                                         })}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={labourPage} totalItems={labourRecords.length} pageSize={PD_PAGE_SIZE} onPageChange={setLabourPage} />
                             </div>
                         )}
                     </div>

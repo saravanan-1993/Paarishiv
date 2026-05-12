@@ -104,6 +104,13 @@ const Materials = () => {
     const [whPage, setWhPage] = useState(1);
     const [reqPage, setReqPage] = useState(1);
     const [ledgerMPage, setLedgerMPage] = useState(1);
+    // Page states for previously-unpaginated tables
+    const [transferWhPage, setTransferWhPage] = useState(1);
+    const [pendingReqPage, setPendingReqPage] = useState(1);
+    const [consolReqPage, setConsolReqPage] = useState(1);
+    const [transferCoordPage, setTransferCoordPage] = useState(1);
+    const [fleetPage, setFleetPage] = useState(1);
+    const [dailyLogsPage, setDailyLogsPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [isWarehouseLoading, setIsWarehouseLoading] = useState(false);
 
@@ -684,7 +691,7 @@ const Materials = () => {
                                     <tbody>
                                         {materialTransfers.length === 0 ? (
                                             <tr><td colSpan={7} style={{textAlign:'center',padding:'40px',color:'var(--text-muted)'}}>No transfer requests</td></tr>
-                                        ) : materialTransfers.map(t => (
+                                        ) : materialTransfers.slice((transferWhPage - 1) * MAT_PAGE_SIZE, transferWhPage * MAT_PAGE_SIZE).map(t => (
                                             <tr key={t.id}>
                                                 <td style={{fontSize:12}}>{t.created_at ? new Date(t.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
                                                 <td style={{fontWeight:700}}>{t.from_project}</td>
@@ -716,6 +723,7 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={transferWhPage} totalItems={materialTransfers.length} pageSize={MAT_PAGE_SIZE} onPageChange={setTransferWhPage} />
                             </>) : (<>
                                 <table className="data-table">
                                     <thead>
@@ -800,7 +808,7 @@ const Materials = () => {
                                 <div style={{ padding: '60px', textAlign: 'center' }}>
                                     <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto' }} />
                                 </div>
-                            ) : coordinationSubTab === 'Pending' ? (
+                            ) : coordinationSubTab === 'Pending' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -813,7 +821,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {stockRequests.filter(r => r.status === 'Pending').map((req, i) => (
+                                        {stockRequests.filter(r => r.status === 'Pending').slice((pendingReqPage - 1) * MAT_PAGE_SIZE, pendingReqPage * MAT_PAGE_SIZE).map((req, i) => (
                                             <tr key={i}>
                                                 <td>
                                                     {canEditInventory && (<input
@@ -845,7 +853,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : coordinationSubTab === 'Consolidated' ? (
+                                <Pagination currentPage={pendingReqPage} totalItems={stockRequests.filter(r => r.status === 'Pending').length} pageSize={MAT_PAGE_SIZE} onPageChange={setPendingReqPage} />
+                            </>) : coordinationSubTab === 'Consolidated' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -857,7 +866,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {consolidatedRequests.map((con, i) => (
+                                        {consolidatedRequests.slice((consolReqPage - 1) * MAT_PAGE_SIZE, consolReqPage * MAT_PAGE_SIZE).map((con, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontSize: '13px' }}>{new Date(con.created_at).toLocaleDateString()}</td>
                                                 <td style={{ fontWeight: '700', color: 'var(--primary)' }}>#CON-{con.id.slice(-6).toUpperCase()}</td>
@@ -874,7 +883,8 @@ const Materials = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : coordinationSubTab === 'Transfers' ? (
+                                <Pagination currentPage={consolReqPage} totalItems={consolidatedRequests.length} pageSize={MAT_PAGE_SIZE} onPageChange={setConsolReqPage} />
+                            </>) : coordinationSubTab === 'Transfers' ? (
                                 <div style={{ overflowX: 'auto' }}>
                                     <table className="data-table">
                                         <thead><tr>
@@ -889,7 +899,7 @@ const Materials = () => {
                                         <tbody>
                                             {materialTransfers.length === 0 ? (
                                                 <tr><td colSpan={7} style={{textAlign:'center',padding:'40px',color:'var(--text-muted)'}}>No transfer requests</td></tr>
-                                            ) : materialTransfers.map(t => (
+                                            ) : materialTransfers.slice((transferCoordPage - 1) * MAT_PAGE_SIZE, transferCoordPage * MAT_PAGE_SIZE).map(t => (
                                                 <tr key={t.id}>
                                                     <td>{new Date(t.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</td>
                                                     <td style={{fontWeight:700}}>{t.from_project}</td>
@@ -929,6 +939,7 @@ const Materials = () => {
                                             ))}
                                         </tbody>
                                     </table>
+                                    <Pagination currentPage={transferCoordPage} totalItems={materialTransfers.length} pageSize={MAT_PAGE_SIZE} onPageChange={setTransferCoordPage} />
                                 </div>
                             ) : null}
                         </div>
@@ -977,7 +988,7 @@ const Materials = () => {
                         </div>
 
                         <div className="card" style={{ padding: 0 }}>
-                            {assetSubTab === 'Fleet' ? (
+                            {assetSubTab === 'Fleet' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -991,7 +1002,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {fleet.map((item, i) => (
+                                        {fleet.slice((fleetPage - 1) * MAT_PAGE_SIZE, fleetPage * MAT_PAGE_SIZE).map((item, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontWeight: '700' }}>{item.equipmentId || item.id?.slice(-6).toUpperCase()}</td>
                                                 <td>{item.name}</td>
@@ -1005,7 +1016,8 @@ const Materials = () => {
                                         {fleet.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '60px' }}>No equipment found.</td></tr>}
                                     </tbody>
                                 </table>
-                            ) : assetSubTab === 'Logs' ? (
+                                <Pagination currentPage={fleetPage} totalItems={fleet.length} pageSize={MAT_PAGE_SIZE} onPageChange={setFleetPage} />
+                            </>) : assetSubTab === 'Logs' ? (<>
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -1018,7 +1030,7 @@ const Materials = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {dailyLogs.map((log, i) => (
+                                        {dailyLogs.slice((dailyLogsPage - 1) * MAT_PAGE_SIZE, dailyLogsPage * MAT_PAGE_SIZE).map((log, i) => (
                                             <tr key={i}>
                                                 <td>{log.date}</td>
                                                 <td style={{ fontWeight: '600' }}>{log.assetName}</td>
@@ -1031,7 +1043,8 @@ const Materials = () => {
                                         {dailyLogs.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '60px' }}>No logs found.</td></tr>}
                                     </tbody>
                                 </table>
-                            ) : (
+                                <Pagination currentPage={dailyLogsPage} totalItems={dailyLogs.length} pageSize={MAT_PAGE_SIZE} onPageChange={setDailyLogsPage} />
+                            </>) : (
                                 <table className="data-table">
                                     <thead>
                                         <tr>

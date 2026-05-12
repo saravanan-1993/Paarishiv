@@ -382,6 +382,13 @@ export const subcontractorBillingAPI = {
     getDprWork: (params) => api.get('/subcontractor-billing/dpr-work', { params }),
     getContractorSummary: () => api.get('/subcontractor-billing/contractor-summary'),
     delete: (id) => api.delete(`/subcontractor-billing/${id}`),
+    // Advances
+    getAdvances: (params) => api.get('/subcontractor-billing/advances', { params }),
+    getAvailableAdvances: (params) => api.get('/subcontractor-billing/advances/available', { params }),
+    getAdvance: (id) => api.get(`/subcontractor-billing/advances/${id}`),
+    createAdvance: (data) => api.post('/subcontractor-billing/advances', data),
+    updateAdvance: (id, data) => api.put(`/subcontractor-billing/advances/${id}`, data),
+    deleteAdvance: (id) => api.delete(`/subcontractor-billing/advances/${id}`),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────────
