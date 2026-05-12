@@ -196,8 +196,10 @@ async def list_available_advances(
     """Return Approved + Active/Partially Adjusted advances with positive outstanding for a contractor (optionally a project)."""
     if not contractor_name:
         raise HTTPException(status_code=400, detail="contractor_name is required")
+    import re as _re
+    # Case-insensitive exact match on trimmed contractor name
     query = {
-        "contractor_name": contractor_name,
+        "contractor_name": {"$regex": f"^{_re.escape(contractor_name.strip())}$", "$options": "i"},
         "approval_status": "Approved",
         "status": {"$in": ["Active", "Partially Adjusted"]},
         "outstanding_balance": {"$gt": 0},
@@ -677,10 +679,13 @@ async def create_bill(
     if payable < 0:
         raise HTTPException(status_code=400, detail="Payable amount cannot be negative")
 
-    # Validate advance adjustments against current outstanding balances
+    # Validate advance adjustments against current outstanding balances.
+    # Contractor name comparison is whitespace/case tolerant to avoid spurious
+    # mismatches when the same vendor is referenced from different forms.
     raw_adjustments = bill_data.get("advance_adjustments") or []
     advance_adjustments = []
     advance_recovery_total = 0.0
+    bill_contractor_norm = (bill_data.get("contractor_name") or "").strip().lower()
     for entry in raw_adjustments:
         adv_id = entry.get("advance_id")
         adj_amount = float(entry.get("amount", 0) or 0)
@@ -689,8 +694,11 @@ async def create_bill(
         adv = await db.subcontractor_advances.find_one({"_id": ObjectId(adv_id)})
         if not adv:
             raise HTTPException(status_code=400, detail=f"Advance {adv_id} not found")
-        if adv.get("contractor_name") != bill_data["contractor_name"]:
-            raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor")
+        if adv.get("approval_status") != "Approved":
+            raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} is not approved yet")
+        adv_contractor_norm = (adv.get("contractor_name") or "").strip().lower()
+        if adv_contractor_norm != bill_contractor_norm:
+            raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor ({adv.get('contractor_name')})")
         if adj_amount > adv.get("outstanding_balance", 0) + 0.01:
             raise HTTPException(status_code=400, detail=f"Adjustment for advance {adv.get('advance_no')} exceeds outstanding balance (Rs.{adv.get('outstanding_balance', 0):,.2f})")
         advance_adjustments.append({
@@ -784,7 +792,8 @@ async def update_bill(
         raw_adjustments = bill_data.get("advance_adjustments") or []
         new_adjustments = []
         new_recovery_total = 0.0
-        contractor = update_data.get("contractor_name") or existing.get("contractor_name")
+        contractor = update_data.get("contractor_name") or existing.get("contractor_name") or ""
+        contractor_norm = contractor.strip().lower()
         for entry in raw_adjustments:
             adv_id = entry.get("advance_id")
             adj_amount = float(entry.get("amount", 0) or 0)
@@ -793,8 +802,11 @@ async def update_bill(
             adv = await db.subcontractor_advances.find_one({"_id": ObjectId(adv_id)})
             if not adv:
                 raise HTTPException(status_code=400, detail=f"Advance {adv_id} not found")
-            if adv.get("contractor_name") != contractor:
-                raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor")
+            if adv.get("approval_status") != "Approved":
+                raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} is not approved yet")
+            adv_contractor_norm = (adv.get("contractor_name") or "").strip().lower()
+            if adv_contractor_norm != contractor_norm:
+                raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor ({adv.get('contractor_name')})")
             if adj_amount > adv.get("outstanding_balance", 0) + 0.01:
                 raise HTTPException(status_code=400, detail=f"Adjustment for advance {adv.get('advance_no')} exceeds outstanding balance")
             new_adjustments.append({

@@ -119,6 +119,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             .finally(() => setLoadingAdvances(false));
     }, [isOpen, formData.contractor_name, editData]);
 
+
     // Reset form when modal closes
     useEffect(() => {
         if (!isOpen) {
@@ -536,7 +537,11 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
                             <CustomSelect
                                 options={vendors.map(v => ({ value: v.name || v.vendor_name, label: v.name || v.vendor_name }))}
                                 value={formData.contractor_name}
-                                onChange={(val) => setFormData(prev => ({ ...prev, contractor_name: val }))}
+                                onChange={(val) => {
+                                    setFormData(prev => ({ ...prev, contractor_name: val }));
+                                    // Clear stale advance selections — they belong to the previous contractor
+                                    setAdvanceSelections({});
+                                }}
                                 placeholder="Select Contractor"
                             />
                         </div>
