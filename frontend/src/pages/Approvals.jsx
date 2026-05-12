@@ -27,7 +27,6 @@ const Approvals = () => {
     const userRole = (user?.role || '').toLowerCase();
     const canApprovePO = ['super admin', 'administrator', 'general manager', 'manager'].includes(userRole);
     const canApproveTripRequest = hasFeature(user, 'approve_trip_request') || ['super admin', 'administrator', 'managing director'].includes(userRole) || userRole.includes('coordinator') || userRole.includes('purchase');
-    const canSeeTripRequestsTab = hasSubTabAccess(user, 'Approvals', 'Trip Requests');
     const [viewPayment, setViewPayment] = useState(null);
     const [viewDetail, setViewDetail] = useState(null);
 
@@ -234,7 +233,7 @@ const Approvals = () => {
         await performAction(type, id, action, {});
     };
 
-    const tabs = [
+    const allTabs = [
         { id: 'leaves', label: 'Leaves', count: data.leaves?.length || 0, icon: User, color: '#3b82f6' },
         { id: 'purchase_orders', label: 'Purchase Orders', count: data.purchase_orders?.length || 0, icon: ShoppingCart, color: '#8b5cf6' },
         { id: 'materials', label: 'Materials', count: data.materials?.length || 0, icon: Package, color: '#f59e0b' },
@@ -247,8 +246,16 @@ const Approvals = () => {
         { id: 'stock_returns', label: 'Stock Returns', count: data.stock_returns?.length || 0, icon: FileText, color: '#059669' },
         { id: 'material_transfers', label: 'Transfers', count: data.material_transfers?.length || 0, icon: FileText, color: '#F59E0B' },
         { id: 'payment_requests', label: 'Vendor Payments', count: data.payment_requests?.length || 0, icon: CreditCard, color: '#0891b2' },
-        ...(canSeeTripRequestsTab ? [{ id: 'trip_requests', label: 'Trip Requests', count: data.trip_requests?.length || 0, icon: Truck, color: '#7c3aed' }] : []),
+        { id: 'trip_requests', label: 'Trip Requests', count: data.trip_requests?.length || 0, icon: Truck, color: '#7c3aed' },
     ];
+    const tabs = allTabs.filter(tab => hasSubTabAccess(user, 'Approvals', tab.label));
+
+    // Auto-select first available tab if current activeTab is not accessible
+    useEffect(() => {
+        if (tabs.length > 0 && !tabs.find(t => t.id === activeTab)) {
+            setActiveTab(tabs[0].id);
+        }
+    }, [tabs.length]);
 
     const performDprAction = async (dpr, action, payload) => {
         const compositeId = `${dpr.project_id}:${dpr.id}`;

@@ -11,7 +11,7 @@ from app.utils.notifications import notify, get_project_stakeholders, EVENT_HR
 
 router = APIRouter(prefix="/surprise-attendance", tags=["surprise-attendance"])
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(RBACPermission("HRMS", "edit", "Surprise Visits"))])
 async def save_surprise_attendance(
     project_id: str = Form(...),
     project_name: str = Form(...),
@@ -25,10 +25,6 @@ async def save_surprise_attendance(
     current_user = Depends(get_current_user),
     db = Depends(get_database)
 ):
-    # Verify Admin role (Super Admin / Administrator / HR Manager)
-    allowed_roles = ["Super Admin", "Administrator", "HR Manager", "Project Coordinator"]
-    if not role_in(current_user.get("role", ""), allowed_roles):
-        raise HTTPException(status_code=403, detail="Only Admins/HR/Coordinators can mark surprise attendance")
 
     # Check daily rule: Max 2 sessions per project per day
     count = await db.surprise_attendance.count_documents({
