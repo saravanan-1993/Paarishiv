@@ -1031,6 +1031,12 @@ const Finance = () => {
         const matchesParty = (party) => ledgerParty === 'All Parties' || (party || '').trim() === ledgerParty.trim();
         const showClient = ledgerType === 'All' || ledgerType === 'Client';
         const showVendor = ledgerType === 'All' || ledgerType === 'Vendor' || ledgerType === 'Expenses';
+        // When a specific project is selected, SC Advances are relevant under
+        // every sub-filter (they are project cash outflows that affect the
+        // project's net position). The user expects to see them in any view
+        // for the selected project.
+        const projectScoped = selectedProject !== 'All Projects';
+        const showSCAdvancesAnyway = projectScoped;
 
         // Track GRN IDs that have purchase bills to avoid duplicates
         const billedGrnIds = new Set(purchaseBills.map(pb => pb.grn_id).filter(Boolean));
@@ -1125,7 +1131,12 @@ const Finance = () => {
         });
 
         // ── 6. EXPENSES / PAYMENTS (Money paid out) — Debit: cash out ──
-        if (showVendor) expenses.filter(e => matchesProject(e.project)).forEach(e => {
+        expenses.filter(e => matchesProject(e.project)).forEach(e => {
+            const isSCAdvance = e.category === 'Subcontractor Advance';
+            // Show under Vendor/Expenses always; show SC Advances under any filter
+            // when a specific project is selected
+            if (!showVendor && !(isSCAdvance && showSCAdvancesAnyway)) return;
+
             const entryParty = e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense');
             if (!matchesParty(entryParty)) return;
             const amount = parseFloat(e.amount) || 0;
@@ -1133,12 +1144,15 @@ const Finance = () => {
 
             const desc = e.grn_id
                 ? `Payment to ${entryParty} - ${payables.find(p => p.id === e.grn_id)?.voucher_no || 'Purchase'}`
-                : `${e.category || 'Expense'}: ${e.description || 'Payment'}`;
+                : `${e.category || 'Expense'}${e.description ? ': ' + e.description : (e.invoice_no ? ' (' + e.invoice_no + ')' : ': Payment')}`;
 
             // Negative amount = credit (e.g., Material Transfer Out)
             entries.push({
                 date: e.date || e.created_at || new Date().toISOString(),
-                type: e.source === 'labour_salary' ? 'Labour' : (e.category?.includes('Transfer') ? 'Transfer' : (e.grn_id ? 'Payment' : 'Expense')),
+                type: e.source === 'labour_salary' ? 'Labour'
+                    : (e.category?.includes('Transfer') ? 'Transfer'
+                    : (isSCAdvance ? 'SC Advance'
+                    : (e.grn_id ? 'Payment' : 'Expense'))),
                 particulars: desc,
                 debit: amount > 0 ? amount : 0,
                 credit: amount < 0 ? Math.abs(amount) : 0,

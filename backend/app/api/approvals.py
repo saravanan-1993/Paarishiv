@@ -389,20 +389,25 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "approved_at": datetime.now().isoformat(),
                 }})
                 # Create the expense entry now (deferred from advance creation)
+                contractor_nm = sc_adv.get("contractor_name", "")
+                adv_no = sc_adv.get("advance_no", "")
+                adv_amount = sc_adv.get("amount", 0)
                 expense_doc = {
                     "date": sc_adv.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
                     "project": sc_adv.get("project_name", ""),
+                    "project_id": sc_adv.get("project_id", ""),
                     "category": "Subcontractor Advance",
-                    "amount": sc_adv.get("amount", 0),
-                    "base_amount": sc_adv.get("amount", 0),
+                    "description": f"Advance {adv_no} to {contractor_nm}",
+                    "amount": adv_amount,
+                    "base_amount": adv_amount,
                     "gst_amount": 0,
                     "paymentMode": sc_adv.get("payment_mode", "Cash"),
-                    "payee": sc_adv.get("contractor_name", ""),
+                    "payee": contractor_nm,
                     "reference": sc_adv.get("reference_no", ""),
-                    "invoice_no": sc_adv.get("advance_no", ""),
+                    "invoice_no": adv_no,
                     "status": "Paid",
                     "sc_advance_id": obj_id,
-                    "remarks": f"Advance to {sc_adv.get('contractor_name')}",
+                    "remarks": f"Advance to {contractor_nm}",
                     "created_at": datetime.now().isoformat(),
                     "created_by": approver_name,
                 }
