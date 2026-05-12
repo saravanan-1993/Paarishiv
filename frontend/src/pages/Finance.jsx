@@ -1340,70 +1340,131 @@ const Finance = () => {
 
                         {/* Profit & Loss Summary */}
                         <div style={{
-                            marginTop: '24px', padding: '24px', borderRadius: '16px',
-                            background: profitLoss >= 0
-                                ? 'linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%)'
-                                : 'linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)',
-                            border: `1.5px solid ${profitLoss >= 0 ? '#86EFAC' : '#FECACA'}`
+                            marginTop: '24px', borderRadius: '16px', overflow: 'hidden',
+                            border: '1px solid var(--border)', background: 'white',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                                <div style={{
-                                    width: '44px', height: '44px', borderRadius: '12px',
-                                    backgroundColor: profitLoss >= 0 ? '#10B981' : '#EF4444',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
-                                }}>
-                                    {profitLoss >= 0 ? <TrendingUp size={22} /> : <ArrowDownRight size={22} />}
+                            {/* Header */}
+                            <div style={{
+                                padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                borderBottom: '1px solid var(--border)', background: '#FAFBFC'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{
+                                        width: '40px', height: '40px', borderRadius: '10px',
+                                        background: profitLoss >= 0 ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #EF4444, #DC2626)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white'
+                                    }}>
+                                        {profitLoss >= 0 ? <TrendingUp size={20} /> : <ArrowDownRight size={20} />}
+                                    </div>
+                                    <div>
+                                        <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                                            Profit & Loss
+                                        </h4>
+                                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
+                                            {selectedProject !== 'All Projects' ? selectedProject : 'All Projects'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '2px' }}>
-                                        Profit & Loss {selectedProject !== 'All Projects' ? `- ${selectedProject}` : '(All Projects)'}
-                                    </h4>
-                                    <div style={{ fontSize: '28px', fontWeight: '900', color: profitLoss >= 0 ? '#059669' : '#DC2626' }}>
+                                <div style={{ textAlign: 'right' }}>
+                                    <p style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 2px 0' }}>
+                                        Net {profitLoss >= 0 ? 'Profit' : 'Loss'}
+                                    </p>
+                                    <p style={{ fontSize: '26px', fontWeight: '800', color: profitLoss >= 0 ? '#059669' : '#DC2626', margin: 0, lineHeight: 1 }}>
                                         {profitLoss >= 0 ? '+' : ''}{fmt(profitLoss)}
-                                    </div>
+                                    </p>
                                 </div>
                             </div>
-                            {/* Income Section */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <p style={{ fontSize: '11px', fontWeight: '800', color: '#059669', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>Income</p>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Project Billing</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#059669' }}>{fmt(totalBilled)}</p>
+
+                            <div style={{ padding: '20px 24px' }}>
+                                {/* Income & Expense Side by Side */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                    {/* Income Column */}
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+                                            <p style={{ fontSize: '12px', fontWeight: '700', color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Income</p>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {[
+                                                { label: 'Project Billing', value: totalBilled },
+                                                { label: 'Fleet Revenue', value: fleetRevenue },
+                                            ].map((item, i) => (
+                                                <div key={i} style={{
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                    padding: '10px 14px', borderRadius: '8px', background: '#F8FAFC',
+                                                    border: '1px solid #F1F5F9'
+                                                }}>
+                                                    <span style={{ fontSize: '13px', color: '#64748B', fontWeight: '500' }}>{item.label}</span>
+                                                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#1E293B' }}>{fmt(item.value)}</span>
+                                                </div>
+                                            ))}
+                                            <div style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                padding: '12px 14px', borderRadius: '8px', background: '#F0FDF4',
+                                                border: '1px solid #BBF7D0'
+                                            }}>
+                                                <span style={{ fontSize: '13px', fontWeight: '700', color: '#059669' }}>Total Income</span>
+                                                <span style={{ fontSize: '16px', fontWeight: '800', color: '#059669' }}>{fmt(totalIncome)}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Fleet Revenue</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#059669' }}>{fmt(fleetRevenue)}</p>
-                                    </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#059669', textTransform: 'uppercase', marginBottom: '4px' }}>Total Income</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '900', color: '#059669' }}>{fmt(totalIncome)}</p>
+
+                                    {/* Expenses Column */}
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444' }} />
+                                            <p style={{ fontSize: '12px', fontWeight: '700', color: '#DC2626', textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Expenses</p>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {[
+                                                { label: 'Material / Purchase', value: totalPurchaseBillAmt },
+                                                { label: 'Payments / Expenses', value: totalExpensesPaid },
+                                                { label: 'Subcontractor Cost', value: totalScBillAmt },
+                                                { label: 'Fleet Expense', value: fleetExpense },
+                                            ].map((item, i) => (
+                                                <div key={i} style={{
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                    padding: '10px 14px', borderRadius: '8px', background: '#F8FAFC',
+                                                    border: '1px solid #F1F5F9'
+                                                }}>
+                                                    <span style={{ fontSize: '13px', color: '#64748B', fontWeight: '500' }}>{item.label}</span>
+                                                    <span style={{ fontSize: '14px', fontWeight: '700', color: '#1E293B' }}>{fmt(item.value)}</span>
+                                                </div>
+                                            ))}
+                                            <div style={{
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                padding: '12px 14px', borderRadius: '8px', background: '#FEF2F2',
+                                                border: '1px solid #FECACA'
+                                            }}>
+                                                <span style={{ fontSize: '13px', fontWeight: '700', color: '#DC2626' }}>Total Expenses</span>
+                                                <span style={{ fontSize: '16px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalCosts)}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            {/* Expenses Section */}
-                            <div>
-                                <p style={{ fontSize: '11px', fontWeight: '800', color: '#DC2626', textTransform: 'uppercase', marginBottom: '10px', letterSpacing: '0.5px' }}>Expenses</p>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Material / Purchase</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalPurchaseBillAmt)}</p>
+
+                                {/* Bottom P&L Bar */}
+                                <div style={{
+                                    marginTop: '16px', padding: '14px 20px', borderRadius: '10px',
+                                    background: profitLoss >= 0
+                                        ? 'linear-gradient(135deg, #059669, #10B981)'
+                                        : 'linear-gradient(135deg, #DC2626, #EF4444)',
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        {profitLoss >= 0 ? <TrendingUp size={18} color="white" /> : <ArrowDownRight size={18} color="white" />}
+                                        <span style={{ fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                            {profitLoss >= 0 ? 'Net Profit' : 'Net Loss'}
+                                        </span>
                                     </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Payments / Expenses</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalExpensesPaid)}</p>
-                                    </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Subcontractor Cost</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(totalScBillAmt)}</p>
-                                    </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Fleet Expense</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '800', color: '#DC2626' }}>{fmt(fleetExpense)}</p>
-                                    </div>
-                                    <div style={{ padding: '14px 16px', backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: '10px', border: '1px solid #fecaca' }}>
-                                        <p style={{ fontSize: '11px', fontWeight: '700', color: '#DC2626', textTransform: 'uppercase', marginBottom: '4px' }}>Total Expenses</p>
-                                        <p style={{ fontSize: '18px', fontWeight: '900', color: '#DC2626' }}>{fmt(totalCosts)}</p>
+                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                        <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
+                                            {totalIncome > 0 ? `${((Math.abs(profitLoss) / totalIncome) * 100).toFixed(1)}% margin` : ''}
+                                        </span>
+                                        <span style={{ fontSize: '22px', fontWeight: '800', color: 'white' }}>
+                                            {profitLoss >= 0 ? '+' : ''}{fmt(profitLoss)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -1801,6 +1862,7 @@ const Finance = () => {
                                 <thead>
                                     <tr>
                                         <th>Voucher No</th>
+                                        <th>Date</th>
                                         <th>Vendor</th>
                                         <th>Project</th>
                                         <th style={{ textAlign: 'right' }}>Total Amt</th>
@@ -1827,6 +1889,7 @@ const Finance = () => {
                                                         {item.items?.map(i => `${i.name}`).slice(0, 2).join(', ')}...
                                                     </div>
                                                 </td>
+                                                <td style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{item.date ? new Date(item.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                                                 <td>{item.vendor}</td>
                                                 <td>{item.project}</td>
                                                 <td style={{ textAlign: 'right', fontWeight: '600' }}>{fmt(totAmt)}</td>
@@ -1846,7 +1909,10 @@ const Finance = () => {
                                                         <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, base_amount: item.base_amount, gst_amount: item.gst_amount, invoice_no: item.invoice_no, items: item.items, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                             <Download size={18} color="#10B981" />
                                                         </button>
-                                                        {canEditAccounts && pStatus !== 'Paid' && (
+                                                        {canEditAccounts && pStatus !== 'Paid' && item.approval_status === 'Pending' && (
+                                                            <span className="badge badge-warning" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>Waiting for Approval</span>
+                                                        )}
+                                                        {canEditAccounts && pStatus !== 'Paid' && item.approval_status !== 'Pending' && (
                                                             <button className="btn btn-primary btn-sm" onClick={() => handleProcessPayment(item)} style={{ fontSize: '11px' }}>
                                                                 Pay
                                                             </button>

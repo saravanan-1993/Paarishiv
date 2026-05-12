@@ -511,15 +511,21 @@ const SiteReports = () => {
                                                     <td><div style={{ fontSize: '12px' }}>{xf.items?.map((it, idx) => (<div key={idx}>• {it.name} ({it.quantity})</div>))}</div></td>
                                                     <td>{xf.engineer_id}</td>
                                                     <td style={{ textAlign: 'right' }}>
-                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                                            <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
-                                                            {xf.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
-                                                                <>
-                                                                    <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)} disabled={processingId === xf.id}>{processingId === xf.id ? <Loader2 size={14} className="animate-spin" /> : 'APPROVE'}</button>
-                                                                    <button className="btn btn-outline btn-sm" style={{ color: '#ef4444' }} onClick={() => handleRejectTransfer(xf.id)} disabled={processingId === xf.id}>REJECT</button>
-                                                                </>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                                                            {xf.status !== 'Pending' && (
+                                                                <span className={`badge ${xf.status === 'Completed' || xf.status === 'Approved' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : 'badge-info'}`} style={{ fontSize: '11px' }}>
+                                                                    {xf.status}
+                                                                </span>
                                                             )}
-                                                            {xf.status !== 'Pending' && <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>{xf.status}</span>}
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
+                                                                {xf.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
+                                                                    <>
+                                                                        <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)} disabled={processingId === xf.id}>{processingId === xf.id ? <Loader2 size={14} className="animate-spin" /> : 'Approve'}</button>
+                                                                        <button className="btn btn-outline btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => handleRejectTransfer(xf.id)} disabled={processingId === xf.id}>Reject</button>
+                                                                    </>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </td>
                                                 </tr>

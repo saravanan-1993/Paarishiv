@@ -29,7 +29,7 @@ const Materials = () => {
     const confirm = useConfirm();
     const [promptModal, setPromptModal] = useState(null);
     const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
-    const isAdmin = ['administrator', 'superadmin', 'generalmanager', 'managingdirector'].includes(userRoleNorm);
+    const isAdmin = ['administrator', 'superadmin', 'generalmanager', 'managingdirector', 'purchaseofficer'].includes(userRoleNorm);
     const isSiteEngineer = userRoleNorm === 'siteengineer';
     const isCoordinator = ['projectcoordinator', 'superadmin', 'administrator'].includes(userRoleNorm);
     const canEditInventory = hasPermission(user, 'Inventory Management', 'edit');

@@ -65,6 +65,20 @@ async def get_payables(db = Depends(get_database)):
     # Fetch all material purchase expenses to check what's already paid
     expenses = await db.expenses.find({"category": "Material Purchase"}).to_list(1000)
 
+    # Fetch pending/rejected payment requests to track approval status per GRN
+    pending_prs = await db.payment_requests.find(
+        {"status": {"$in": ["Pending", "Rejected"]}}
+    ).to_list(1000)
+    # Map: grn_id -> latest payment request status
+    pr_status_map = {}
+    for pr in pending_prs:
+        gid = pr.get("grn_id")
+        if gid:
+            existing = pr_status_map.get(gid)
+            # Keep the most recent entry (by created_at)
+            if not existing or (pr.get("created_at") or "") > (existing.get("created_at") or ""):
+                pr_status_map[gid] = pr
+
     # Fetch purchase bills to get correct totals when GRN/PO don't have prices
     purchase_bills_list = await db.purchase_bills.find().to_list(1000)
     pb_by_grn = {}
@@ -204,6 +218,9 @@ async def get_payables(db = Depends(get_database)):
                 )
                 v_balance = max(0, v_total - (paid_amount * (v_total / total_value) if total_value > 0 else 0))
                 v_status = "Paid" if grn.get("status") == "Paid" else ("Paid" if v_balance <= 0 and v_total > 0 else status)
+                # Check for pending payment request
+                pr_entry = pr_status_map.get(grn_id_str)
+                v_approval = pr_entry.get("status") if pr_entry else None
                 payables.append({
                     "id": grn_id_str,
                     "voucher_no": f"GRN-{grn_id_str[-6:].upper()}",
@@ -218,9 +235,13 @@ async def get_payables(db = Depends(get_database)):
                     "date": grn_date,
                     "status": v_status,
                     "source": "GRN",
-                    "items": v_items
+                    "items": v_items,
+                    "approval_status": v_approval
                 })
         else:
+            # Check for pending payment request
+            pr_entry = pr_status_map.get(grn_id_str)
+            approval_status = pr_entry.get("status") if pr_entry else None
             payables.append({
                 "id": grn_id_str,
                 "voucher_no": f"GRN-{grn_id_str[-6:].upper()}",
@@ -235,7 +256,8 @@ async def get_payables(db = Depends(get_database)):
                 "date": grn_date,
                 "status": status,
                 "source": "GRN",
-                "items": clean_items
+                "items": clean_items,
+                "approval_status": approval_status
             })
 
     return payables
