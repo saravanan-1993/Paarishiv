@@ -676,7 +676,7 @@ const ProjectDetails = () => {
                                 <AlertTriangle size={16} /> Urgent Material
                             </button>
                         )}
-                        {canEditProjects && (
+                        {canEditProjects && !isEngineer && (
                             <button
                                 className="btn btn-outline"
                                 onClick={() => setIsEditProjectOpen(true)}
