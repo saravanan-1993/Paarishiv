@@ -392,20 +392,25 @@ async def approve_advance(advance_id: str, current_user: dict = Depends(get_curr
     )
 
     # Create the expense entry now (deferred from creation)
+    contractor = adv.get("contractor_name", "")
+    advance_no = adv.get("advance_no", "")
+    amount = adv.get("amount", 0)
     expense_doc = {
         "date": adv.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
         "project": adv.get("project_name", ""),
+        "project_id": adv.get("project_id", ""),
         "category": "Subcontractor Advance",
-        "amount": adv.get("amount", 0),
-        "base_amount": adv.get("amount", 0),
+        "description": f"Advance {advance_no} to {contractor}",
+        "amount": amount,
+        "base_amount": amount,
         "gst_amount": 0,
         "paymentMode": adv.get("payment_mode", "Cash"),
-        "payee": adv.get("contractor_name", ""),
+        "payee": contractor,
         "reference": adv.get("reference_no", ""),
-        "invoice_no": adv.get("advance_no", ""),
+        "invoice_no": advance_no,
         "status": "Paid",
         "sc_advance_id": advance_id,
-        "remarks": f"Advance to {adv.get('contractor_name')}",
+        "remarks": f"Advance to {contractor}",
         "created_at": datetime.now().isoformat(),
         "created_by": approver,
     }
@@ -429,6 +434,85 @@ async def approve_advance(advance_id: str, current_user: dict = Depends(get_curr
         "success"
     )
     return {"message": "Advance approved"}
+
+
+@router.post("/advances/sync-expenses")
+async def sync_advance_expenses(current_user: dict = Depends(get_current_user)):
+    """One-time sync: ensure every Approved advance has a matching expense doc
+    with project + project_id + description filled in. Admin/GM only.
+    Idempotent — safe to run repeatedly.
+    """
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can run sync")
+
+    approved_advances = await db.subcontractor_advances.find(
+        {"approval_status": "Approved"}
+    ).to_list(2000)
+
+    created_count = 0
+    updated_count = 0
+    for adv in approved_advances:
+        adv_id_str = str(adv["_id"])
+        contractor_nm = adv.get("contractor_name", "")
+        adv_no = adv.get("advance_no", "")
+        adv_amount = adv.get("amount", 0)
+        project_nm = adv.get("project_name", "")
+        project_id = adv.get("project_id", "")
+
+        existing = await db.expenses.find_one({"sc_advance_id": adv_id_str})
+        if not existing:
+            # Create missing expense
+            expense_doc = {
+                "date": adv.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
+                "project": project_nm,
+                "project_id": project_id,
+                "category": "Subcontractor Advance",
+                "description": f"Advance {adv_no} to {contractor_nm}",
+                "amount": adv_amount,
+                "base_amount": adv_amount,
+                "gst_amount": 0,
+                "paymentMode": adv.get("payment_mode", "Cash"),
+                "payee": contractor_nm,
+                "reference": adv.get("reference_no", ""),
+                "invoice_no": adv_no,
+                "status": "Paid",
+                "sc_advance_id": adv_id_str,
+                "remarks": f"Advance to {contractor_nm}",
+                "created_at": datetime.now().isoformat(),
+                "created_by": adv.get("approved_by") or adv.get("created_by") or "system-sync",
+            }
+            await db.expenses.insert_one(expense_doc)
+            created_count += 1
+        else:
+            # Backfill any missing fields on the existing expense
+            patch = {}
+            if not existing.get("project") and project_nm:
+                patch["project"] = project_nm
+            if not existing.get("project_id") and project_id:
+                patch["project_id"] = project_id
+            if not existing.get("description"):
+                patch["description"] = f"Advance {adv_no} to {contractor_nm}"
+            if not existing.get("invoice_no") and adv_no:
+                patch["invoice_no"] = adv_no
+            if patch:
+                await db.expenses.update_one({"_id": existing["_id"]}, {"$set": patch})
+                updated_count += 1
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Sync SC Advance Expenses",
+        f"Synced {len(approved_advances)} approved advances: {created_count} expense docs created, {updated_count} patched",
+        "info"
+    )
+
+    return {
+        "message": "Sync complete",
+        "approved_advances_total": len(approved_advances),
+        "expenses_created": created_count,
+        "expenses_patched": updated_count,
+    }
 
 
 @router.put("/advances/{advance_id}/reject")
