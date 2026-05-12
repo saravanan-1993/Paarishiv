@@ -75,7 +75,6 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
             doc.setFont("helvetica", "normal");
             doc.setFontSize(10);
             const formatAmt = (v) => `Rs. ${(v || 0).toLocaleString('en-IN')}`;
-            doc.text(`Total Ordered (POs):  ${formatAmt(stats.total_po)}`, 14, infoY); infoY += 6;
             doc.text(`Total Billed (GRNs):  ${formatAmt(stats.total_received)}`, 14, infoY); infoY += 6;
             doc.text(`Total Paid:  ${formatAmt(stats.total_paid)}`, 14, infoY); infoY += 6;
             doc.setFont("helvetica", "bold");
@@ -117,7 +116,6 @@ const VendorDetailModal = ({ isOpen, onClose, vendor }) => {
     if (!isOpen || !vendor) return null;
 
     const stats = [
-        { label: 'Total Ordered (POs)', value: `₹${ledgerData.stats.total_po.toLocaleString()}`, icon: Package, color: '#3B82F6' },
         { label: 'Total Billed (GRNs)', value: `₹${ledgerData.stats.total_received.toLocaleString()}`, icon: Truck, color: '#8B5CF6' },
         { label: 'Total Paid', value: `₹${ledgerData.stats.total_paid.toLocaleString()}`, icon: IndianRupee, color: '#10B981' },
         { label: 'Balance Payable', value: `₹${ledgerData.stats.balance.toLocaleString()}`, icon: AlertCircle, color: '#EF4444' },

@@ -291,13 +291,13 @@ const SiteReports = () => {
 
     return (
         <div className="site-reports-container" style={{ position: 'relative' }}>
-            <div className="animate-fade-in" style={{ padding: '24px' }}>
+            <div className="animate-fade-in" style={{ padding: '20px' }}>
 
                 {/* Header section */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                        <h1 style={{ fontSize: '28px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '8px' }}>Coordinator Control Hub</h1>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Review site operations, approve DPRs and process material requests from site engineers.</p>
+                        <h1 style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Coordinator Control Hub</h1>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Review site operations, approve DPRs and process material requests from site engineers.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', flex: '1 1 auto' }}>
                         <div style={{ flex: '1 1 150px' }}>
@@ -337,7 +337,7 @@ const SiteReports = () => {
                 </div>
 
                 {/* Tabs */}
-                <div style={{ display: 'flex', gap: '20px', borderBottom: '2px solid var(--border)', marginBottom: '32px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '16px', borderBottom: '2px solid var(--border)', marginBottom: '16px', flexWrap: 'wrap' }}>
                     {[
                         { id: 'DPR', label: 'Site Reports (DPR)', icon: FileText },
                         { id: 'Requests', label: 'Material Requests', icon: Package },
@@ -345,7 +345,7 @@ const SiteReports = () => {
                     ].map(t => (
                         <button key={t.id} onClick={() => handleTabChange(t.id)}
                             style={{
-                                padding: '12px 8px', fontSize: '15px', fontWeight: '800',
+                                padding: '10px 8px', fontSize: '14px', fontWeight: '700',
                                 color: activeTab === t.id ? 'var(--primary)' : 'var(--text-muted)',
                                 borderBottom: activeTab === t.id ? '3px solid var(--primary)' : '3px solid transparent',
                                 background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '-2px',
@@ -359,7 +359,7 @@ const SiteReports = () => {
 
                 <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
                     {loading ? (
-                        <div style={{ textAlign: 'center', padding: '100px' }}>
+                        <div style={{ textAlign: 'center', padding: '40px' }}>
                             <Loader2 size={40} className="animate-spin" color="var(--primary)" style={{ margin: '0 auto 16px' }} />
                             <p style={{ fontWeight: '600', color: 'var(--text-muted)' }}>Fetching data...</p>
                         </div>
@@ -367,12 +367,12 @@ const SiteReports = () => {
                         <div style={{ overflowX: 'auto' }}>
                             {activeTab === 'DPR' && (
                                 <>
-                                <table className="data-table">
+                                <table className="data-table" style={{ marginTop: 0 }}>
                                     <thead>
                                         <tr><th>Date</th><th>Project</th><th>Engineer</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
-                                        {filteredDPRs.length === 0 ? <tr><td colSpan="5" style={{ textAlign: 'center', padding: '60px' }}>No site reports found.</td></tr> :
+                                        {filteredDPRs.length === 0 ? <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No site reports found.</td></tr> :
                                             paginatedDPRs.map((dpr, i) => (
                                                 <tr key={i}>
                                                     <td>{dpr.date}</td><td style={{ fontWeight: '700', color: 'var(--primary)' }}>{dpr.project_name}</td><td>{dpr.submitted_by}</td>
@@ -435,12 +435,12 @@ const SiteReports = () => {
                             )}
                             {activeTab === 'Requests' && (
                                 <>
-                                <table className="data-table">
+                                <table className="data-table" style={{ marginTop: 0 }}>
                                     <thead>
                                         <tr><th>Date</th><th>Project</th><th>Site Engineer</th><th>Items Requested</th><th>Priority</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
-                                        {filteredRequests.length === 0 ? <tr><td colSpan="7" style={{ textAlign: 'center', padding: '60px' }}>No pending material requests.</td></tr> :
+                                        {filteredRequests.length === 0 ? <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px' }}>No pending material requests.</td></tr> :
                                             paginatedRequests.map((req, i) => (
                                                 <tr key={i}>
                                                     <td>{new Date(req.created_at).toLocaleDateString()}</td><td style={{ fontWeight: '700' }}>{req.project_name}</td><td>{req.engineer_id}</td>
@@ -499,12 +499,12 @@ const SiteReports = () => {
                             )}
                             {activeTab === 'Transfers' && (
                                 <>
-                                <table className="data-table">
+                                <table className="data-table" style={{ marginTop: 0 }}>
                                     <thead>
                                         <tr><th>Date</th><th>From Project</th><th>To Project</th><th>Items</th><th>Requested By</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
                                     </thead>
                                     <tbody>
-                                        {filteredTransfers.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '60px' }}>No pending transfer requests.</td></tr> :
+                                        {filteredTransfers.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>No pending transfer requests.</td></tr> :
                                             paginatedTransfers.map((xf, i) => (
                                                 <tr key={i}>
                                                     <td>{new Date(xf.created_at).toLocaleDateString()}</td><td style={{ fontWeight: '600', color: '#ef4444' }}>{xf.from_project}</td><td style={{ fontWeight: '600', color: '#22c55e' }}>{xf.to_project}</td>
@@ -513,8 +513,8 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                                                             {xf.status !== 'Pending' && (
-                                                                <span className={`badge ${xf.status === 'Completed' || xf.status === 'Approved' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : 'badge-info'}`} style={{ fontSize: '11px' }}>
-                                                                    {xf.status}
+                                                                <span className={`badge ${xf.status === 'Completed' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : xf.status === 'Coordinator Approved' ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
+                                                                    {xf.status === 'Coordinator Approved' ? 'Awaiting Admin' : xf.status}
                                                                 </span>
                                                             )}
                                                             <div style={{ display: 'flex', gap: '8px' }}>
