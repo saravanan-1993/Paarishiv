@@ -54,6 +54,8 @@ def bill_helper(bill) -> dict:
         "paid_amount": bill.get("paid_amount", 0),
         "balance": bill.get("balance", 0),
         "payments": bill.get("payments", []),
+        "advance_adjustments": bill.get("advance_adjustments", []),
+        "advance_recovery_total": bill.get("advance_recovery_total", 0),
         "mbook_page_no": bill.get("mbook_page_no", ""),
         "mbook_serial_no": bill.get("mbook_serial_no", ""),
         "measured_by": bill.get("measured_by") or {"name": "", "designation": "", "date": ""},
@@ -80,7 +82,255 @@ async def generate_bill_no():
     return f"{prefix}001"
 
 
+async def generate_advance_no():
+    """Generate sequential advance number: ADV-YYMMDD-NNN"""
+    today = datetime.now().strftime("%y%m%d")
+    prefix = f"ADV-{today}-"
+    try:
+        last = await db.subcontractor_advances.find(
+            {"advance_no": {"$regex": f"^{prefix}"}},
+            {"advance_no": 1}
+        ).sort("advance_no", -1).to_list(1)
+        if last:
+            last_seq = int(last[0]["advance_no"].split("-")[-1])
+            return f"{prefix}{last_seq + 1:03d}"
+    except (ValueError, IndexError, KeyError):
+        pass
+    return f"{prefix}001"
+
+
+async def _restore_advance(advance_id: str, amount: float, bill_no: str = ""):
+    """Restore a previously deducted amount back into the advance (used on rollback / bill rejection / delete)."""
+    if not ObjectId.is_valid(advance_id) or amount <= 0:
+        return
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        return
+    new_adjusted = max((adv.get("adjusted_amount", 0) or 0) - amount, 0)
+    new_outstanding = (adv.get("outstanding_balance", 0) or 0) + amount
+    # Clamp outstanding to original amount in case of rounding drift
+    new_outstanding = min(new_outstanding, adv.get("amount", new_outstanding))
+    new_status = "Active" if new_adjusted <= 0.01 else "Partially Adjusted"
+    set_dict = {
+        "adjusted_amount": new_adjusted,
+        "outstanding_balance": new_outstanding,
+        "status": new_status,
+        "closed_at": None,
+    }
+    log_entry = {
+        "bill_no": bill_no,
+        "amount": -amount,
+        "adjusted_at": datetime.now().isoformat(),
+        "note": "restored",
+    }
+    await db.subcontractor_advances.update_one(
+        {"_id": ObjectId(advance_id)},
+        {"$push": {"adjustments": log_entry}, "$set": set_dict}
+    )
+
+
+def advance_helper(adv) -> dict:
+    created_at = adv.get("created_at")
+    if hasattr(created_at, "isoformat"):
+        created_at = created_at.isoformat()
+    closed_at = adv.get("closed_at")
+    if hasattr(closed_at, "isoformat"):
+        closed_at = closed_at.isoformat()
+    return {
+        "id": str(adv["_id"]),
+        "advance_no": adv.get("advance_no", ""),
+        "contractor_name": adv.get("contractor_name", ""),
+        "project_id": adv.get("project_id", ""),
+        "project_name": adv.get("project_name", ""),
+        "amount": adv.get("amount", 0),
+        "adjusted_amount": adv.get("adjusted_amount", 0),
+        "outstanding_balance": adv.get("outstanding_balance", 0),
+        "payment_mode": adv.get("payment_mode", ""),
+        "reference_no": adv.get("reference_no", ""),
+        "payment_date": adv.get("payment_date", ""),
+        "remarks": adv.get("remarks", ""),
+        "status": adv.get("status", "Active"),
+        "adjustments": adv.get("adjustments", []),
+        "created_by": adv.get("created_by", ""),
+        "created_at": created_at,
+        "closed_at": closed_at,
+    }
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+# ── Advance endpoints (must come before /{bill_id} dynamic routes) ────────────
+
+@router.get("/advances", dependencies=[Depends(RBACPermission("Accounts", "view"))])
+async def list_advances(
+    contractor_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {}
+    if contractor_name:
+        query["contractor_name"] = contractor_name
+    if project_name:
+        query["project_name"] = project_name
+    if status_filter:
+        query["status"] = status_filter
+    advs = await db.subcontractor_advances.find(query).sort("created_at", -1).to_list(500)
+    return [advance_helper(a) for a in advs]
+
+
+@router.get("/advances/available", dependencies=[Depends(RBACPermission("Accounts", "view"))])
+async def list_available_advances(
+    contractor_name: str,
+    project_name: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Return Active/Partially Adjusted advances with positive outstanding for a contractor (optionally a project)."""
+    if not contractor_name:
+        raise HTTPException(status_code=400, detail="contractor_name is required")
+    query = {
+        "contractor_name": contractor_name,
+        "status": {"$in": ["Active", "Partially Adjusted"]},
+        "outstanding_balance": {"$gt": 0},
+    }
+    if project_name:
+        query["project_name"] = project_name
+    advs = await db.subcontractor_advances.find(query).sort("created_at", 1).to_list(100)
+    return [advance_helper(a) for a in advs]
+
+
+@router.post("/advances", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+async def create_advance(
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    contractor = (data.get("contractor_name") or "").strip()
+    if not contractor:
+        raise HTTPException(status_code=400, detail="Contractor name is required")
+    if not data.get("project_name"):
+        raise HTTPException(status_code=400, detail="Project name is required")
+
+    amount = float(data.get("amount", 0) or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Advance amount must be positive")
+
+    advance_no = await generate_advance_no()
+    adv_dict = {
+        "advance_no": advance_no,
+        "contractor_name": contractor,
+        "project_id": data.get("project_id", ""),
+        "project_name": data["project_name"],
+        "amount": amount,
+        "adjusted_amount": 0.0,
+        "outstanding_balance": amount,
+        "payment_mode": data.get("payment_mode", "Cash"),
+        "reference_no": data.get("reference_no", ""),
+        "payment_date": data.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
+        "remarks": data.get("remarks", ""),
+        "status": "Active",
+        "adjustments": [],
+        "created_by": current_user.get("full_name") or current_user.get("username", ""),
+        "created_at": datetime.now().isoformat(),
+        "closed_at": None,
+    }
+
+    result = await db.subcontractor_advances.insert_one(adv_dict)
+
+    # Record advance as an expense (cash outflow / advance to contractor)
+    expense_doc = {
+        "date": adv_dict["payment_date"],
+        "project": adv_dict["project_name"],
+        "category": "Subcontractor Advance",
+        "amount": amount,
+        "base_amount": amount,
+        "gst_amount": 0,
+        "paymentMode": adv_dict["payment_mode"],
+        "payee": contractor,
+        "reference": adv_dict["reference_no"],
+        "invoice_no": advance_no,
+        "status": "Paid",
+        "sc_advance_id": str(result.inserted_id),
+        "remarks": f"Advance to {contractor}",
+        "created_at": datetime.now().isoformat(),
+        "created_by": adv_dict["created_by"],
+    }
+    await db.expenses.insert_one(expense_doc)
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Create SC Advance",
+        f"Advance {advance_no} of Rs.{amount:,.0f} given to {contractor} | Project: {adv_dict['project_name']}",
+        "info"
+    )
+
+    new_adv = await db.subcontractor_advances.find_one({"_id": result.inserted_id})
+    return advance_helper(new_adv)
+
+
+@router.get("/advances/{advance_id}", dependencies=[Depends(RBACPermission("Accounts", "view"))])
+async def get_advance(advance_id: str, current_user: dict = Depends(get_current_user)):
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+    return advance_helper(adv)
+
+
+@router.put("/advances/{advance_id}", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+async def update_advance(
+    advance_id: str,
+    data: dict = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+
+    if adv.get("adjusted_amount", 0) > 0:
+        raise HTTPException(status_code=400, detail="Cannot edit an advance that has already been adjusted against bills")
+
+    valid_fields = ["contractor_name", "project_id", "project_name", "amount",
+                    "payment_mode", "reference_no", "payment_date", "remarks"]
+    update_data = {k: v for k, v in data.items() if k in valid_fields}
+
+    if "amount" in update_data:
+        new_amount = float(update_data["amount"] or 0)
+        if new_amount <= 0:
+            raise HTTPException(status_code=400, detail="Advance amount must be positive")
+        update_data["amount"] = new_amount
+        update_data["outstanding_balance"] = new_amount
+
+    await db.subcontractor_advances.update_one({"_id": ObjectId(advance_id)}, {"$set": update_data})
+    updated = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    return advance_helper(updated)
+
+
+@router.delete("/advances/{advance_id}", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+async def delete_advance(advance_id: str, current_user: dict = Depends(get_current_user)):
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+    if adv.get("adjusted_amount", 0) > 0:
+        raise HTTPException(status_code=400, detail="Cannot delete an advance that has already been adjusted against bills")
+
+    await db.subcontractor_advances.delete_one({"_id": ObjectId(advance_id)})
+    # Remove the auto-created expense too
+    await db.expenses.delete_many({"sc_advance_id": advance_id})
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Delete SC Advance",
+        f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} deleted",
+        "warning"
+    )
+    return {"message": "Advance deleted"}
+
 
 @router.get("/dpr-work", dependencies=[Depends(RBACPermission("Accounts", "view"))])
 async def get_dpr_contractor_work(
@@ -197,6 +447,29 @@ async def create_bill(
     if payable < 0:
         raise HTTPException(status_code=400, detail="Payable amount cannot be negative")
 
+    # Validate advance adjustments against current outstanding balances
+    raw_adjustments = bill_data.get("advance_adjustments") or []
+    advance_adjustments = []
+    advance_recovery_total = 0.0
+    for entry in raw_adjustments:
+        adv_id = entry.get("advance_id")
+        adj_amount = float(entry.get("amount", 0) or 0)
+        if adj_amount <= 0 or not adv_id or not ObjectId.is_valid(adv_id):
+            continue
+        adv = await db.subcontractor_advances.find_one({"_id": ObjectId(adv_id)})
+        if not adv:
+            raise HTTPException(status_code=400, detail=f"Advance {adv_id} not found")
+        if adv.get("contractor_name") != bill_data["contractor_name"]:
+            raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor")
+        if adj_amount > adv.get("outstanding_balance", 0) + 0.01:
+            raise HTTPException(status_code=400, detail=f"Adjustment for advance {adv.get('advance_no')} exceeds outstanding balance (Rs.{adv.get('outstanding_balance', 0):,.2f})")
+        advance_adjustments.append({
+            "advance_id": adv_id,
+            "advance_no": adv.get("advance_no", ""),
+            "amount": adj_amount,
+        })
+        advance_recovery_total += adj_amount
+
     bill_no = await generate_bill_no()
     bill_dict = {
         "bill_no": bill_no,
@@ -234,6 +507,8 @@ async def create_bill(
         "paid_amount": 0,
         "balance": payable,
         "payments": [],
+        "advance_adjustments": advance_adjustments,
+        "advance_recovery_total": advance_recovery_total,
     }
 
     result = await db.subcontractor_bills.insert_one(bill_dict)
@@ -273,6 +548,33 @@ async def update_bill(
         "mbook_page_no", "mbook_serial_no", "measured_by", "checked_by", "verified_by", "notes"
     ]
     update_data = {k: v for k, v in bill_data.items() if k in valid_fields}
+
+    # Re-validate advance adjustments on edit (only for Draft/Rejected bills, which can't have been applied yet)
+    if "advance_adjustments" in bill_data:
+        raw_adjustments = bill_data.get("advance_adjustments") or []
+        new_adjustments = []
+        new_recovery_total = 0.0
+        contractor = update_data.get("contractor_name") or existing.get("contractor_name")
+        for entry in raw_adjustments:
+            adv_id = entry.get("advance_id")
+            adj_amount = float(entry.get("amount", 0) or 0)
+            if adj_amount <= 0 or not adv_id or not ObjectId.is_valid(adv_id):
+                continue
+            adv = await db.subcontractor_advances.find_one({"_id": ObjectId(adv_id)})
+            if not adv:
+                raise HTTPException(status_code=400, detail=f"Advance {adv_id} not found")
+            if adv.get("contractor_name") != contractor:
+                raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} belongs to a different contractor")
+            if adj_amount > adv.get("outstanding_balance", 0) + 0.01:
+                raise HTTPException(status_code=400, detail=f"Adjustment for advance {adv.get('advance_no')} exceeds outstanding balance")
+            new_adjustments.append({
+                "advance_id": adv_id,
+                "advance_no": adv.get("advance_no", ""),
+                "amount": adj_amount,
+            })
+            new_recovery_total += adj_amount
+        update_data["advance_adjustments"] = new_adjustments
+        update_data["advance_recovery_total"] = new_recovery_total
 
     if "payable_amount" in update_data:
         update_data["payable_amount"] = float(update_data["payable_amount"] or 0)
@@ -349,12 +651,64 @@ async def approve_bill(bill_id: str, current_user: dict = Depends(get_current_us
         raise HTTPException(status_code=400, detail="Bill is not pending approval")
 
     approver = current_user.get("full_name") or current_user.get("username", "")
+
+    # Apply advance adjustments atomically: re-check outstanding and deduct
+    adjustments = bill.get("advance_adjustments") or []
+    applied_adjustments = []
+    for adj in adjustments:
+        adv_id = adj.get("advance_id")
+        amt = float(adj.get("amount", 0) or 0)
+        if amt <= 0 or not adv_id or not ObjectId.is_valid(adv_id):
+            continue
+        adv = await db.subcontractor_advances.find_one({"_id": ObjectId(adv_id)})
+        if not adv:
+            # Rollback already-applied adjustments
+            for prev in applied_adjustments:
+                await _restore_advance(prev["advance_id"], prev["amount"], bill.get("bill_no", ""))
+            raise HTTPException(status_code=400, detail=f"Advance {adj.get('advance_no', adv_id)} no longer exists")
+        if amt > adv.get("outstanding_balance", 0) + 0.01:
+            for prev in applied_adjustments:
+                await _restore_advance(prev["advance_id"], prev["amount"], bill.get("bill_no", ""))
+            raise HTTPException(status_code=400, detail=f"Advance {adv.get('advance_no')} outstanding balance changed; cannot apply Rs.{amt:,.2f}")
+
+        new_adjusted = adv.get("adjusted_amount", 0) + amt
+        new_outstanding = adv.get("outstanding_balance", 0) - amt
+        new_status = "Closed" if new_outstanding <= 0.01 else "Partially Adjusted"
+        log_entry = {
+            "bill_id": bill_id,
+            "bill_no": bill.get("bill_no", ""),
+            "amount": amt,
+            "adjusted_at": datetime.now().isoformat(),
+            "adjusted_by": approver,
+        }
+        set_dict = {
+            "adjusted_amount": new_adjusted,
+            "outstanding_balance": max(new_outstanding, 0),
+            "status": new_status,
+        }
+        if new_status == "Closed":
+            set_dict["closed_at"] = datetime.now().isoformat()
+        await db.subcontractor_advances.update_one(
+            {"_id": ObjectId(adv_id)},
+            {"$push": {"adjustments": log_entry}, "$set": set_dict}
+        )
+        applied_adjustments.append({"advance_id": adv_id, "amount": amt})
+
+    # If payable is fully covered by advance recovery, mark as Paid; else Approved
+    payable = bill.get("payable_amount", 0) or 0
+    recovery_total = bill.get("advance_recovery_total", 0) or 0
+    new_paid = bill.get("paid_amount", 0) + recovery_total
+    new_balance = max(payable - new_paid, 0)
+    final_status = "Paid" if new_balance <= 0.01 and payable > 0 else "Approved"
+
     await db.subcontractor_bills.update_one(
         {"_id": ObjectId(bill_id)},
         {"$set": {
-            "status": "Approved",
+            "status": final_status,
             "approved_by": approver,
-            "approved_at": datetime.now().isoformat()
+            "approved_at": datetime.now().isoformat(),
+            "paid_amount": new_paid,
+            "balance": new_balance,
         }}
     )
 

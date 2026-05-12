@@ -70,6 +70,7 @@ const HRMS = () => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [empPage, setEmpPage] = useState(1);
+    const [leavesPage, setLeavesPage] = useState(1);
     const EMP_PAGE_SIZE = 20;
 
     // Modals
@@ -1166,7 +1167,7 @@ const HRMS = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredLeaves.length > 0 ? filteredLeaves.map((l, i) => (
+                        {filteredLeaves.length > 0 ? filteredLeaves.slice((leavesPage - 1) * EMP_PAGE_SIZE, leavesPage * EMP_PAGE_SIZE).map((l, i) => (
                             <tr key={l.id || i}>
                                 <td style={{ fontWeight: '600' }}>{l.employeeName || 'Unknown'}</td>
                                 <td><span className="badge badge-info">{l.leaveType}</span></td>
@@ -1214,6 +1215,7 @@ const HRMS = () => {
                         )}
                     </tbody>
                 </table>
+                <Pagination currentPage={leavesPage} totalItems={filteredLeaves.length} pageSize={EMP_PAGE_SIZE} onPageChange={setLeavesPage} />
             </div>
         </div>
         );

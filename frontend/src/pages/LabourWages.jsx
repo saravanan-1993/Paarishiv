@@ -10,6 +10,9 @@ import { useConfirm } from '../context/ConfirmContext';
 import { hasPermission } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import Pagination from '../components/Pagination';
+
+const LW_PAGE_SIZE = 20;
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const fmtDate = (d) => {
@@ -37,6 +40,9 @@ const LabourWages = () => {
     const [payModal, setPayModal] = useState(null);
     const [paying, setPaying] = useState(false);
     const [requesting, setRequesting] = useState(false);
+    const [pendingPage, setPendingPage] = useState(1);
+    const [paymentsPage, setPaymentsPage] = useState(1);
+    useEffect(() => { setPendingPage(1); setPaymentsPage(1); }, [search, projectFilter, dateFrom, dateTo, activeTab]);
 
     const isAdmin = ADMIN_ROLES.includes((user?.role || '').toLowerCase());
 
@@ -306,7 +312,7 @@ const LabourWages = () => {
                                             <tr><td colSpan={isAwaiting ? 7 : 8} style={{ padding: 60, textAlign: 'center', color: '#64748B' }}>
                                                 {isAwaiting ? 'No records awaiting verification.' : 'No verified records pending payment.'}
                                             </td></tr>
-                                        ) : rows.map((r) => (
+                                        ) : rows.slice((pendingPage - 1) * LW_PAGE_SIZE, pendingPage * LW_PAGE_SIZE).map((r) => (
                                             <tr key={r.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                 <td style={{ ...tdStyle, fontWeight: 700 }}>{fmtDate(r.date)}</td>
                                                 <td style={{ ...tdStyle, fontWeight: 700 }}>{r.project_name}</td>
@@ -344,6 +350,11 @@ const LabourWages = () => {
                                 </table>
                             );
                         })()}
+                        {(() => {
+                            const isAwaiting = activeTab === 'Awaiting Verification';
+                            const total = filtered.filter(r => !isPaid(r) && (isAwaiting ? !r.verified : r.verified)).length;
+                            return <Pagination currentPage={pendingPage} totalItems={total} pageSize={LW_PAGE_SIZE} onPageChange={setPendingPage} />;
+                        })()}
                     </div>
                 ) : (
                     <div style={{ overflowX: 'auto' }}>
@@ -363,7 +374,7 @@ const LabourWages = () => {
                             <tbody>
                                 {payments.length === 0 ? (
                                     <tr><td colSpan={8} style={{ padding: 60, textAlign: 'center', color: '#64748B' }}>No payments yet.</td></tr>
-                                ) : payments.map((p, i) => (
+                                ) : payments.slice((paymentsPage - 1) * LW_PAGE_SIZE, paymentsPage * LW_PAGE_SIZE).map((p, i) => (
                                     <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
                                         <td style={tdStyle}>{i + 1}</td>
                                         <td style={{ ...tdStyle, fontWeight: 700 }}>{fmtDate(p.date || p.period_from)}</td>
@@ -377,6 +388,7 @@ const LabourWages = () => {
                                 ))}
                             </tbody>
                         </table>
+                        <Pagination currentPage={paymentsPage} totalItems={payments.length} pageSize={LW_PAGE_SIZE} onPageChange={setPaymentsPage} />
                     </div>
                 )}
             </div>

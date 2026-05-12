@@ -16,6 +16,9 @@ import FuelInventoryModal from '../components/FuelInventoryModal';
 import AssetDetailsModal from '../components/AssetDetailsModal';
 import CustomSelect from '../components/CustomSelect';
 import { Briefcase } from 'lucide-react';
+import Pagination from '../components/Pagination';
+
+const ASSETS_PAGE_SIZE = 20;
 
 const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) => {
     const [formData, setFormData] = useState({
@@ -102,6 +105,10 @@ const Assets = () => {
     const canEditAssets = hasPermission(user, 'Inventory Management', 'edit');
     const [activeTab, setActiveTab] = useState('Fleet');
     const [searchTerm, setSearchTerm] = useState('');
+    const [fleetPage, setFleetPage] = useState(1);
+    const [logsPage, setLogsPage] = useState(1);
+    const [transfersPage, setTransfersPage] = useState(1);
+    useEffect(() => { setFleetPage(1); setLogsPage(1); setTransfersPage(1); }, [searchTerm, activeTab]);
     const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [isAddAssetModalOpen, setIsAddAssetModalOpen] = useState(false);
@@ -343,7 +350,7 @@ const Assets = () => {
                                     (item.equipmentId || item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                ).map((item, i) => (
+                                ).slice((fleetPage - 1) * ASSETS_PAGE_SIZE, fleetPage * ASSETS_PAGE_SIZE).map((item, i) => (
                                     <tr key={i}>
                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{item.equipmentId || item.id}</td>
                                         <td style={{ fontWeight: '600' }}>{item.name}</td>
@@ -373,6 +380,16 @@ const Assets = () => {
                                 ))}
                             </tbody>
                         </table>
+                        <Pagination
+                            currentPage={fleetPage}
+                            totalItems={fleet.filter(item =>
+                                (item.equipmentId || item.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (item.site || '').toLowerCase().includes(searchTerm.toLowerCase())
+                            ).length}
+                            pageSize={ASSETS_PAGE_SIZE}
+                            onPageChange={setFleetPage}
+                        />
                     </div>
                 )}
 
@@ -422,11 +439,11 @@ const Assets = () => {
                                             <span>Try a different filter term.</span>
                                         </div>
                                     </td></tr>
-                                ) : dailyLogs.filter(log => 
-                                    (log.asset || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                ) : dailyLogs.filter(log =>
+                                    (log.asset || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (log.site || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (log.engineer || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                ).map((log, i) => (
+                                ).slice((logsPage - 1) * ASSETS_PAGE_SIZE, logsPage * ASSETS_PAGE_SIZE).map((log, i) => (
                                     <tr key={i}>
                                         <td>{log.date}</td>
                                         <td style={{ fontWeight: '700' }}>{log.asset}</td>
@@ -451,6 +468,16 @@ const Assets = () => {
                                 ))}
                             </tbody>
                         </table>
+                        <Pagination
+                            currentPage={logsPage}
+                            totalItems={dailyLogs.filter(log =>
+                                (log.asset || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (log.site || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (log.engineer || '').toLowerCase().includes(searchTerm.toLowerCase())
+                            ).length}
+                            pageSize={ASSETS_PAGE_SIZE}
+                            onPageChange={setLogsPage}
+                        />
                     </div>
                 )}
 
@@ -503,12 +530,12 @@ const Assets = () => {
                                             <span>Try adjusting your filter term.</span>
                                         </div>
                                     </td></tr>
-                                ) : transfers.filter(trf => 
-                                    (trf.id || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                ) : transfers.filter(trf =>
+                                    (trf.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (trf.item || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (trf.from || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                     (trf.to || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                ).map((trf, i) => (
+                                ).slice((transfersPage - 1) * ASSETS_PAGE_SIZE, transfersPage * ASSETS_PAGE_SIZE).map((trf, i) => (
                                     <tr key={i}>
                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{trf.id}</td>
                                         <td>
@@ -529,6 +556,17 @@ const Assets = () => {
                                 ))}
                             </tbody>
                         </table>
+                        <Pagination
+                            currentPage={transfersPage}
+                            totalItems={transfers.filter(trf =>
+                                (trf.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (trf.item || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (trf.from || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (trf.to || '').toLowerCase().includes(searchTerm.toLowerCase())
+                            ).length}
+                            pageSize={ASSETS_PAGE_SIZE}
+                            onPageChange={setTransfersPage}
+                        />
                     </div>
                 )}
 

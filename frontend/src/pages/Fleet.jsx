@@ -71,6 +71,9 @@ const Fleet = () => {
     const PAGE_SIZE = 15;
     const [tripPage, setTripPage] = useState(1);
     const [driverPage, setDriverPage] = useState(1);
+    const [vstatPage, setVstatPage] = useState(1);
+    const [maintPage, setMaintPage] = useState(1);
+    const [reportPage, setReportPage] = useState(1);
     // Trip search & filters
     const [tripSearch, setTripSearch] = useState('');
     const [tripFilterOpen, setTripFilterOpen] = useState(false);
@@ -185,7 +188,7 @@ const Fleet = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {stats.vehicleStats?.map((v, i) => (
+                            {(stats.vehicleStats || []).slice((vstatPage - 1) * PAGE_SIZE, vstatPage * PAGE_SIZE).map((v, i) => (
                                 <tr key={i}>
                                     <td style={{ fontWeight: '700' }}>{v.vehicle}</td>
                                     <td>{v.trips}</td>
@@ -198,6 +201,7 @@ const Fleet = () => {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination currentPage={vstatPage} totalItems={(stats.vehicleStats || []).length} pageSize={PAGE_SIZE} onPageChange={setVstatPage} />
                 </div>
 
                 <div className="card">
@@ -809,7 +813,7 @@ const Fleet = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {vehicles.map((v, i) => (
+                                        {vehicles.slice((maintPage - 1) * PAGE_SIZE, maintPage * PAGE_SIZE).map((v, i) => (
                                             <tr key={i}>
                                                 <td style={{ fontWeight: '700' }}>{v.vehicleNumber}</td>
                                                 <td style={{ color: '#B45309' }}>{v.insuranceExpiry || 'N/A'}</td>
@@ -823,6 +827,7 @@ const Fleet = () => {
                                         ))}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={maintPage} totalItems={vehicles.length} pageSize={PAGE_SIZE} onPageChange={setMaintPage} />
                             </div>
                         )}
                         {activeTab === 'Reports' && availableTabs.includes('Reports') && (() => {
@@ -916,7 +921,7 @@ const Fleet = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {reportData.map((v, i) => (
+                                        {reportData.slice((reportPage - 1) * PAGE_SIZE, reportPage * PAGE_SIZE).map((v, i) => (
                                             <tr key={i}>
                                                 <td>{reportStartDate || reportEndDate ? `${reportStartDate || '—'} to ${reportEndDate || '—'}` : 'All Time'}</td>
                                                 <td style={{ fontWeight: '700' }}>{v.vehicle}</td>
@@ -952,6 +957,7 @@ const Fleet = () => {
                                         </tfoot>
                                     )}
                                 </table>
+                                <Pagination currentPage={reportPage} totalItems={reportData.length} pageSize={PAGE_SIZE} onPageChange={setReportPage} />
 
                                 {/* Summary Cards */}
                                 {reportData.length > 0 && (

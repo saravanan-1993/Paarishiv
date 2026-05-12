@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, FileText, Calendar, Building2, Loader2, Download, Upload, Calculator } from 'lucide-react';
+import { X, Plus, Trash2, FileText, Calendar, Building2, Loader2, Download, Upload, Calculator, Wallet } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI, projectAPI, labourAttendanceAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import CustomSelect from './CustomSelect';
@@ -44,6 +44,11 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     const [showAttendanceImport, setShowAttendanceImport] = useState(false);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
 
+    // Advance adjustments
+    const [availableAdvances, setAvailableAdvances] = useState([]);
+    const [advanceSelections, setAdvanceSelections] = useState({}); // { advance_id: amount }
+    const [loadingAdvances, setLoadingAdvances] = useState(false);
+
     useEffect(() => {
         if (isOpen) {
             vendorAPI.getAll().then(res => setVendors(res.data || [])).catch(() => {});
@@ -87,8 +92,32 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             });
             setNotes(editData.notes || '');
             setDprReferences(editData.dpr_references || []);
+            // Pre-select advances that were already applied to this bill
+            const seeded = {};
+            (editData.advance_adjustments || []).forEach(adj => {
+                if (adj.advance_id) seeded[adj.advance_id] = adj.amount || 0;
+            });
+            setAdvanceSelections(seeded);
         }
     }, [isOpen, editData]);
+
+    // Fetch available advances when contractor changes (Draft/Rejected bills only — others are locked)
+    useEffect(() => {
+        if (!isOpen) return;
+        const contractor = (formData.contractor_name || '').trim();
+        if (!contractor) {
+            setAvailableAdvances([]);
+            return;
+        }
+        // Disallow editing advance application after approval
+        if (editData && !['Draft', 'Rejected'].includes(editData.status)) return;
+        setLoadingAdvances(true);
+        subcontractorBillingAPI
+            .getAvailableAdvances({ contractor_name: contractor })
+            .then(res => setAvailableAdvances(res.data || []))
+            .catch(() => setAvailableAdvances([]))
+            .finally(() => setLoadingAdvances(false));
+    }, [isOpen, formData.contractor_name, editData]);
 
     // Reset form when modal closes
     useEffect(() => {
@@ -116,6 +145,8 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             setDprSelected({});
             setAttendanceData([]);
             setShowAttendanceImport(false);
+            setAvailableAdvances([]);
+            setAdvanceSelections({});
         }
     }, [isOpen]);
 
@@ -191,7 +222,8 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     const totalDeductions = deductions.reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
     const netAmount = grossAmount - totalDeductions;
     const gstAmount = netAmount * (gstPercent / 100);
-    const payableAmount = netAmount + gstAmount;
+    const advanceRecovery = Object.values(advanceSelections).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+    const payableAmount = Math.max(0, netAmount + gstAmount - advanceRecovery);
 
     const formatCurrency = (val) => {
         return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(val || 0);
@@ -332,6 +364,20 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             .filter(d => parseFloat(d.amount) > 0)
             .map(d => ({ description: d.description || '', amount: parseFloat(d.amount) || 0 }));
 
+        // Build advance_adjustments from selections (skip zero / blank entries)
+        const advanceAdjustments = Object.entries(advanceSelections)
+            .map(([adv_id, amt]) => ({ advance_id: adv_id, amount: parseFloat(amt) || 0 }))
+            .filter(a => a.amount > 0);
+
+        // Validate adjustments against current outstanding (client-side safety net)
+        for (const adj of advanceAdjustments) {
+            const adv = availableAdvances.find(a => a.id === adj.advance_id);
+            if (adv && adj.amount > (adv.outstanding_balance || 0) + 0.01) {
+                toast.error(`Advance ${adv.advance_no}: adjustment Rs.${adj.amount} exceeds outstanding Rs.${adv.outstanding_balance}`);
+                return;
+            }
+        }
+
         const payload = {
             ...formData,
             bill_type: billType,
@@ -345,6 +391,7 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
             gst_percent: parseFloat(gstPercent) || 0,
             gst_amount: parseFloat(gstAmount) || 0,
             payable_amount: parseFloat(payableAmount) || 0,
+            advance_adjustments: advanceAdjustments,
             mbook_page_no: mbookMeta.page_no || '',
             mbook_serial_no: mbookMeta.serial_no || '',
             measured_by: mbookMeta.measured_by || { name: '', designation: '', date: '' },
@@ -1002,6 +1049,90 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
                         </table>
                     </div>
 
+                    {/* ===== AVAILABLE ADVANCES ===== */}
+                    {(availableAdvances.length > 0 || loadingAdvances) && (
+                        <div style={{
+                            marginBottom: '24px', padding: '16px 20px', borderRadius: '10px',
+                            border: '1px solid #BAE6FD', backgroundColor: '#F0F9FF'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                <Wallet size={16} style={{ color: '#0369A1' }} />
+                                <h4 style={{ fontSize: '13px', fontWeight: '800', color: '#0C4A6E', margin: 0 }}>
+                                    Available Advances {loadingAdvances ? '(loading…)' : `(${availableAdvances.length})`}
+                                </h4>
+                                <span style={{ fontSize: '11px', color: '#0369A1', marginLeft: 'auto' }}>
+                                    Tick to adjust against this bill — recovery reduces payable.
+                                </span>
+                            </div>
+                            <table style={{ width: '100%', fontSize: '12px' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid #BAE6FD', color: '#075985' }}>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: '700' }}></th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: '700' }}>Advance No</th>
+                                        <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: '700' }}>Project</th>
+                                        <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: '700' }}>Given</th>
+                                        <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: '700' }}>Outstanding</th>
+                                        <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: '700' }}>Adjust Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {availableAdvances.map(adv => {
+                                        const checked = advanceSelections[adv.id] !== undefined;
+                                        const value = advanceSelections[adv.id] || '';
+                                        return (
+                                            <tr key={adv.id} style={{ borderBottom: '1px dashed #BAE6FD' }}>
+                                                <td style={{ padding: '6px 8px' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={e => {
+                                                            setAdvanceSelections(prev => {
+                                                                const next = { ...prev };
+                                                                if (e.target.checked) {
+                                                                    next[adv.id] = adv.outstanding_balance || 0;
+                                                                } else {
+                                                                    delete next[adv.id];
+                                                                }
+                                                                return next;
+                                                            });
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td style={{ padding: '6px 8px', fontWeight: '700', color: '#0369A1' }}>{adv.advance_no}</td>
+                                                <td style={{ padding: '6px 8px' }}>{adv.project_name}</td>
+                                                <td style={{ padding: '6px 8px', textAlign: 'right' }}>Rs. {formatCurrency(adv.amount)}</td>
+                                                <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: '700', color: '#F97316' }}>
+                                                    Rs. {formatCurrency(adv.outstanding_balance)}
+                                                </td>
+                                                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max={adv.outstanding_balance}
+                                                        step="0.01"
+                                                        value={value}
+                                                        disabled={!checked}
+                                                        onChange={e => {
+                                                            const v = parseFloat(e.target.value) || 0;
+                                                            const capped = Math.min(v, adv.outstanding_balance || 0);
+                                                            setAdvanceSelections(prev => ({ ...prev, [adv.id]: capped }));
+                                                        }}
+                                                        style={{
+                                                            width: '120px', padding: '4px 8px',
+                                                            borderRadius: '6px', border: '1px solid #BAE6FD',
+                                                            fontSize: '12px', textAlign: 'right',
+                                                            backgroundColor: checked ? 'white' : '#F1F5F9'
+                                                        }}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
                     {/* ===== FINANCIAL SUMMARY ===== */}
                     <div style={{
                         display: 'flex', justifyContent: 'flex-end', marginBottom: '24px'
@@ -1033,10 +1164,16 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
                                     style={{ ...numInputStyle, width: '80px' }} min="0" max="100" step="0.5"
                                 />
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                 <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>GST Amount:</span>
                                 <span style={{ fontSize: '13px', fontWeight: '600' }}>Rs. {formatCurrency(gstAmount)}</span>
                             </div>
+                            {advanceRecovery > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', color: '#0369A1' }}>
+                                    <span style={{ fontSize: '13px' }}>Less Advance Recovery:</span>
+                                    <span style={{ fontSize: '13px', fontWeight: '700' }}>-Rs. {formatCurrency(advanceRecovery)}</span>
+                                </div>
+                            )}
                             <div style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 paddingTop: '12px', borderTop: '2px solid var(--primary)'

@@ -286,6 +286,7 @@ const Finance = () => {
     const [payablePage, setPayablePage] = useState(1);
     const [expensePage, setExpensePage] = useState(1);
     const [ledgerPage, setLedgerPage] = useState(1);
+    const [projSummaryPage, setProjSummaryPage] = useState(1);
 
     const availableTabs = useMemo(() => [
         { id: 'Overview', label: 'Overview', icon: FileText },
@@ -1297,7 +1298,7 @@ const Finance = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {projects.map(p => {
+                                    {projects.slice((projSummaryPage - 1) * FIN_PAGE_SIZE, projSummaryPage * FIN_PAGE_SIZE).map(p => {
                                         const pName = p.name;
                                         const pBills = bills.filter(b => b.project === pName);
                                         const pExpenses = expenses.filter(e => e.project === pName);
@@ -1320,6 +1321,7 @@ const Finance = () => {
                                     )}
                                 </tbody>
                             </table>
+                            <Pagination currentPage={projSummaryPage} totalItems={projects.length} pageSize={FIN_PAGE_SIZE} onPageChange={setProjSummaryPage} />
                         </div>
 
                         {/* Profit & Loss Summary */}

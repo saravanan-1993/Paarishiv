@@ -8,6 +8,9 @@ import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
 import { projectAPI } from '../utils/api';
 import { fmt } from '../utils/format';
+import Pagination from '../components/Pagination';
+
+const BUDGET_PAGE_SIZE = 20;
 
 const Budget = () => {
     const [activeTab, setActiveTab] = useState('Overview');
@@ -35,6 +38,10 @@ const Budget = () => {
     const visibleProjects = selectedProject === 'All Projects'
         ? projects
         : projects.filter(p => p.name === selectedProject);
+
+    const [budgetPage, setBudgetPage] = useState(1);
+    const [cvrPage, setCvrPage] = useState(1);
+    useEffect(() => { setBudgetPage(1); setCvrPage(1); }, [selectedProject]);
 
     const totalBudget = visibleProjects.reduce((s, p) => s + (p.budget || 0), 0);
     const totalSpent = visibleProjects.reduce((s, p) => s + (p.spent || 0), 0);
@@ -146,7 +153,7 @@ const Budget = () => {
                                         <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>No Projects Found</h4>
                                         <p>Budget data will appear once projects are created.</p>
                                     </div>
-                                ) : (
+                                ) : (<>
                                     <table className="data-table">
                                         <thead>
                                             <tr>
@@ -159,7 +166,7 @@ const Budget = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {visibleProjects.map((p, i) => {
+                                            {visibleProjects.slice((budgetPage - 1) * BUDGET_PAGE_SIZE, budgetPage * BUDGET_PAGE_SIZE).map((p, i) => {
                                                 const spent = p.spent || 0;
                                                 const budget = p.budget || 0;
                                                 const remain = budget - spent;
@@ -193,7 +200,8 @@ const Budget = () => {
                                             })}
                                         </tbody>
                                     </table>
-                                )}
+                                    <Pagination currentPage={budgetPage} totalItems={visibleProjects.length} pageSize={BUDGET_PAGE_SIZE} onPageChange={setBudgetPage} />
+                                </>)}
                             </div>
                         )}
 
@@ -217,7 +225,7 @@ const Budget = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {visibleProjects.map((p) => {
+                                        {visibleProjects.slice((cvrPage - 1) * BUDGET_PAGE_SIZE, cvrPage * BUDGET_PAGE_SIZE).map((p) => {
                                             const value = p.budget || 0;
                                             const cost = p.spent || 0;
                                             const dev = value - cost;
@@ -249,6 +257,7 @@ const Budget = () => {
                                         })}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={cvrPage} totalItems={visibleProjects.length} pageSize={BUDGET_PAGE_SIZE} onPageChange={setCvrPage} />
                             </div>
                         )}
                     </>

@@ -12,6 +12,7 @@ import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, se
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
 import { fmt } from '../utils/format';
+import Pagination from '../components/Pagination';
 
 // ─── Report template catalogue ─────────────────────────────────────────────
 const REPORT_TEMPLATES = [
@@ -119,6 +120,8 @@ const PROGRESS_DATA = [
 const CATEGORIES = ['All', 'Financial', 'Project', 'HRMS', 'Inventory'];
 
 // ─── Report Preview Modal ────────────────────────────────────────────────────
+const REPORT_PAGE_SIZE = 20;
+
 const ReportPreview = ({
     report, onClose, budgetData = [], progressData = [], inventoryData = [],
     materialStockReport = [], expenseData = [], attendanceData = [], bills = [], payables = [],
@@ -126,6 +129,12 @@ const ReportPreview = ({
 }) => {
     const navigate = useNavigate();
     const [companyInfo, setCompanyInfo] = useState({ companyName: 'CIVIL ERP' });
+    const [payablesPage, setPayablesPage] = useState(1);
+    const [materialPage, setMaterialPage] = useState(1);
+    const [attendancePage, setAttendancePage] = useState(1);
+    const [payrollPage, setPayrollPage] = useState(1);
+    const [partyPage, setPartyPage] = useState(1);
+    const [grnPage, setGrnPage] = useState(1);
 
     useEffect(() => {
         if (report) {
@@ -314,7 +323,7 @@ const ReportPreview = ({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {payables.map((p, i) => (
+                                    {payables.slice((payablesPage - 1) * REPORT_PAGE_SIZE, payablesPage * REPORT_PAGE_SIZE).map((p, i) => (
                                         <tr key={i}>
                                             <td style={{ fontWeight: '700' }}>{p.vendor || p.party || p.vendorName || '—'}</td>
                                             <td style={{ textAlign: 'right' }}>{fmt(p.total_amount || p.amount || 0)}</td>
@@ -326,6 +335,7 @@ const ReportPreview = ({
                                     {payables.length === 0 && <tr><td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>No payable records found.</td></tr>}
                                 </tbody>
                             </table>
+                            <Pagination currentPage={payablesPage} totalItems={payables.length} pageSize={REPORT_PAGE_SIZE} onPageChange={setPayablesPage} />
                         </>
                     )}
 
@@ -425,7 +435,7 @@ const ReportPreview = ({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {materialStockReport.filter(m => m.total_qty > 0).map((m, i) => (
+                                            {materialStockReport.filter(m => m.total_qty > 0).slice((materialPage - 1) * REPORT_PAGE_SIZE, materialPage * REPORT_PAGE_SIZE).map((m, i) => (
                                                 <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
                                                     <td style={{ padding: '10px 14px', fontWeight: 700 }}>{m.material_name}</td>
                                                     <td style={{ padding: '10px 14px', textAlign: 'center', color: '#64748B' }}>{m.unit}</td>
@@ -460,6 +470,7 @@ const ReportPreview = ({
                                             </tr>
                                         </tfoot>
                                     </table>
+                                    <Pagination currentPage={materialPage} totalItems={materialStockReport.filter(m => m.total_qty > 0).length} pageSize={REPORT_PAGE_SIZE} onPageChange={setMaterialPage} />
                                 </div>
                             )}
 
@@ -581,7 +592,7 @@ const ReportPreview = ({
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(attendanceData || []).map((att, i) => {
+                                    {(attendanceData || []).slice((attendancePage - 1) * REPORT_PAGE_SIZE, attendancePage * REPORT_PAGE_SIZE).map((att, i) => {
                                         const fmtTime = (t) => {
                                             if (!t) return '—';
                                             const d = new Date(t);
@@ -607,6 +618,7 @@ const ReportPreview = ({
                                     {attendanceData.length === 0 && <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>No attendance records found for this period.</td></tr>}
                                 </tbody>
                             </table>
+                            <Pagination currentPage={attendancePage} totalItems={(attendanceData || []).length} pageSize={REPORT_PAGE_SIZE} onPageChange={setAttendancePage} />
                         </>
                     )}
 
@@ -665,10 +677,11 @@ const ReportPreview = ({
                                         const rows = preparePartyOutstanding();
                                         const totalRec = rows.reduce((s, r) => s + r.receivable, 0);
                                         const totalPay = rows.reduce((s, r) => s + r.payable, 0);
+                                        const pagedRows = rows.slice((partyPage - 1) * REPORT_PAGE_SIZE, partyPage * REPORT_PAGE_SIZE);
 
                                         return (
                                             <>
-                                                {rows.map((row, i) => (
+                                                {pagedRows.map((row, i) => (
                                                     <tr key={i}>
                                                         <td style={{ fontWeight: '700' }}>{row.party}</td>
                                                         <td style={{ textAlign: 'right', color: '#10B981' }}>{row.receivable > 0 ? fmt(row.receivable) : '—'}</td>
@@ -692,6 +705,7 @@ const ReportPreview = ({
                                     })()}
                                 </tbody>
                             </table>
+                            <Pagination currentPage={partyPage} totalItems={preparePartyOutstanding().length} pageSize={REPORT_PAGE_SIZE} onPageChange={setPartyPage} />
                         </>
                     )}
 
@@ -755,7 +769,7 @@ const ReportPreview = ({
                                 <tbody>
                                     {payrollData.length === 0
                                         ? <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No payroll data. Generate payroll from HR module first.</td></tr>
-                                        : payrollData.map((p, i) => (
+                                        : payrollData.slice((payrollPage - 1) * REPORT_PAGE_SIZE, payrollPage * REPORT_PAGE_SIZE).map((p, i) => (
                                             <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                                                 <td style={{ padding: '10px', fontWeight: '600' }}>{p.employeeName || p.employeeId}</td>
                                                 <td style={{ padding: '10px', textAlign: 'center' }}>{p.presentDays || 0}</td>
@@ -771,6 +785,7 @@ const ReportPreview = ({
                                     <td style={{ padding: '10px', textAlign: 'right' }}>{fmt(payrollData.reduce((s, p) => s + (p.netSalary || 0), 0))}</td>
                                 </tr></tfoot>}
                             </table>
+                            <Pagination currentPage={payrollPage} totalItems={payrollData.length} pageSize={REPORT_PAGE_SIZE} onPageChange={setPayrollPage} />
                         </>
                     )}
 
@@ -789,7 +804,7 @@ const ReportPreview = ({
                                 <tbody>
                                     {grnData.length === 0
                                         ? <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No GRN data available.</td></tr>
-                                        : grnData.map((g, i) => (
+                                        : grnData.slice((grnPage - 1) * REPORT_PAGE_SIZE, grnPage * REPORT_PAGE_SIZE).map((g, i) => (
                                             <tr key={i} style={{ borderBottom: '1px solid #F1F5F9' }}>
                                                 <td style={{ padding: '10px', fontWeight: '600' }}>GRN-{(g.id || '').slice(-6).toUpperCase()}</td>
                                                 <td style={{ padding: '10px' }}>{g.vendor_name || '—'}</td>
@@ -801,6 +816,7 @@ const ReportPreview = ({
                                         ))}
                                 </tbody>
                             </table>
+                            <Pagination currentPage={grnPage} totalItems={grnData.length} pageSize={REPORT_PAGE_SIZE} onPageChange={setGrnPage} />
                         </>
                     )}
 

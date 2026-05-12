@@ -23,6 +23,9 @@ import PurchaseOfficerView from '../components/dashboards/PurchaseOfficerView';
 import InventoryManagerView from '../components/dashboards/InventoryManagerView';
 import ProjectCoordinatorView from '../components/dashboards/ProjectCoordinatorView';
 import AttendanceWidget from '../components/dashboards/AttendanceWidget';
+import Pagination from '../components/Pagination';
+
+const WF_PAGE_SIZE = 10;
 
 const STATUS_COLORS = {
     Ongoing: '#3B82F6',   // Blue
@@ -95,6 +98,7 @@ const Dashboard = () => {
     const [hrmsStats, setHrmsStats] = useState(null);
     const [pendingApprovalsAmount, setPendingApprovalsAmount] = useState(0);
     const [workflowOverview, setWorkflowOverview] = useState([]);
+    const [wfPage, setWfPage] = useState(1);
 
     // New dashboard data
     const [financeSummary, setFinanceSummary] = useState({ totalExpenses: 0, totalReceived: 0, totalBilled: 0 });
@@ -779,7 +783,7 @@ const Dashboard = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {workflowOverview.map((wf, i) => (
+                                        {workflowOverview.slice((wfPage - 1) * WF_PAGE_SIZE, wfPage * WF_PAGE_SIZE).map((wf, i) => (
                                             <tr key={i} style={{ cursor: wf.project_id ? 'pointer' : 'default' }} onClick={() => wf.project_id && navigate(`/projects/${wf.project_id}`)}>
                                                 <td>
                                                     <span style={{ fontWeight: '600', color: 'var(--text-main)', display: 'block' }}>{wf.project_name}</span>
@@ -824,6 +828,7 @@ const Dashboard = () => {
                                         )}
                                     </tbody>
                                 </table>
+                                <Pagination currentPage={wfPage} totalItems={workflowOverview.length} pageSize={WF_PAGE_SIZE} onPageChange={setWfPage} />
                             </div>
                         )}
                     </>

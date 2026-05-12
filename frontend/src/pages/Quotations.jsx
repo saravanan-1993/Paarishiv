@@ -14,6 +14,9 @@ import QuotationDetailModal from '../components/QuotationDetailModal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import WhatsAppIcon from '../components/icons/WhatsAppIcon';
+import Pagination from '../components/Pagination';
+
+const QUOTE_PAGE_SIZE = 20;
 
 const fmtINR = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
@@ -60,6 +63,9 @@ const Quotations = () => {
     };
 
     useEffect(() => { loadData(); }, []);
+
+    const [page, setPage] = useState(1);
+    useEffect(() => { setPage(1); }, [search, statusFilter]);
 
     const filtered = useMemo(() => {
         return quotations.filter(q => {
@@ -533,7 +539,7 @@ const Quotations = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((q) => (
+                                {filtered.slice((page - 1) * QUOTE_PAGE_SIZE, page * QUOTE_PAGE_SIZE).map((q) => (
                                     <tr key={q.id} style={{ borderTop: '1px solid #F1F5F9' }}>
                                         <td style={tdStyle}>
                                             <div style={{ fontWeight: 700, color: '#0F172A' }}>{q.quotation_no}</div>
@@ -573,6 +579,14 @@ const Quotations = () => {
                                 ))}
                             </tbody>
                         </table>
+                        <div style={{ padding: '0 16px' }}>
+                            <Pagination
+                                currentPage={page}
+                                totalItems={filtered.length}
+                                pageSize={QUOTE_PAGE_SIZE}
+                                onPageChange={setPage}
+                            />
+                        </div>
                     </div>
                 )}
             </div>

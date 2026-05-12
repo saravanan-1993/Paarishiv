@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
     FileText, Plus, Search, Eye, Trash2, BookOpen, IndianRupee,
     Clock, CheckCircle, XCircle, AlertCircle, CreditCard,
-    Loader2, Send, Filter
+    Loader2, Send, Filter, Wallet, Edit2
 } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI, projectAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +12,11 @@ import { hasPermission } from '../utils/rbac';
 import SubcontractorBillModal from '../components/SubcontractorBillModal';
 import MBookViewModal from '../components/MBookViewModal';
 import SubcontractorPaymentModal from '../components/SubcontractorPaymentModal';
+import SubcontractorAdvanceModal from '../components/SubcontractorAdvanceModal';
+import Pagination from '../components/Pagination';
 import { fmt } from '../utils/format';
+
+const PAGE_SIZE = 20;
 
 const statusConfig = {
     'Draft': { bg: '#F3F4F6', color: '#374151', label: 'Draft' },
@@ -28,6 +32,13 @@ const typeConfig = {
     'day_based': { bg: '#FEF3C7', color: '#92400E', label: 'Day Based' },
 };
 
+const advanceStatusConfig = {
+    'Active': { bg: '#DBEAFE', color: '#1E40AF', label: 'Active' },
+    'Partially Adjusted': { bg: '#FEF3C7', color: '#92400E', label: 'Partially Adjusted' },
+    'Closed': { bg: '#D1FAE5', color: '#065F46', label: 'Closed' },
+    'Refunded': { bg: '#F3F4F6', color: '#374151', label: 'Refunded' },
+};
+
 
 const SubcontractorBilling = () => {
     const { user } = useAuth();
@@ -37,6 +48,7 @@ const SubcontractorBilling = () => {
     const canDelete = hasPermission(user, 'Subcontractor Billing', 'delete');
 
     const [bills, setBills] = useState([]);
+    const [advances, setAdvances] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('Bills');
     const [searchTerm, setSearchTerm] = useState('');
@@ -49,18 +61,27 @@ const SubcontractorBilling = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showMBookModal, setShowMBookModal] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [showAdvanceModal, setShowAdvanceModal] = useState(false);
     const [selectedBill, setSelectedBill] = useState(null);
     const [editBill, setEditBill] = useState(null);
+    const [editAdvance, setEditAdvance] = useState(null);
+
+    // Pagination
+    const [billsPage, setBillsPage] = useState(1);
+    const [advancesPage, setAdvancesPage] = useState(1);
+    useEffect(() => { setBillsPage(1); setAdvancesPage(1); }, [searchTerm, filterProject, filterContractor, filterStatus, activeTab]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const [billsRes, projectsRes] = await Promise.all([
+            const [billsRes, projectsRes, advancesRes] = await Promise.all([
                 subcontractorBillingAPI.getAll(),
-                projectAPI.getAll()
+                projectAPI.getAll(),
+                subcontractorBillingAPI.getAdvances(),
             ]);
             setBills(billsRes.data || []);
             setProjects(projectsRes.data || []);
+            setAdvances(advancesRes.data || []);
         } catch (err) {
             console.error('Failed to load subcontractor billing data:', err);
         } finally {
@@ -90,45 +111,32 @@ const SubcontractorBilling = () => {
 
     const summary = useMemo(() => {
         const filtered = filterContractor ? bills.filter(b => b.contractor_name === filterContractor) : bills;
+        const advFiltered = filterContractor ? advances.filter(a => a.contractor_name === filterContractor) : advances;
         return {
             total: filtered.length,
             pending: filtered.filter(b => b.status === 'Pending Approval').length,
             totalPayable: filtered.reduce((s, b) => s + (b.payable_amount || 0), 0),
             totalPaid: filtered.reduce((s, b) => s + (b.paid_amount || 0), 0),
             outstanding: filtered.reduce((s, b) => s + (b.balance || 0), 0),
+            advanceOutstanding: advFiltered.reduce((s, a) => s + (a.outstanding_balance || 0), 0),
         };
-    }, [bills, filterContractor]);
+    }, [bills, advances, filterContractor]);
 
-    const allPayments = useMemo(() => {
-        const payments = [];
-        bills.forEach(bill => {
-            if (bill.payments && Array.isArray(bill.payments)) {
-                bill.payments.forEach(p => {
-                    payments.push({
-                        ...p,
-                        bill_no: bill.bill_no,
-                        contractor_name: bill.contractor_name,
-                        project_name: bill.project_name,
-                    });
-                });
-            }
-        });
-        payments.sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
-        return payments;
-    }, [bills]);
-
-    const filteredPayments = useMemo(() => {
-        return allPayments.filter(p => {
-            if (filterProject && p.project_name !== filterProject) return false;
-            if (filterContractor && p.contractor_name !== filterContractor) return false;
+    const filteredAdvances = useMemo(() => {
+        return advances.filter(a => {
             if (searchTerm) {
                 const term = searchTerm.toLowerCase();
-                if (!(p.bill_no || '').toLowerCase().includes(term) &&
-                    !(p.contractor_name || '').toLowerCase().includes(term)) return false;
+                if (
+                    !(a.advance_no || '').toLowerCase().includes(term) &&
+                    !(a.contractor_name || '').toLowerCase().includes(term)
+                ) return false;
             }
+            if (filterProject && a.project_name !== filterProject) return false;
+            if (filterContractor && a.contractor_name !== filterContractor) return false;
+            if (filterStatus && a.status !== filterStatus) return false;
             return true;
         });
-    }, [allPayments, filterProject, filterContractor, searchTerm]);
+    }, [advances, searchTerm, filterProject, filterContractor, filterStatus]);
 
     const handleSubmitForApproval = async (bill) => {
         if (!(await confirm({ title: 'Submit for Approval', message: `Submit Bill ${bill.bill_no} for approval?`, confirmText: 'Submit' }))) return;
@@ -156,6 +164,32 @@ const SubcontractorBilling = () => {
     const handleEditBill = (bill) => {
         setEditBill(bill);
         setShowCreateModal(true);
+    };
+
+    const handleEditAdvance = (adv) => {
+        setEditAdvance(adv);
+        setShowAdvanceModal(true);
+    };
+
+    const handleDeleteAdvance = async (adv) => {
+        if (!(await confirm({ title: 'Delete Advance', message: `Delete advance ${adv.advance_no} (Rs.${(adv.amount || 0).toLocaleString('en-IN')})? Only unused advances can be deleted.`, confirmText: 'Delete', danger: true }))) return;
+        try {
+            await subcontractorBillingAPI.deleteAdvance(adv.id);
+            toast.success(`Advance ${adv.advance_no} deleted`);
+            loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.detail || 'Failed to delete advance');
+        }
+    };
+
+    const handleAdvanceModalClose = () => {
+        setShowAdvanceModal(false);
+        setEditAdvance(null);
+    };
+
+    const handleAdvanceModalSuccess = () => {
+        handleAdvanceModalClose();
+        loadData();
     };
 
     const handleOpenMBook = (bill) => {
@@ -248,8 +282,8 @@ const SubcontractorBilling = () => {
                     { label: 'Total Bills', value: summary.total, icon: FileText, color: '#3B82F6' },
                     { label: 'Pending Approval', value: summary.pending, icon: Clock, color: '#F59E0B' },
                     { label: 'Total Payable', value: fmt(summary.totalPayable), icon: IndianRupee, color: '#6366F1' },
-                    { label: 'Total Paid', value: fmt(summary.totalPaid), icon: CheckCircle, color: '#10B981' },
-                    { label: 'Outstanding', value: fmt(summary.outstanding), icon: AlertCircle, color: '#F97316' },
+                    { label: 'Advance Outstanding', value: fmt(summary.advanceOutstanding), icon: Wallet, color: '#0EA5E9' },
+                    { label: 'Bill Outstanding', value: fmt(summary.outstanding), icon: AlertCircle, color: '#F97316' },
                 ].map((card, i) => (
                     <div key={i} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '16px', justifyContent: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -273,14 +307,14 @@ const SubcontractorBilling = () => {
 
             {/* Tab Buttons */}
             <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-                {['Bills', 'Payments'].map(tab => (
+                {['Bills', 'Advances'].map(tab => (
                     <button
                         key={tab}
                         className={`btn ${activeTab === tab ? 'btn-primary' : 'btn-outline'}`}
                         onClick={() => setActiveTab(tab)}
                         style={{ fontWeight: '700' }}
                     >
-                        {tab === 'Bills' ? <FileText size={16} /> : <CreditCard size={16} />}
+                        {tab === 'Bills' ? <FileText size={16} /> : <Wallet size={16} />}
                         {tab}
                     </button>
                 ))}
@@ -289,15 +323,15 @@ const SubcontractorBilling = () => {
             {/* Filters Row */}
             <div className="card" style={{ marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', gap: '12px', flex: 1, minWidth: '200px', alignItems: 'center' }}>
-                        <div style={{ position: 'relative', flex: 1, maxWidth: '320px' }}>
-                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <div style={{ display: 'flex', gap: '12px', flex: '1 1 auto', minWidth: '280px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ position: 'relative', flex: '2 1 260px', minWidth: '240px', maxWidth: '360px' }}>
+                            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                             <input
                                 type="text"
                                 placeholder="Search by Bill No or Contractor..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px' }}
+                                style={{ width: '100%', padding: '10px 40px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', boxSizing: 'border-box' }}
                             />
                             {searchTerm && (
                                 <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', display: 'flex', alignItems: 'center' }}>
@@ -308,7 +342,7 @@ const SubcontractorBilling = () => {
                         <select
                             value={filterProject}
                             onChange={(e) => setFilterProject(e.target.value)}
-                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', minWidth: '160px' }}
+                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', flex: '0 1 180px', minWidth: '150px', maxWidth: '200px' }}
                         >
                             <option value="">All Projects</option>
                             {uniqueProjects.map(p => (
@@ -318,7 +352,7 @@ const SubcontractorBilling = () => {
                         <select
                             value={filterContractor}
                             onChange={(e) => setFilterContractor(e.target.value)}
-                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', minWidth: '160px' }}
+                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', flex: '0 1 180px', minWidth: '150px', maxWidth: '200px' }}
                         >
                             <option value="">All Contractors</option>
                             {uniqueContractors.map(c => (
@@ -328,10 +362,10 @@ const SubcontractorBilling = () => {
                         <select
                             value={filterStatus}
                             onChange={(e) => setFilterStatus(e.target.value)}
-                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', minWidth: '160px' }}
+                            style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', flex: '0 1 180px', minWidth: '150px', maxWidth: '200px' }}
                         >
                             <option value="">All Statuses</option>
-                            {Object.keys(statusConfig).map(s => (
+                            {Object.keys(activeTab === 'Advances' ? advanceStatusConfig : statusConfig).map(s => (
                                 <option key={s} value={s}>{s}</option>
                             ))}
                         </select>
@@ -350,6 +384,14 @@ const SubcontractorBilling = () => {
                             onClick={() => { setEditBill(null); setShowCreateModal(true); }}
                         >
                             <Plus size={18} /> Create Bill
+                        </button>
+                    )}
+                    {activeTab === 'Advances' && canEdit && (
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => { setEditAdvance(null); setShowAdvanceModal(true); }}
+                        >
+                            <Plus size={18} /> Give Advance
                         </button>
                     )}
                 </div>
@@ -382,7 +424,7 @@ const SubcontractorBilling = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredBills.map((bill) => (
+                                filteredBills.slice((billsPage - 1) * PAGE_SIZE, billsPage * PAGE_SIZE).map((bill) => (
                                     <tr key={bill.id || bill._id}>
                                         <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{bill.bill_no}</td>
                                         <td>
@@ -452,64 +494,107 @@ const SubcontractorBilling = () => {
                             )}
                         </tbody>
                     </table>
+                    <div style={{ padding: '0 16px' }}>
+                        <Pagination
+                            currentPage={billsPage}
+                            totalItems={filteredBills.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setBillsPage}
+                        />
+                    </div>
                 </div>
             )}
 
-            {/* Payments Tab */}
-            {activeTab === 'Payments' && (
+            {/* Advances Tab */}
+            {activeTab === 'Advances' && (
                 <div className="card" style={{ padding: 0 }}>
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Bill No</th>
+                                <th>Advance No</th>
                                 <th>Contractor</th>
                                 <th>Project</th>
-                                <th>Amount</th>
-                                <th>Mode</th>
-                                <th>Reference</th>
-                                <th>Recorded By</th>
+                                <th>Date</th>
+                                <th style={{ textAlign: 'right' }}>Given</th>
+                                <th style={{ textAlign: 'right' }}>Adjusted</th>
+                                <th style={{ textAlign: 'right' }}>Outstanding</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredPayments.length === 0 ? (
+                            {filteredAdvances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                    <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                                            <CreditCard size={32} style={{ opacity: 0.3 }} />
-                                            <div>No payments recorded yet</div>
+                                            <Wallet size={32} style={{ opacity: 0.3 }} />
+                                            <div>No advances recorded yet</div>
+                                            {canEdit && (
+                                                <button className="btn btn-outline btn-sm" style={{ marginTop: '8px' }} onClick={() => { setEditAdvance(null); setShowAdvanceModal(true); }}>
+                                                    <Plus size={14} /> Give First Advance
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>
                             ) : (
-                                filteredPayments.map((payment, idx) => (
-                                    <tr key={idx}>
-                                        <td style={{ fontSize: '12px' }}>
-                                            {payment.date ? new Date(payment.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
-                                        </td>
-                                        <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{payment.bill_no}</td>
-                                        <td style={{ fontWeight: '600' }}>{payment.contractor_name}</td>
-                                        <td>{payment.project_name}</td>
-                                        <td style={{ fontWeight: '700', color: '#10B981' }}>{fmt(payment.amount)}</td>
-                                        <td>
-                                            <span style={{
-                                                padding: '3px 8px',
-                                                borderRadius: '20px',
-                                                fontSize: '11px',
-                                                fontWeight: '600',
-                                                backgroundColor: '#F3F4F6',
-                                                color: '#374151',
-                                            }}>
-                                                {payment.mode || payment.payment_mode || '-'}
-                                            </span>
-                                        </td>
-                                        <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{payment.reference || payment.reference_no || '-'}</td>
-                                        <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{payment.recorded_by || payment.created_by || '-'}</td>
-                                    </tr>
-                                ))
+                                filteredAdvances.slice((advancesPage - 1) * PAGE_SIZE, advancesPage * PAGE_SIZE).map((adv) => {
+                                    const cfg = advanceStatusConfig[adv.status] || { bg: '#F3F4F6', color: '#374151', label: adv.status };
+                                    const canEditAdv = (adv.adjusted_amount || 0) === 0 && adv.status === 'Active';
+                                    return (
+                                        <tr key={adv.id || adv._id}>
+                                            <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{adv.advance_no}</td>
+                                            <td style={{ fontWeight: '600' }}>{adv.contractor_name}</td>
+                                            <td style={{ fontSize: '13px' }}>{adv.project_name}</td>
+                                            <td style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                                {adv.payment_date ? new Date(adv.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontWeight: '700' }}>{fmt(adv.amount)}</td>
+                                            <td style={{ textAlign: 'right', color: '#10B981', fontWeight: '600' }}>{fmt(adv.adjusted_amount)}</td>
+                                            <td style={{ textAlign: 'right', color: (adv.outstanding_balance || 0) > 0 ? '#F97316' : '#94A3B8', fontWeight: '700' }}>{fmt(adv.outstanding_balance)}</td>
+                                            <td>
+                                                <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', backgroundColor: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>
+                                                    {cfg.label}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: '6px' }}>
+                                                    {canEdit && canEditAdv && (
+                                                        <button
+                                                            className="btn btn-outline btn-sm"
+                                                            style={{ padding: '4px 8px' }}
+                                                            title="Edit Advance"
+                                                            onClick={() => handleEditAdvance(adv)}
+                                                        >
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                    )}
+                                                    {canDelete && canEditAdv && (
+                                                        <button
+                                                            className="btn btn-outline btn-sm"
+                                                            style={{ padding: '4px 8px', color: '#EF4444', borderColor: '#EF4444' }}
+                                                            title="Delete Advance"
+                                                            onClick={() => handleDeleteAdvance(adv)}
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
+                    <div style={{ padding: '0 16px' }}>
+                        <Pagination
+                            currentPage={advancesPage}
+                            totalItems={filteredAdvances.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setAdvancesPage}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -538,6 +623,17 @@ const SubcontractorBilling = () => {
                     onClose={() => { setShowPaymentModal(false); setSelectedBill(null); }}
                     onSuccess={() => { setShowPaymentModal(false); setSelectedBill(null); loadData(); }}
                     bill={selectedBill}
+                />
+            )}
+
+            {showAdvanceModal && (
+                <SubcontractorAdvanceModal
+                    isOpen={showAdvanceModal}
+                    onClose={handleAdvanceModalClose}
+                    onSuccess={handleAdvanceModalSuccess}
+                    projects={projects}
+                    contractors={uniqueContractors}
+                    editData={editAdvance}
                 />
             )}
         </div>
