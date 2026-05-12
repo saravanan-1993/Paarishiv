@@ -389,6 +389,9 @@ export const subcontractorBillingAPI = {
     createAdvance: (data) => api.post('/subcontractor-billing/advances', data),
     updateAdvance: (id, data) => api.put(`/subcontractor-billing/advances/${id}`, data),
     deleteAdvance: (id) => api.delete(`/subcontractor-billing/advances/${id}`),
+    submitAdvance: (id) => api.put(`/subcontractor-billing/advances/${id}/submit`),
+    approveAdvance: (id) => api.put(`/subcontractor-billing/advances/${id}/approve`),
+    rejectAdvance: (id, data) => api.put(`/subcontractor-billing/advances/${id}/reject`, data),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ export const SUB_TABS = {
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP'],
     'Fleet Management': ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'],
     'Site Reports': ['Site Reports (DPR)', 'Material Requests', 'Transfer Requests'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'DPR', 'SC Bills', 'Labour Pay', 'Stock Returns', 'Transfers', 'Vendor Payments', 'Trip Requests'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'DPR', 'SC Bills', 'SC Advances', 'Labour Pay', 'Stock Returns', 'Transfers', 'Vendor Payments', 'Trip Requests'],
     'Notifications': [],
     'Reports': ['Financial', 'Project', 'HRMS', 'Inventory', 'Plant']
 };

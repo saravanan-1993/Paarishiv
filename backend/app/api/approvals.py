@@ -19,6 +19,7 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
         "manpower": [],
         "dprs": [],
         "subcontractor_bills": [],
+        "subcontractor_advances": [],
         "labour_payments": [],
         "stock_returns": [],
         "material_transfers": [],
@@ -152,6 +153,15 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             sb["_id"] = str(sb["_id"])
             resolve_names(sb)
         results["subcontractor_bills"] = sc_bills
+
+    # Subcontractor advances: only Admin/GM see pending advances
+    sa_query = {"approval_status": "Pending Approval"} if status.lower() != "all" else {}
+    if is_admin_user or status.lower() == "all":
+        sc_advances = await db.subcontractor_advances.find(sa_query).sort("created_at", -1).to_list(100)
+        for sa in sc_advances:
+            sa["_id"] = str(sa["_id"])
+            resolve_names(sa)
+        results["subcontractor_advances"] = sc_advances
 
     # Labour payment approvals: Admin sees payment requests
     lp_query = {"payment_status": "Payment Requested"} if status.lower() != "all" else {"payment_status": {"$exists": True, "$ne": ""}}
@@ -361,6 +371,63 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             elif status == "Rejected":
                 sc_update["rejection_reason"] = reason
             await db.subcontractor_bills.update_one({"_id": oid}, {"$set": sc_update})
+        elif type == "subcontractor_advances":
+            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+            user_role_check = (current_user.get("role") or "").strip().lower()
+            if user_role_check not in allowed_roles:
+                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject subcontractor advances")
+            sc_adv = await db.subcontractor_advances.find_one({"_id": oid})
+            if not sc_adv:
+                raise HTTPException(status_code=404, detail="Advance not found")
+            if sc_adv.get("approval_status") != "Pending Approval":
+                raise HTTPException(status_code=400, detail="Advance is not pending approval")
+            approver_name = update_fields["approvedBy"]
+            if status == "Approved":
+                await db.subcontractor_advances.update_one({"_id": oid}, {"$set": {
+                    "approval_status": "Approved",
+                    "approved_by": approver_name,
+                    "approved_at": datetime.now().isoformat(),
+                }})
+                # Create the expense entry now (deferred from advance creation)
+                expense_doc = {
+                    "date": sc_adv.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
+                    "project": sc_adv.get("project_name", ""),
+                    "category": "Subcontractor Advance",
+                    "amount": sc_adv.get("amount", 0),
+                    "base_amount": sc_adv.get("amount", 0),
+                    "gst_amount": 0,
+                    "paymentMode": sc_adv.get("payment_mode", "Cash"),
+                    "payee": sc_adv.get("contractor_name", ""),
+                    "reference": sc_adv.get("reference_no", ""),
+                    "invoice_no": sc_adv.get("advance_no", ""),
+                    "status": "Paid",
+                    "sc_advance_id": obj_id,
+                    "remarks": f"Advance to {sc_adv.get('contractor_name')}",
+                    "created_at": datetime.now().isoformat(),
+                    "created_by": approver_name,
+                }
+                await db.expenses.insert_one(expense_doc)
+                try:
+                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                        "SC Advance Approved",
+                        f"Advance {sc_adv.get('advance_no')} for {sc_adv.get('contractor_name')} (Rs.{sc_adv.get('amount', 0):,.0f}) approved by {approver_name}.",
+                        entity_type="subcontractor_advance", entity_id=obj_id,
+                        project_name=sc_adv.get("project_name"), priority="high")
+                except Exception:
+                    pass
+            else:
+                await db.subcontractor_advances.update_one({"_id": oid}, {"$set": {
+                    "approval_status": "Rejected",
+                    "rejection_reason": reason,
+                }})
+                try:
+                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                        "SC Advance Rejected",
+                        f"Advance {sc_adv.get('advance_no')} for {sc_adv.get('contractor_name')} rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
+                        entity_type="subcontractor_advance", entity_id=obj_id,
+                        project_name=sc_adv.get("project_name"), priority="high")
+                except Exception:
+                    pass
         elif type == "labour_payments":
             allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
             user_role_check = (current_user.get("role") or "").strip().lower()

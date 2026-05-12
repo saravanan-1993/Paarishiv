@@ -1248,7 +1248,7 @@ const Finance = () => {
                         />
                     </div>
 
-                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', overflowY: 'hidden', paddingBottom: '4px', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                         {availableTabs.map(tab => {
                             const isActive = activeTab === tab.id;
                             return (
@@ -1263,7 +1263,7 @@ const Finance = () => {
                                         color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
                                         fontWeight: isActive ? '700' : '600', fontSize: '14px', cursor: 'pointer',
                                         boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
-                                        whiteSpace: 'nowrap'
+                                        whiteSpace: 'nowrap', flexShrink: 0,
                                     }}
                                 >
                                     <tab.icon size={18} /> {tab.label}

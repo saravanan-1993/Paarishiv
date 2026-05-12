@@ -39,6 +39,7 @@ const Approvals = () => {
         'Manpower': 'manpower',
         'DPR': 'dprs',
         'SC Bills': 'subcontractor_bills',
+        'SC Advances': 'subcontractor_advances',
         'Labour Pay': 'labour_payments',
         'Stock Returns': 'stock_returns',
         'Transfers': 'material_transfers',
@@ -93,6 +94,7 @@ const Approvals = () => {
         manpower: [],
         dprs: [],
         subcontractor_bills: [],
+        subcontractor_advances: [],
         labour_payments: [],
         stock_returns: [],
         material_transfers: [],
@@ -112,6 +114,7 @@ const Approvals = () => {
                 manpower: res.data.manpower || [],
                 dprs: res.data.dprs || [],
                 subcontractor_bills: res.data.subcontractor_bills || [],
+                subcontractor_advances: res.data.subcontractor_advances || [],
                 labour_payments: res.data.labour_payments || [],
                 stock_returns: res.data.stock_returns || [],
                 material_transfers: res.data.material_transfers || [],
@@ -205,7 +208,7 @@ const Approvals = () => {
                 ...prev,
                 [type]: prev[type].filter(item => item._id !== id && item.id !== id)
             }));
-            const label = type === 'labour_payments' ? 'Labour Payment' : type === 'subcontractor_bills' ? 'SC Bill' : type.replace('_', ' ');
+            const label = type === 'labour_payments' ? 'Labour Payment' : type === 'subcontractor_bills' ? 'SC Bill' : type === 'subcontractor_advances' ? 'SC Advance' : type.replace('_', ' ');
             if (action === 'approve') toast.success(`${label} approved`);
             else toast.info(`${label} rejected`);
         } catch (error) {
@@ -239,6 +242,7 @@ const Approvals = () => {
         { id: 'manpower', label: 'Manpower', count: data.manpower?.length || 0, icon: User, color: '#10b981' },
         { id: 'dprs', label: 'DPR', count: data.dprs?.length || 0, icon: FileText, color: '#6366f1' },
         { id: 'subcontractor_bills', label: 'SC Bills', count: data.subcontractor_bills?.length || 0, icon: FileText, color: '#0891b2' },
+        { id: 'subcontractor_advances', label: 'SC Advances', count: data.subcontractor_advances?.length || 0, icon: CreditCard, color: '#2563eb' },
         { id: 'labour_payments', label: 'Labour Pay', count: data.labour_payments?.length || 0, icon: FileText, color: '#7C3AED' },
         { id: 'stock_returns', label: 'Stock Returns', count: data.stock_returns?.length || 0, icon: FileText, color: '#059669' },
         { id: 'material_transfers', label: 'Transfers', count: data.material_transfers?.length || 0, icon: FileText, color: '#F59E0B' },
@@ -799,6 +803,72 @@ const Approvals = () => {
         </div>
     );
 
+    const renderSCAdvanceCard = (item) => (
+        <div key={item._id} style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '4px' }}>{item.contractor_name || 'Unknown Contractor'}</h3>
+                    <p style={{ fontSize: '12px', color: '#64748b' }}>{item.advance_no || '—'} &bull; {item.project_name || ''}</p>
+                </div>
+                <span style={{
+                    padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700',
+                    backgroundColor: item.approval_status === 'Pending Approval' ? '#FEF3C7' : item.approval_status === 'Approved' ? '#DCFCE7' : '#FEE2E2',
+                    color: item.approval_status === 'Pending Approval' ? '#92400E' : item.approval_status === 'Approved' ? '#166534' : '#991B1B'
+                }}>{item.approval_status || 'Draft'}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>AMOUNT</p>
+                    <p style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary)' }}>{'₹'}{(item.amount || 0).toLocaleString('en-IN')}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>PAYMENT MODE</p>
+                    <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.payment_mode || '—'}</p>
+                </div>
+                <div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>PAYMENT DATE</p>
+                    <p style={{ fontSize: '13px' }}>{item.payment_date || item.created_at?.split('T')[0] || '—'}</p>
+                </div>
+            </div>
+            {item.reference_no && (
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+                    Ref: <strong>{item.reference_no}</strong>
+                </p>
+            )}
+            {item.remarks && (
+                <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '12px' }}>{item.remarks}</p>
+            )}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button onClick={() => setViewDetail({ type: 'Subcontractor Advance', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Eye size={18} /> View Details
+                </button>
+                {item.approval_status === 'Pending Approval' && (
+                    <>
+                        <button
+                            className="btn btn-primary btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('subcontractor_advances', item._id, 'approve')}
+                            style={{ padding: '6px 16px', fontSize: '12px' }}
+                        >
+                            {actionLoading === `${item._id}-approve` ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button
+                            className="btn btn-outline btn-sm"
+                            disabled={!!actionLoading}
+                            onClick={() => handleAction('subcontractor_advances', item._id, 'reject')}
+                            style={{ padding: '6px 16px', fontSize: '12px', color: '#EF4444', borderColor: '#EF4444' }}
+                        >
+                            {actionLoading === `${item._id}-reject` ? 'Rejecting...' : 'Reject'}
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+
     const renderTransferCard = (item) => (
         <div key={item._id || item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -1312,7 +1382,7 @@ const Approvals = () => {
                 </div>
 
                 {/* Controls */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '32px', minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                         <div style={{ display: 'inline-flex', background: '#e2e8f0', borderRadius: '8px', padding: '4px' }}>
                             {['Pending', 'All'].map(status => (
@@ -1409,7 +1479,7 @@ const Approvals = () => {
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
+                    <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid #e2e8f0', overflowX: 'auto', overflowY: 'hidden', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                         {tabs.map(tab => (
                             <button
                                 key={tab.id}
@@ -1423,6 +1493,7 @@ const Approvals = () => {
                                     borderBottom: activeTab === tab.id ? '2px solid #2563EB' : '2px solid transparent',
                                     fontWeight: activeTab === tab.id ? '700' : '600', fontSize: '15px',
                                     cursor: 'pointer', transition: 'all 0.2s',
+                                    whiteSpace: 'nowrap', flexShrink: 0,
                                 }}
                             >
                                 <tab.icon size={18} style={{ color: activeTab === tab.id ? '#2563EB' : '#94a3b8' }} />
@@ -1457,6 +1528,7 @@ const Approvals = () => {
                                 if (activeTab === 'manpower') return renderManpowerCard(item);
                                 if (activeTab === 'dprs') return renderDPRCard(item);
                                 if (activeTab === 'subcontractor_bills') return renderSCBillCard(item);
+                                if (activeTab === 'subcontractor_advances') return renderSCAdvanceCard(item);
                                 if (activeTab === 'labour_payments') return renderLabourPaymentCard(item);
                                 if (activeTab === 'stock_returns') return renderStockReturnCard(item);
                                 if (activeTab === 'material_transfers') return renderTransferCard(item);
