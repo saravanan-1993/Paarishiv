@@ -136,6 +136,9 @@ def advance_helper(adv) -> dict:
     closed_at = adv.get("closed_at")
     if hasattr(closed_at, "isoformat"):
         closed_at = closed_at.isoformat()
+    approved_at = adv.get("approved_at")
+    if hasattr(approved_at, "isoformat"):
+        approved_at = approved_at.isoformat()
     return {
         "id": str(adv["_id"]),
         "advance_no": adv.get("advance_no", ""),
@@ -150,6 +153,10 @@ def advance_helper(adv) -> dict:
         "payment_date": adv.get("payment_date", ""),
         "remarks": adv.get("remarks", ""),
         "status": adv.get("status", "Active"),
+        "approval_status": adv.get("approval_status", "Draft"),
+        "approved_by": adv.get("approved_by", ""),
+        "approved_at": approved_at,
+        "rejection_reason": adv.get("rejection_reason", ""),
         "adjustments": adv.get("adjustments", []),
         "created_by": adv.get("created_by", ""),
         "created_at": created_at,
@@ -186,11 +193,12 @@ async def list_available_advances(
     project_name: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Return Active/Partially Adjusted advances with positive outstanding for a contractor (optionally a project)."""
+    """Return Approved + Active/Partially Adjusted advances with positive outstanding for a contractor (optionally a project)."""
     if not contractor_name:
         raise HTTPException(status_code=400, detail="contractor_name is required")
     query = {
         "contractor_name": contractor_name,
+        "approval_status": "Approved",
         "status": {"$in": ["Active", "Partially Adjusted"]},
         "outstanding_balance": {"$gt": 0},
     }
@@ -229,6 +237,10 @@ async def create_advance(
         "payment_date": data.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
         "remarks": data.get("remarks", ""),
         "status": "Active",
+        "approval_status": "Draft",
+        "approved_by": "",
+        "approved_at": None,
+        "rejection_reason": "",
         "adjustments": [],
         "created_by": current_user.get("full_name") or current_user.get("username", ""),
         "created_at": datetime.now().isoformat(),
@@ -237,30 +249,12 @@ async def create_advance(
 
     result = await db.subcontractor_advances.insert_one(adv_dict)
 
-    # Record advance as an expense (cash outflow / advance to contractor)
-    expense_doc = {
-        "date": adv_dict["payment_date"],
-        "project": adv_dict["project_name"],
-        "category": "Subcontractor Advance",
-        "amount": amount,
-        "base_amount": amount,
-        "gst_amount": 0,
-        "paymentMode": adv_dict["payment_mode"],
-        "payee": contractor,
-        "reference": adv_dict["reference_no"],
-        "invoice_no": advance_no,
-        "status": "Paid",
-        "sc_advance_id": str(result.inserted_id),
-        "remarks": f"Advance to {contractor}",
-        "created_at": datetime.now().isoformat(),
-        "created_by": adv_dict["created_by"],
-    }
-    await db.expenses.insert_one(expense_doc)
+    # Note: expense is NOT created here. It will be created on admin approval.
 
     await log_activity(
         db, str(current_user.get("_id", "")), current_user.get("username", ""),
         "Create SC Advance",
-        f"Advance {advance_no} of Rs.{amount:,.0f} given to {contractor} | Project: {adv_dict['project_name']}",
+        f"Advance {advance_no} of Rs.{amount:,.0f} drafted for {contractor} | Project: {adv_dict['project_name']}",
         "info"
     )
 
@@ -318,9 +312,11 @@ async def delete_advance(advance_id: str, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Advance not found")
     if adv.get("adjusted_amount", 0) > 0:
         raise HTTPException(status_code=400, detail="Cannot delete an advance that has already been adjusted against bills")
+    if adv.get("approval_status") == "Approved":
+        raise HTTPException(status_code=400, detail="Cannot delete an approved advance. Use refund or close instead.")
 
     await db.subcontractor_advances.delete_one({"_id": ObjectId(advance_id)})
-    # Remove the auto-created expense too
+    # Remove auto-created expense if it exists (in case the advance had been approved earlier)
     await db.expenses.delete_many({"sc_advance_id": advance_id})
 
     await log_activity(
@@ -330,6 +326,156 @@ async def delete_advance(advance_id: str, current_user: dict = Depends(get_curre
         "warning"
     )
     return {"message": "Advance deleted"}
+
+
+@router.put("/advances/{advance_id}/submit", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+async def submit_advance(advance_id: str, current_user: dict = Depends(get_current_user)):
+    """Submit a Draft advance for admin approval."""
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+    if adv.get("approval_status") not in ("Draft", "Rejected"):
+        raise HTTPException(status_code=400, detail="Only Draft or Rejected advances can be submitted")
+
+    await db.subcontractor_advances.update_one(
+        {"_id": ObjectId(advance_id)},
+        {"$set": {"approval_status": "Pending Approval", "rejection_reason": ""}}
+    )
+
+    submitter = current_user.get("full_name") or current_user.get("username", "")
+    try:
+        await notify(
+            db, submitter, ["Administrator", "General Manager"], EVENT_APPROVAL,
+            "SC Advance Pending Approval",
+            f"Advance {adv.get('advance_no')} of Rs.{adv.get('amount', 0):,.0f} for {adv.get('contractor_name')} needs approval.",
+            entity_type="subcontractor_advance", entity_id=advance_id,
+            project_name=adv.get("project_name"), priority="high"
+        )
+    except Exception:
+        pass
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Submit SC Advance",
+        f"Advance {adv.get('advance_no')} submitted for approval",
+        "info"
+    )
+    return {"message": "Advance submitted for approval"}
+
+
+@router.put("/advances/{advance_id}/approve")
+async def approve_advance(advance_id: str, current_user: dict = Depends(get_current_user)):
+    """Admin/GM approves an advance — creates the expense entry on approval."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can approve advances")
+
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+    if adv.get("approval_status") != "Pending Approval":
+        raise HTTPException(status_code=400, detail="Advance is not pending approval")
+
+    approver = current_user.get("full_name") or current_user.get("username", "")
+    await db.subcontractor_advances.update_one(
+        {"_id": ObjectId(advance_id)},
+        {"$set": {
+            "approval_status": "Approved",
+            "approved_by": approver,
+            "approved_at": datetime.now().isoformat(),
+        }}
+    )
+
+    # Create the expense entry now (deferred from creation)
+    expense_doc = {
+        "date": adv.get("payment_date") or datetime.now().strftime("%Y-%m-%d"),
+        "project": adv.get("project_name", ""),
+        "category": "Subcontractor Advance",
+        "amount": adv.get("amount", 0),
+        "base_amount": adv.get("amount", 0),
+        "gst_amount": 0,
+        "paymentMode": adv.get("payment_mode", "Cash"),
+        "payee": adv.get("contractor_name", ""),
+        "reference": adv.get("reference_no", ""),
+        "invoice_no": adv.get("advance_no", ""),
+        "status": "Paid",
+        "sc_advance_id": advance_id,
+        "remarks": f"Advance to {adv.get('contractor_name')}",
+        "created_at": datetime.now().isoformat(),
+        "created_by": approver,
+    }
+    await db.expenses.insert_one(expense_doc)
+
+    try:
+        await notify(
+            db, approver, ["Accountant"], EVENT_APPROVAL,
+            "SC Advance Approved",
+            f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} (Rs.{adv.get('amount', 0):,.0f}) approved by {approver}.",
+            entity_type="subcontractor_advance", entity_id=advance_id,
+            project_name=adv.get("project_name"), priority="high"
+        )
+    except Exception:
+        pass
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Approve SC Advance",
+        f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} approved",
+        "success"
+    )
+    return {"message": "Advance approved"}
+
+
+@router.put("/advances/{advance_id}/reject")
+async def reject_advance(
+    advance_id: str,
+    body: dict = Body(default={}),
+    current_user: dict = Depends(get_current_user)
+):
+    """Admin/GM rejects an advance."""
+    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
+    user_role = (current_user.get("role") or "").strip().lower()
+    if user_role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Only Admin/GM can reject advances")
+
+    if not ObjectId.is_valid(advance_id):
+        raise HTTPException(status_code=400, detail="Invalid advance ID")
+    adv = await db.subcontractor_advances.find_one({"_id": ObjectId(advance_id)})
+    if not adv:
+        raise HTTPException(status_code=404, detail="Advance not found")
+    if adv.get("approval_status") != "Pending Approval":
+        raise HTTPException(status_code=400, detail="Advance is not pending approval")
+
+    reason = body.get("reason", "")
+    await db.subcontractor_advances.update_one(
+        {"_id": ObjectId(advance_id)},
+        {"$set": {"approval_status": "Rejected", "rejection_reason": reason}}
+    )
+
+    try:
+        rejector = current_user.get("full_name") or current_user.get("username", "")
+        await notify(
+            db, rejector, ["Accountant"], EVENT_APPROVAL,
+            "SC Advance Rejected",
+            f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} rejected. Reason: {reason or 'No reason given'}",
+            entity_type="subcontractor_advance", entity_id=advance_id,
+            project_name=adv.get("project_name"), priority="high"
+        )
+    except Exception:
+        pass
+
+    await log_activity(
+        db, str(current_user.get("_id", "")), current_user.get("username", ""),
+        "Reject SC Advance",
+        f"Advance {adv.get('advance_no')} rejected. Reason: {reason}",
+        "warning"
+    )
+    return {"message": "Advance rejected"}
 
 
 @router.get("/dpr-work", dependencies=[Depends(RBACPermission("Accounts", "view"))])

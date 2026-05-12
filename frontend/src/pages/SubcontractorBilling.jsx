@@ -39,6 +39,13 @@ const advanceStatusConfig = {
     'Refunded': { bg: '#F3F4F6', color: '#374151', label: 'Refunded' },
 };
 
+const advanceApprovalConfig = {
+    'Draft': { bg: '#F3F4F6', color: '#374151', label: 'Draft' },
+    'Pending Approval': { bg: '#FEF3C7', color: '#92400E', label: 'Pending Approval' },
+    'Approved': { bg: '#D1FAE5', color: '#065F46', label: 'Approved' },
+    'Rejected': { bg: '#FEE2E2', color: '#991B1B', label: 'Rejected' },
+};
+
 
 const SubcontractorBilling = () => {
     const { user } = useAuth();
@@ -133,7 +140,7 @@ const SubcontractorBilling = () => {
             }
             if (filterProject && a.project_name !== filterProject) return false;
             if (filterContractor && a.contractor_name !== filterContractor) return false;
-            if (filterStatus && a.status !== filterStatus) return false;
+            if (filterStatus && a.approval_status !== filterStatus) return false;
             return true;
         });
     }, [advances, searchTerm, filterProject, filterContractor, filterStatus]);
@@ -190,6 +197,17 @@ const SubcontractorBilling = () => {
     const handleAdvanceModalSuccess = () => {
         handleAdvanceModalClose();
         loadData();
+    };
+
+    const handleSubmitAdvance = async (adv) => {
+        if (!(await confirm({ title: 'Submit for Approval', message: `Submit Advance ${adv.advance_no} (Rs.${(adv.amount || 0).toLocaleString('en-IN')}) for admin approval?`, confirmText: 'Submit' }))) return;
+        try {
+            await subcontractorBillingAPI.submitAdvance(adv.id);
+            toast.success(`Advance ${adv.advance_no} submitted for approval`);
+            loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.detail || 'Failed to submit advance');
+        }
     };
 
     const handleOpenMBook = (bill) => {
@@ -365,7 +383,7 @@ const SubcontractorBilling = () => {
                             style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '13px', flex: '0 1 180px', minWidth: '150px', maxWidth: '200px' }}
                         >
                             <option value="">All Statuses</option>
-                            {Object.keys(activeTab === 'Advances' ? advanceStatusConfig : statusConfig).map(s => (
+                            {Object.keys(activeTab === 'Advances' ? advanceApprovalConfig : statusConfig).map(s => (
                                 <option key={s} value={s}>{s}</option>
                             ))}
                         </select>
@@ -518,6 +536,7 @@ const SubcontractorBilling = () => {
                                 <th style={{ textAlign: 'right' }}>Given</th>
                                 <th style={{ textAlign: 'right' }}>Adjusted</th>
                                 <th style={{ textAlign: 'right' }}>Outstanding</th>
+                                <th>Approval</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -525,7 +544,7 @@ const SubcontractorBilling = () => {
                         <tbody>
                             {filteredAdvances.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                                    <td colSpan={10} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                                             <Wallet size={32} style={{ opacity: 0.3 }} />
                                             <div>No advances recorded yet</div>
@@ -540,7 +559,10 @@ const SubcontractorBilling = () => {
                             ) : (
                                 filteredAdvances.slice((advancesPage - 1) * PAGE_SIZE, advancesPage * PAGE_SIZE).map((adv) => {
                                     const cfg = advanceStatusConfig[adv.status] || { bg: '#F3F4F6', color: '#374151', label: adv.status };
-                                    const canEditAdv = (adv.adjusted_amount || 0) === 0 && adv.status === 'Active';
+                                    const apprCfg = advanceApprovalConfig[adv.approval_status] || { bg: '#F3F4F6', color: '#374151', label: adv.approval_status || 'Draft' };
+                                    const isDraftOrRejected = ['Draft', 'Rejected'].includes(adv.approval_status);
+                                    const canEditAdv = (adv.adjusted_amount || 0) === 0 && isDraftOrRejected;
+                                    const isApproved = adv.approval_status === 'Approved';
                                     return (
                                         <tr key={adv.id || adv._id}>
                                             <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{adv.advance_no}</td>
@@ -553,12 +575,36 @@ const SubcontractorBilling = () => {
                                             <td style={{ textAlign: 'right', color: '#10B981', fontWeight: '600' }}>{fmt(adv.adjusted_amount)}</td>
                                             <td style={{ textAlign: 'right', color: (adv.outstanding_balance || 0) > 0 ? '#F97316' : '#94A3B8', fontWeight: '700' }}>{fmt(adv.outstanding_balance)}</td>
                                             <td>
-                                                <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', backgroundColor: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>
-                                                    {cfg.label}
+                                                <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', backgroundColor: apprCfg.bg, color: apprCfg.color, whiteSpace: 'nowrap' }}>
+                                                    {apprCfg.label}
                                                 </span>
+                                                {adv.approval_status === 'Rejected' && adv.rejection_reason && (
+                                                    <div style={{ fontSize: '10px', color: '#991B1B', marginTop: '2px', maxWidth: '180px' }} title={adv.rejection_reason}>
+                                                        {adv.rejection_reason.substring(0, 30)}{adv.rejection_reason.length > 30 ? '…' : ''}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {isApproved ? (
+                                                    <span style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700', backgroundColor: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>
+                                                        {cfg.label}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ fontSize: '11px', color: '#94A3B8' }}>—</span>
+                                                )}
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '6px' }}>
+                                                    {canEdit && isDraftOrRejected && (
+                                                        <button
+                                                            className="btn btn-primary btn-sm"
+                                                            style={{ padding: '4px 8px', fontSize: '11px' }}
+                                                            title="Submit for Approval"
+                                                            onClick={() => handleSubmitAdvance(adv)}
+                                                        >
+                                                            <Send size={14} />
+                                                        </button>
+                                                    )}
                                                     {canEdit && canEditAdv && (
                                                         <button
                                                             className="btn btn-outline btn-sm"

@@ -273,7 +273,7 @@ const Assets = () => {
                 </div>
 
                 {/* Sub Tabs */}
-                <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--border)', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', gap: '24px', borderBottom: '1px solid var(--border)', marginBottom: '32px', overflowX: 'auto', overflowY: 'hidden', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                     {[
                         { id: 'Fleet', label: 'Equipment Fleet', icon: Construction },
                         { id: 'Logs', label: 'Daily Usage Logs', icon: ClipboardList },
@@ -286,7 +286,8 @@ const Assets = () => {
                                 padding: '12px 4px', fontSize: '14px', fontWeight: '700',
                                 color: activeTab === tab.id ? 'var(--primary)' : 'var(--text-muted)',
                                 borderBottom: activeTab === tab.id ? '2px solid var(--primary)' : '2px solid transparent',
-                                background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                                background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                whiteSpace: 'nowrap', flexShrink: 0,
                             }}
                         >
                             <tab.icon size={16} />

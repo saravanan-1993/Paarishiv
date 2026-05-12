@@ -770,7 +770,7 @@ const Fleet = () => {
                 </div>
 
                 {/* Tabs */}
-                <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid var(--border)', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid var(--border)', marginBottom: '32px', overflowX: 'auto', overflowY: 'hidden', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                     {availableTabs.map(tab => (
                         <button
                             key={tab}
@@ -779,7 +779,8 @@ const Fleet = () => {
                                 padding: '12px 4px', fontSize: '14px', fontWeight: '700',
                                 color: activeTab === tab ? 'var(--primary)' : 'var(--text-muted)',
                                 borderBottom: activeTab === tab ? '2px solid var(--primary)' : '2px solid transparent',
-                                background: 'none', border: 'none', cursor: 'pointer'
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                whiteSpace: 'nowrap', flexShrink: 0,
                             }}
                         >
                             {tab.toUpperCase()}

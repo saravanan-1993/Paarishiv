@@ -1048,7 +1048,7 @@ const ProjectDetails = () => {
                                 </div>
 
                                 {/* Sub-tabs */}
-                                <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto' }}>
+                                <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid var(--border)', marginBottom: '24px', overflowX: 'auto', overflowY: 'hidden', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                                     {[
                                         { key: 'sales', label: `Sales Bills (${finData.sales_bills.length})` },
                                         { key: 'receipts', label: `Receipts (${finData.receipts.length})` },
@@ -1060,7 +1060,7 @@ const ProjectDetails = () => {
                                             fontWeight: finTab === st.key ? '700' : '600', fontSize: '13px',
                                             color: finTab === st.key ? 'var(--primary)' : 'var(--text-muted)',
                                             borderBottom: finTab === st.key ? '3px solid var(--primary)' : '3px solid transparent',
-                                            marginBottom: '-2px', whiteSpace: 'nowrap'
+                                            marginBottom: '-2px', whiteSpace: 'nowrap', flexShrink: 0,
                                         }}>{st.label}</button>
                                     ))}
                                 </div>

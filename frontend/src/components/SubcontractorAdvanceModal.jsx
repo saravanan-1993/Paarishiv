@@ -232,7 +232,7 @@ const SubcontractorAdvanceModal = ({ isOpen, onClose, onSuccess, projects = [], 
                     </div>
 
                     <div style={{ padding: '12px', backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', fontSize: '12px', color: '#0C4A6E' }}>
-                        This advance will be available for adjustment against future bills from this contractor. It also creates an expense entry (category: Subcontractor Advance).
+                        Advance is saved as <strong>Draft</strong>. Submit it for admin approval — once approved, it's available for adjustment against bills and an expense entry is created.
                     </div>
                 </form>
 

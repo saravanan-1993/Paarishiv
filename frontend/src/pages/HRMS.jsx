@@ -1472,7 +1472,7 @@ const HRMS = () => {
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid var(--border)', marginBottom: '32px', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', gap: '32px', borderBottom: '1px solid var(--border)', marginBottom: '32px', overflowX: 'auto', overflowY: 'hidden', minWidth: 0, maxWidth: '100%', scrollbarWidth: 'thin' }}>
                     {availableTabs.map(tab => (
                         <button
                             key={tab}
@@ -1483,7 +1483,8 @@ const HRMS = () => {
                                 borderTop: 'none', borderLeft: 'none', borderRight: 'none',
                                 borderBottom: activeTab === tab ? '3px solid var(--primary)' : '3px solid transparent',
                                 background: activeTab === tab ? 'rgba(37, 99, 235, 0.05)' : 'none',
-                                cursor: 'pointer', borderRadius: '8px 8px 0 0', outline: 'none', transition: 'all 0.2s'
+                                cursor: 'pointer', borderRadius: '8px 8px 0 0', outline: 'none', transition: 'all 0.2s',
+                                whiteSpace: 'nowrap', flexShrink: 0,
                             }}
                         >
                             {tab.toUpperCase()}
