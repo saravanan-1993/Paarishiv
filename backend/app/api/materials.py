@@ -5,6 +5,8 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime
 from app.utils.auth import get_current_user
+from app.utils.rbac import is_admin_role, get_assigned_project_names, get_users_with_permission
+from app.utils.notifications import notify, EVENT_WORKFLOW
 from app.utils.logging import log_activity
 
 router = APIRouter(prefix="/materials", tags=["materials"])
@@ -17,36 +19,20 @@ async def get_materials(db = Depends(get_database)):
 @router.get("/project/{project_name}")
 async def get_project_inventory(project_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    user_role = (current_user.get("role") or "").lower().replace(" ", "")
-    if user_role == "siteengineer":
-        username = current_user.get("username")
-        user_id = current_user.get("id") or current_user.get("_id", "")
-        or_conditions = [
-            {"engineer_id": username},
-            {"engineer_id": str(user_id)},
-        ]
-        try:
-            employee = await db.employees.find_one({
-                "$or": [{"employeeCode": username}, {"username": username}]
-            })
-            if employee:
-                or_conditions.append({"engineer_id": str(employee["_id"])})
-                if employee.get("employeeCode"):
-                    or_conditions.append({"engineer_id": employee["employeeCode"]})
-        except Exception:
-            pass
-        assigned_projects = await db.projects.find({"$or": or_conditions}).to_list(100)
-        project_names = [p.get("name") for p in assigned_projects if p.get("name")]
-
+    # Dynamic scoping — admin-class sees any project; others scoped to assignments.
+    if is_admin_role(current_user.get("role", "")):
+        if project_name != "all":
+            query["project_name"] = project_name
+    else:
+        assigned_names = await get_assigned_project_names(db, current_user)
         if project_name == "all":
-            query["project_name"] = {"$in": project_names}
-        elif project_name in project_names:
+            if not assigned_names:
+                return []
+            query["project_name"] = {"$in": assigned_names}
+        elif project_name in assigned_names:
             query["project_name"] = project_name
         else:
             return []
-    else:
-        if project_name != "all":
-            query["project_name"] = project_name
             
     inventory = await db.inventory.find(query).to_list(1000)
         
@@ -157,6 +143,19 @@ async def create_material(material: dict, db = Depends(get_database), current_us
     result = await db.materials.insert_one(material_data)
     material_data["_id"] = str(result.inserted_id)
     material_data["created_at"] = material_data["created_at"].isoformat() if material_data.get("created_at") else None
+
+    # T2.10 — Notify Inventory Management editors about new material
+    try:
+        creator = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "Inventory Management", "edit")
+        await notify(db, creator, recipients, EVENT_WORKFLOW,
+            "New Material Added",
+            f"Material '{material_data.get('name', '')}' added by {creator}.",
+            entity_type="material", entity_id=str(result.inserted_id),
+            priority="low")
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id), **{k: v for k, v in material_data.items() if k != "_id"}}
 
 @router.get("/inventory/ledger")
@@ -170,41 +169,23 @@ async def get_material_ledger(project_name: str, material_name: str, db = Depend
     
     ledger = []
     balance = 0
-    
+
     # Sort GRNs by creation date to calculate running balance correctly
     # Use a fallback for missing created_at
     grns.sort(key=lambda x: x.get("created_at") if x.get("created_at") else datetime.min)
-    
+
+    # Dynamic scoping — admin sees all; scoped users limited to assigned projects.
+    # Computed once and reused for both GRN and stock-ledger loops below.
+    allowed_projects = None
+    if not is_admin_role(current_user.get("role", "")):
+        allowed_projects = await get_assigned_project_names(db, current_user)
+
     for grn in grns:
         po_id = grn.get("po_id")
         current_grn_project = po_project_map.get(str(po_id), "Unknown")
-        
-        # Determine allowed projects
-        allowed_projects = None
-        ledger_user_role = (current_user.get("role") or "").lower().replace(" ", "")
-        if ledger_user_role == "siteengineer":
-            username = current_user.get("username")
-            user_id = current_user.get("id") or current_user.get("_id", "")
-            or_conds = [
-                {"engineer_id": username},
-                {"engineer_id": str(user_id)},
-            ]
-            try:
-                emp = await db.employees.find_one({
-                    "$or": [{"employeeCode": username}, {"username": username}]
-                })
-                if emp:
-                    or_conds.append({"engineer_id": str(emp["_id"])})
-                    if emp.get("employeeCode"):
-                        or_conds.append({"engineer_id": emp["employeeCode"]})
-            except Exception:
-                pass
-            assigned = await db.projects.find({"$or": or_conds}).to_list(100)
-            allowed_projects = [p.get("name") for p in assigned if p.get("name")]
-            
-            # If not in allowed projects, skip
-            if current_grn_project not in allowed_projects:
-                continue
+
+        if allowed_projects is not None and current_grn_project not in allowed_projects:
+            continue
 
         # Filter by requested project if not 'All Sites'
         if project_name not in ["All Sites", "all"] and current_grn_project != project_name:
@@ -238,8 +219,8 @@ async def get_material_ledger(project_name: str, material_name: str, db = Depend
         from_proj = parts[0] if len(parts) > 0 else ""
         to_proj = parts[1] if len(parts) > 1 else ""
         
-        # If user is a Site Engineer, ensure they have access to either from_proj or to_proj
-        if ledger_user_role == "siteengineer" and allowed_projects is not None:
+        # Scoped users: ensure they have access to either from_proj or to_proj
+        if allowed_projects is not None:
             if from_proj not in allowed_projects and to_proj not in allowed_projects:
                 continue
                 

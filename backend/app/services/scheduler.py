@@ -8,6 +8,7 @@ import json
 # Import notification helpers
 from app.api.chat import send_system_message
 from app.utils.notifications import notify, EVENT_TASK, EVENT_HR, EVENT_FLEET, EVENT_FINANCE
+from app.utils.rbac import get_users_with_permission, get_admin_class_usernames
 
 
 async def check_overdue_tasks():
@@ -57,7 +58,10 @@ async def check_overdue_tasks():
 
                     # Notify via new notification system
                     try:
-                        recipients = ["Administrator"]
+                        try:
+                            recipients = await get_users_with_permission(db, "Projects", "edit")
+                        except Exception:
+                            recipients = []
                         if task.get("assignedTo"):
                             recipients.append(task["assignedTo"])
                         if project.get("engineer_id"):
@@ -146,7 +150,11 @@ async def check_attendance_anomalies():
         if not attendance and not leave:
             # Absent without leave - notify HR
             try:
-                await notify(db, "System", ["HR Manager", "Administrator"], EVENT_HR,
+                try:
+                    hr_recipients = await get_users_with_permission(db, "HRMS", "edit")
+                except Exception:
+                    hr_recipients = []
+                await notify(db, "System", hr_recipients, EVENT_HR,
                     "Absent Without Leave",
                     f"{emp.get('fullName', emp_username)} has not clocked in today and has no approved leave.",
                     priority="normal")
@@ -187,6 +195,10 @@ async def check_attendance_anomalies():
 
     try:
         late_employees = await db.attendance.aggregate(pipeline).to_list(100)
+        try:
+            late_recipients = await get_users_with_permission(db, "HRMS", "edit")
+        except Exception:
+            late_recipients = []
         for late_emp in late_employees:
             username = late_emp["_id"]
             late_count = late_emp["late_days"]
@@ -196,7 +208,7 @@ async def check_attendance_anomalies():
             )
             emp_name = emp_doc.get("fullName", username) if emp_doc else username
 
-            await notify(db, "System", ["HR Manager", "Administrator"], EVENT_HR,
+            await notify(db, "System", late_recipients, EVENT_HR,
                 "Frequent Late Arrival",
                 f"{emp_name} has been late {late_count} times this week (threshold: 3).",
                 priority="high")
@@ -230,7 +242,11 @@ async def check_vehicle_maintenance():
 
             # Alert if >90 days since last service
             if days_since > 90:
-                await notify(db, "System", ["Administrator", "General Manager"], EVENT_FLEET,
+                try:
+                    fleet_recipients = await get_users_with_permission(db, "Fleet Management", "edit")
+                except Exception:
+                    fleet_recipients = []
+                await notify(db, "System", fleet_recipients, EVENT_FLEET,
                     "Vehicle Maintenance Overdue",
                     f"Vehicle {reg} last serviced {days_since} days ago ({last_service_dt.strftime('%d %b %Y')}). Maintenance is overdue.",
                     entity_type="vehicle", entity_id=str(vehicle["_id"]), priority="high")
@@ -269,7 +285,11 @@ async def check_fuel_stock():
         # Alert if below 100 liters
         if remaining < 100:
             try:
-                await notify(db, "System", ["Administrator", "General Manager"], EVENT_FLEET,
+                try:
+                    fuel_recipients = await get_users_with_permission(db, "Fleet Management", "edit")
+                except Exception:
+                    fuel_recipients = []
+                await notify(db, "System", fuel_recipients, EVENT_FLEET,
                     "Low Fuel Stock",
                     f"Fuel stock at {site} is low: {remaining:.0f} liters remaining.",
                     priority="high")
@@ -290,6 +310,11 @@ async def check_overdue_bills():
         "bill_date": {"$lte": cutoff}
     }).to_list(100)
 
+    try:
+        purchase_bill_recipients = await get_users_with_permission(db, "Accounts", "edit")
+    except Exception:
+        purchase_bill_recipients = []
+
     for bill in overdue_purchase_bills:
         bill_no = bill.get("bill_no", "N/A")
         vendor = bill.get("vendor_name", "Unknown")
@@ -297,7 +322,7 @@ async def check_overdue_bills():
         bill_date = bill.get("bill_date", "")
 
         try:
-            await notify(db, "System", ["Accountant", "Administrator"], EVENT_FINANCE,
+            await notify(db, "System", purchase_bill_recipients, EVENT_FINANCE,
                 "Purchase Bill Overdue",
                 f"Bill {bill_no} from {vendor} (Rs.{amount:,.0f}) dated {bill_date} is pending for 30+ days.",
                 entity_type="expense", entity_id=str(bill["_id"]),
@@ -309,6 +334,11 @@ async def check_overdue_bills():
     client_bills = await db.bills.find({
         "status": {"$in": ["Pending", "Partially Paid"]}
     }).to_list(100)
+
+    try:
+        client_bill_recipients = await get_users_with_permission(db, "Accounts", "edit")
+    except Exception:
+        client_bill_recipients = []
 
     for bill in client_bills:
         created = bill.get("created_at", "")
@@ -327,7 +357,7 @@ async def check_overdue_bills():
                 collected = bill.get("collection_amount", 0)
                 balance = total - collected
 
-                await notify(db, "System", ["Accountant", "Administrator", "General Manager"], EVENT_FINANCE,
+                await notify(db, "System", client_bill_recipients, EVENT_FINANCE,
                     "Client Payment Overdue",
                     f"Bill #{bill_no} for {project} - Balance Rs.{balance:,.0f} pending for 30+ days.",
                     entity_type="bill", entity_id=str(bill["_id"]),
@@ -417,7 +447,10 @@ async def check_budget_overspend():
         name = project.get("name", "Unknown")
         pid = str(project["_id"])
 
-        recipients = ["Administrator", "General Manager"]
+        try:
+            recipients = await get_users_with_permission(db, "Accounts", "edit")
+        except Exception:
+            recipients = []
         if project.get("engineer_id"):
             recipients.append(project["engineer_id"])
         if project.get("coordinator_id"):

@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import calendar
 import re
 from app.utils.auth import get_current_user
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, get_users_with_permission
 from app.utils.notifications import notify, EVENT_HR
 
 router = APIRouter(prefix="/hrms", tags=["hrms"])
@@ -172,7 +172,8 @@ async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     # Notify HR Manager + Admin about new leave application
     try:
         emp_name = leave.employeeName if hasattr(leave, 'employeeName') else "Employee"
-        await notify(db, emp_name, ["HR Manager", "Administrator", "Project Manager"], EVENT_HR,
+        recipients = await get_users_with_permission(db, "HRMS", "edit")
+        await notify(db, emp_name, recipients, EVENT_HR,
             "Leave Applied",
             f"{emp_name} applied for {leave.leaveType if hasattr(leave, 'leaveType') else 'leave'} from {leave.fromDate if hasattr(leave, 'fromDate') else ''} to {leave.toDate if hasattr(leave, 'toDate') else ''}",
             entity_type="leave", entity_id=str(result.inserted_id))
@@ -324,13 +325,16 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         )
         payroll_records.append(record)
         
-    # Notify Admin about payroll generation
+    # Notify users with HRMS edit permission about payroll generation.
+    # entity_id set to the month key so frontend can deep-link to the correct
+    # payroll period.
     try:
         total_payable = sum(r["netSalary"] for r in payroll_records)
-        await notify(db, "HR System", ["Administrator", "General Manager"], EVENT_HR,
+        recipients = await get_users_with_permission(db, "HRMS", "edit")
+        await notify(db, "HR System", recipients, EVENT_HR,
             "Payroll Generated",
             f"Payroll generated for {month}: {len(employees)} employees, Total payable: Rs.{total_payable:,.0f}",
-            entity_type="payroll", priority="high")
+            entity_type="payroll", entity_id=month, priority="high")
     except Exception:
         pass
 

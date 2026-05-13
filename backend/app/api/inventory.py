@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
-from app.utils.rbac import RBACPermission, role_in
+from app.utils.rbac import RBACPermission, role_in, require_sub_tab, has_sub_tab_access, is_admin_role, get_assigned_project_names, is_assignment_scoped, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_MATERIAL, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -86,7 +86,7 @@ async def create_material_request(request: MaterialRequestCreate, db = Depends(g
 
     # Notify Coordinator + Admin about new material request
     try:
-        recipients = ["Project Coordinator", "Administrator"]
+        recipients = await get_users_with_permission(db, "Inventory Management", "edit")
         stakeholders = await get_project_stakeholders(db, project_id=request.project_id, project_name=request.project_name)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         sender = current_user.get("full_name") or current_user.get("username", "")
@@ -106,70 +106,23 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
     if status:
         query["status"] = status
     
-    # Check if user is Coordinator, Admin, or Purchase Officer
-    user_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
-    admin_roles = ["Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
-    if role_in(current_user.get("role", ""), admin_roles):
+    # Dynamic scoping — no role-name strings.
+    # Admin-class users see everything (optionally filtered by ?project_name).
+    # Anyone with project assignments (engineer or coordinator) sees only those
+    # projects' requests. Anyone else gets no rows.
+    if is_admin_role(current_user.get("role", "")):
         if project_name and project_name != "all":
             query["project_name"] = project_name
-    elif "coordinator" in user_role_norm:
-        # Coordinator: only show requests from their assigned projects
-        emp_username = current_user.get("username")
-        emp_id = current_user.get("id") or current_user.get("_id", "")
-        project_query = {"$or": [
-            {"coordinator_id": emp_username},
-            {"coordinator_id": str(emp_id)},
-        ]}
-        try:
-            emp = await db.employees.find_one({"$or": [{"employeeCode": emp_username}, {"username": emp_username}]})
-            if emp:
-                project_query["$or"].append({"coordinator_id": str(emp["_id"])})
-                if emp.get("employeeCode"):
-                    project_query["$or"].append({"coordinator_id": emp["employeeCode"]})
-        except Exception:
-            pass
-        assigned_projects = await db.projects.find(project_query).to_list(100)
-        assigned_names = [p.get("name") for p in assigned_projects if p.get("name")]
-        if project_name and project_name != "all":
-            if project_name in assigned_names:
-                query["project_name"] = project_name
-            else:
-                return []
-        else:
-            if assigned_names:
-                query["project_name"] = {"$in": assigned_names}
-            else:
-                return []
-    elif user_role_norm == "siteengineer":
-        # Bug 5.2 - Check multiple fields for Site Engineer project matching
-        username = current_user.get("username")
-        user_id = current_user.get("_id", "")
-        project_query = {"$or": [
-            {"engineer_id": username},
-            {"engineer_id": str(user_id)},
-        ]}
-        # Also check if employee has a siteId
-        emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
-        if emp and emp.get("siteId"):
-            project_query["$or"].append({"_id": emp["siteId"]})
-        if emp and emp.get("employeeCode"):
-            project_query["$or"].append({"engineer_id": emp["employeeCode"]})
-        projects = await db.projects.find(project_query).to_list(100)
-        project_names = [p.get("name") for p in projects if p.get("name")]
-
-        if project_name and project_name != "all":
-            if project_name in project_names:
-                query["project_name"] = project_name
-            else:
-                return []
-        else:
-            if project_names:
-                query["project_name"] = {"$in": project_names}
-            else:
-                return []
     else:
-        # Default restricted view
-        return []
+        assigned_names = await get_assigned_project_names(db, current_user)
+        if not assigned_names:
+            return []
+        if project_name and project_name != "all":
+            if project_name not in assigned_names:
+                return []
+            query["project_name"] = project_name
+        else:
+            query["project_name"] = {"$in": assigned_names}
 
     requests = await db.material_requests.find(query).sort("created_at", -1).to_list(100)
     return [
@@ -186,10 +139,8 @@ class ConsolidateRequests(BaseModel):
 
 @router.post("/requests/consolidate")
 async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    # Only Coordinator, Admin can consolidate
-    allowed = ["Project Coordinator", "Super Admin", "Administrator"]
-    if not role_in(current_user.get("role", ""), allowed):
-        raise HTTPException(status_code=403, detail="Not authorized to consolidate requests")
+    # Dynamic gate — anyone with Inventory Management → Coordination access can consolidate
+    await require_sub_tab(db, current_user, "Inventory Management", "Coordination")
         
     # 1. Fetch all selected requests
     ids = [ObjectId(rid) for rid in payload.request_ids]
@@ -248,7 +199,8 @@ async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_da
     # Notify Purchase Officer about consolidation
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        await notify(db, sender, ["Purchase Officer", "Administrator"], EVENT_WORKFLOW,
+        recipients = await get_users_with_permission(db, "Procurement", "edit")
+        await notify(db, sender, recipients, EVENT_WORKFLOW,
             "Material Requests Consolidated",
             f"Consolidated request ready: {len(list(combined_items.values()))} items across {len(site_names)} sites. Ready for PO creation.",
             entity_type="material_request", entity_id=str(result.inserted_id), priority="high")
@@ -292,10 +244,8 @@ async def get_consolidated_requests(db = Depends(get_database)):
 @router.put("/requests/{request_id}/status")
 async def update_request_status(request_id: str, payload: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(request_id, "request")
-    # Only Coordinator, Admin, Purchase Officer or Inventory Manager can approve
-    allowed_approvers = ["Project Coordinator", "Super Admin", "Administrator", "Purchase Officer", "Inventory Manager"]
-    if not role_in(current_user.get("role", ""), allowed_approvers):
-        raise HTTPException(status_code=403, detail="Not authorized to approve requests")
+    # Dynamic gate — anyone with Approvals → Materials access can approve material requests
+    await require_sub_tab(db, current_user, "Approvals", "Materials")
 
     status = payload.get("status")
     remarks = payload.get("remarks", "")
@@ -450,7 +400,8 @@ async def create_return_request(body: dict = Body(...), db = Depends(get_databas
 
     try:
         items_str = ", ".join(f"{i['name']} x{i['quantity']}" for i in items[:3])
-        await notify(db, requester, ["Administrator", "General Manager"], EVENT_MATERIAL,
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
+        await notify(db, requester, recipients, EVENT_MATERIAL,
             "Stock Return Request",
             f"Return requested from {project_name}: {items_str}. Awaiting approval.",
             entity_type="stock_return", entity_id=str(result.inserted_id),
@@ -472,11 +423,8 @@ async def get_return_requests(db = Depends(get_database), current_user: dict = D
 
 @router.put("/return-requests/{req_id}/approve")
 async def approve_return_request(req_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Admin approves return — stock moves from site to warehouse."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can approve return requests")
+    """Anyone with Approvals → Stock Returns access can approve — stock moves from site to warehouse."""
+    await require_sub_tab(db, current_user, "Approvals", "Stock Returns")
 
     oid = validate_object_id(req_id, "return request")
     req = await db.stock_return_requests.find_one({"_id": oid})
@@ -523,7 +471,10 @@ async def approve_return_request(req_id: str, db = Depends(get_database), curren
 
     try:
         engineer = req.get("requested_by") or req.get("engineer_id", "")
-        await notify(db, approver, [engineer, "Accountant"], EVENT_MATERIAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        if engineer:
+            recipients.append(engineer)
+        await notify(db, approver, recipients, EVENT_MATERIAL,
             "Stock Return Approved",
             f"Return from {project_name} approved by {approver}. Stock moved to warehouse.",
             entity_type="stock_return", entity_id=req_id, project_name=project_name, priority="normal")
@@ -597,24 +548,14 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
     if project_name:
         query["project_name"] = project_name
         
-    if (current_user.get("role") or "").lower().replace(" ", "") == "siteengineer":
-        # Bug 5.2 - Check multiple fields for Site Engineer project matching
-        username = current_user.get("username")
-        user_id = current_user.get("_id", "")
-        project_query = {"$or": [
-            {"engineer_id": username},
-            {"engineer_id": str(user_id)},
-        ]}
-        emp = await db.employees.find_one({"$or": [{"employeeCode": username}, {"username": username}]})
-        if emp and emp.get("siteId"):
-            project_query["$or"].append({"_id": emp["siteId"]})
-        if emp and emp.get("employeeCode"):
-            project_query["$or"].append({"engineer_id": emp["employeeCode"]})
-        projects = await db.projects.find(project_query).to_list(100)
-        project_names = [p.get("name") for p in projects if p.get("name")]
-        if project_names:
-            query["project_name"] = {"$in": project_names}
+    # Dynamic scoping — admin-class users see everything; scoped users (assigned
+    # as engineer/coordinator on any project) see only those projects' ledger.
+    if not is_admin_role(current_user.get("role", "")):
+        assigned_names = await get_assigned_project_names(db, current_user)
+        if assigned_names:
+            query["project_name"] = {"$in": assigned_names}
         else:
+            # No assignments and not admin — no rows.
             return []
 
     logs = await db.stock_ledger.find(query).sort("date", -1).to_list(1000)
@@ -721,7 +662,8 @@ async def request_material_transfer(transfer: MaterialTransferRequest, db = Depe
     try:
         requester = request_dict["requested_by"]
         items_summary = ", ".join(f"{i.get('name')} x{i.get('quantity')}" for i in transfer.items[:3])
-        await notify(db, requester, ["Administrator", "General Manager"], EVENT_MATERIAL,
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
+        await notify(db, requester, recipients, EVENT_MATERIAL,
             "Material Transfer Request",
             f"Transfer requested: {transfer.from_project} → {transfer.to_project} ({items_summary}). Awaiting admin approval.",
             entity_type="material_transfer", entity_id=str(result.inserted_id),
@@ -801,11 +743,8 @@ async def get_lifo_rate(db, material_name, project_name):
 
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Admin approves transfer request — does NOT move stock yet. Accountant executes later."""
-    allowed_roles = ["superadmin", "administrator", "generalmanager", "manager", "managingdirector", "projectcoordinator"]
-    user_role = (current_user.get("role") or "").lower().replace(" ", "")
-    if user_role not in allowed_roles and "coordinator" not in user_role:
-        raise HTTPException(status_code=403, detail="Only Admin/GM/Coordinator can approve transfer requests")
+    """Anyone with Approvals → Transfers access can approve transfer request."""
+    await require_sub_tab(db, current_user, "Approvals", "Transfers")
 
     oid = validate_object_id(transfer_id, "transfer")
     request = await db.material_transfer_requests.find_one({"_id": oid})
@@ -829,7 +768,7 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
     # Notify Accountant + Requester
     try:
         engineer = request.get("requested_by") or request.get("engineer_id", "")
-        recipients = ["Accountant"]
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
         if engineer: recipients.append(engineer)
         await notify(db, approver, recipients, EVENT_MATERIAL,
             "Transfer Approved — Ready for Execution",
@@ -935,7 +874,7 @@ async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depend
     # Notify Admin + Requester
     try:
         engineer = request.get("requested_by") or request.get("engineer_id", "")
-        recipients = ["Administrator"]
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
         if engineer: recipients.append(engineer)
         await notify(db, executor, recipients, EVENT_WORKFLOW,
             "Material Transfer Completed",

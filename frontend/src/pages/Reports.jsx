@@ -860,9 +860,7 @@ const Reports = () => {
     const urlTab = searchParams.get('tab');
     const [activeCategory, setActiveCategory] = useState('All');
 
-    // Bug 7.4 - Filter reports based on user role permissions
-    const userRole = user?.role || '';
-    const isCoordinator = userRole.toLowerCase().includes('coordinator');
+    // Filter reports based on dynamic permissions only — no role-name strings.
     const canViewFinancial = hasPermission(user, 'Accounts', 'view') || hasPermission(user, 'Finance', 'view');
 
     useEffect(() => {
@@ -1108,7 +1106,7 @@ const Reports = () => {
         const matchSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             r.description.toLowerCase().includes(searchTerm.toLowerCase());
         // Bug 7.4 - Coordinators cannot see Financial reports directly
-        if (isCoordinator && !canViewFinancial && r.category === 'Financial') return false;
+        if (!canViewFinancial && r.category === 'Financial') return false;
         return matchCat && matchSearch;
     });
 

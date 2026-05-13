@@ -9,7 +9,7 @@ from app.utils.email import send_email, generate_po_html
 from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, require_sub_tab, is_admin_role, get_assigned_project_names, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_WORKFLOW, EVENT_APPROVAL
 router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
@@ -74,28 +74,11 @@ def po_helper(po) -> dict:
 @router.get("/", response_model=List[dict])
 async def get_pos(current_user: dict = Depends(get_current_user)):
     query = {}
-    user_role = (current_user.get("role") or "").lower().replace(" ", "")
-    if user_role == "siteengineer":
-        username = current_user.get("username")
-        user_id = current_user.get("id") or current_user.get("_id", "")
-        or_conditions = [
-            {"engineer_id": username},
-            {"engineer_id": str(user_id)},
-        ]
-        try:
-            employee = await db.employees.find_one({
-                "$or": [{"employeeCode": username}, {"username": username}]
-            })
-            if employee:
-                or_conditions.append({"engineer_id": str(employee["_id"])})
-                if employee.get("employeeCode"):
-                    or_conditions.append({"engineer_id": employee["employeeCode"]})
-        except Exception:
-            pass
-        projects = await db.projects.find({"$or": or_conditions}).to_list(100)
-        project_names = [p.get("name") for p in projects if p.get("name")]
+    # Scoped users (assigned to projects, not admin) see only their projects' POs
+    if not is_admin_role(current_user.get("role", "")):
+        project_names = await get_assigned_project_names(db, current_user)
         query["project_name"] = {"$in": project_names}
-        
+
     pos = await db.purchase_orders.find(query).to_list(100)
     return [po_helper(p) for p in pos]
 
@@ -197,7 +180,7 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
 
     # Notify GM + stakeholders about new PO
     try:
-        recipients = ["General Manager", "Administrator"]
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
         stakeholders = await get_project_stakeholders(db, project_name=po.project_name)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
@@ -248,11 +231,8 @@ async def update_po(id: str, po_data: dict = Body(...)):
 @router.put("/{id}/approve", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 @router.put("/{id}/approve/", dependencies=[Depends(RBACPermission("Procurement", "edit"))])
 async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
-    # Only Super Admin, Administrator, General Manager, or Manager can approve POs
-    allowed_roles = ["super admin", "administrator", "general manager", "manager"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only General Manager or Super Admin can approve Purchase Orders")
+    # Dynamic gate — anyone with Approvals → Purchase Orders access can approve POs.
+    await require_sub_tab(db, current_user, "Approvals", "Purchase Orders")
     if not ObjectId.is_valid(id):
         raise HTTPException(status_code=400, detail="Invalid ID")
     po = await db.purchase_orders.find_one({"_id": ObjectId(id)})
@@ -269,7 +249,7 @@ async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
     # Notify PO creator + stakeholders that PO is approved
     try:
         approver = current_user.get("full_name") or current_user.get("username", "")
-        recipients = ["Purchase Officer"]
+        recipients = await get_users_with_permission(db, "Procurement", "edit")
         stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])

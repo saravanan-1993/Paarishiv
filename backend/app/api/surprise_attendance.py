@@ -3,7 +3,7 @@ from typing import List, Optional
 import json
 from database import get_database
 from app.utils.auth import get_current_user
-from app.utils.rbac import RBACPermission, role_in
+from app.utils.rbac import RBACPermission, role_in, get_users_with_permission
 from datetime import datetime
 from bson import ObjectId
 from app.utils.cloudinary import upload_file
@@ -76,7 +76,7 @@ async def save_surprise_attendance(
     # Notify project stakeholders about surprise visit
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        recipients = ["Administrator"]
+        recipients = await get_users_with_permission(db, "HRMS", "edit")
         stakeholders = await get_project_stakeholders(db, project_id=project_id)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])

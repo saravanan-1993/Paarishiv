@@ -14,7 +14,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { fmt } from '../utils/format';
 import { projectAPI, hrmsAPI, attendanceAPI, approvalsAPI, workflowAPI, financeAPI, billingAPI, inventoryAPI, labourAttendanceAPI, logsAPI } from '../utils/api';
-import { hasPermission, hasDashboardCard } from '../utils/rbac';
+import { hasPermission, hasDashboardCard, isAdminRole } from '../utils/rbac';
 import WorkspaceView from '../components/dashboards/WorkspaceView';
 import HRView from '../components/dashboards/HRView';
 import AccountsView from '../components/dashboards/AccountsView';
@@ -72,25 +72,31 @@ const Dashboard = () => {
     const toast = useToast();
 
     // Role Resolution
-    const userRoleStr = (user?.role || '').toLowerCase();
-
-    // Super Admin / MD (Also acts as fallback for "Administrator" default role)
-    // Normalize role key once — exact match avoids fragile substring matches like
-    // .includes('pm') matching "Pump Operator" or .includes('hr') matching "Threshold Reviewer".
-    const roleKey = userRoleStr.replace(/\s+/g, '');
-
-    const isSuperAdmin = ['administrator', 'superadmin', 'admin', 'managingdirector', 'md', 'director'].includes(roleKey);
-
-    const isGM = roleKey === 'gm' || roleKey === 'generalmanager';
-    const isHR = roleKey === 'hr' || roleKey === 'hrmanager' || roleKey === 'humanresources';
-    const isAccountant = roleKey === 'accountant' || roleKey === 'financemanager' || roleKey === 'finance';
-    const isPurchaseOfficer = roleKey === 'purchaseofficer' || roleKey === 'purchasemanager' || roleKey === 'procurement' || roleKey === 'procurementmanager';
-    const isInventoryManager = roleKey === 'inventorymanager' || roleKey === 'storemanager' || roleKey === 'storekeeper';
-    const isProjectCoordinator = roleKey === 'projectcoordinator' || roleKey === 'pm' || roleKey === 'projectmanager';
-
-    // Field Engineer fallback view - "Site Engineer"
-    const isESS = roleKey === 'siteengineer' || roleKey === 'engineer'
-        || (!isSuperAdmin && !isGM && !isHR && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isProjectCoordinator);
+    // Dashboard view selection — driven purely by module permissions, not role
+    // names. View flags are MUTUALLY EXCLUSIVE: only one view ever renders, by
+    // priority order. Admin → GM → ProjectCoordinator → Accountant → Purchase
+    // Officer → Inventory Manager → HR → Workspace (default). Each subsequent
+    // check excludes the previous matches so we never double-render.
+    const isSuperAdmin = isAdminRole(user?.role);
+    // GM = multi-module super-user (without admin bypass): has Approvals edit
+    // plus broad view access to both Accounts and HRMS.
+    const isGM = !isSuperAdmin
+        && hasPermission(user, 'Approvals', 'edit')
+        && hasPermission(user, 'Accounts', 'view')
+        && hasPermission(user, 'HRMS', 'view');
+    const isProjectCoordinator = !isSuperAdmin && !isGM
+        && hasPermission(user, 'Projects', 'edit')
+        && hasPermission(user, 'Approvals', 'view');
+    const isAccountant = !isSuperAdmin && !isGM && !isProjectCoordinator
+        && hasPermission(user, 'Accounts', 'edit');
+    const isPurchaseOfficer = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant
+        && hasPermission(user, 'Procurement', 'edit');
+    const isInventoryManager = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer
+        && hasPermission(user, 'Inventory Management', 'edit');
+    const isHR = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer && !isInventoryManager
+        && hasPermission(user, 'HRMS', 'edit');
+    // Field Engineer / Workspace fallback — anyone who isn't in any specific role above.
+    const isESS = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR;
 
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);

@@ -23,6 +23,44 @@ EVENT_PROJECT = "project"
 EVENT_SYSTEM = "system"
 
 
+# System/automated sender names that don't have a human role
+_SYSTEM_SENDERS = {
+    "system", "hr system", "project system", "budget monitor",
+    "scheduler", "auto", "civil erp", "erp",
+}
+
+
+async def _resolve_sender_role(db, sender: str) -> Optional[str]:
+    """Look up the sender's role from employees collection.
+
+    Returns 'System' for automated senders, role name for real users,
+    None if sender cannot be matched.
+    """
+    if not sender or not isinstance(sender, str):
+        return None
+    if sender.strip().lower() in _SYSTEM_SENDERS:
+        return "System"
+    try:
+        emp = await db.employees.find_one(
+            {"$or": [
+                {"fullName": sender},
+                {"username": sender},
+                {"employeeCode": sender},
+            ]},
+            {"role": 1, "roles": 1}
+        )
+        if emp:
+            role = emp.get("role")
+            if not role:
+                roles_arr = emp.get("roles") or []
+                if isinstance(roles_arr, list) and roles_arr:
+                    role = roles_arr[0]
+            return role or None
+    except Exception:
+        pass
+    return None
+
+
 async def resolve_recipients(db, recipients: List[str]) -> List[str]:
     """
     Resolve a mixed list of usernames and role names to actual usernames.
@@ -145,6 +183,11 @@ async def notify(
     if not resolved:
         return []
 
+    # Resolve sender's role so the UI can show "from <Role>" on each notification.
+    # System/automated senders are tagged as "System". Real users are looked up by
+    # fullName / username in employees collection.
+    sender_role = await _resolve_sender_role(db, sender)
+
     # Import WebSocket manager
     try:
         from app.api.chat import manager
@@ -158,6 +201,7 @@ async def notify(
         notif = {
             "recipient": recipient,
             "sender": sender,
+            "sender_role": sender_role,
             "event_type": event_type,
             "title": title,
             "content": content,
@@ -195,6 +239,8 @@ async def notify(
                         "entity_id": notif["entity_id"],
                         "project_name": notif["project_name"],
                         "priority": notif["priority"],
+                        "sender": notif["sender"],
+                        "sender_role": notif["sender_role"],
                         "created_at": now.isoformat(),
                     }
                 }
@@ -206,10 +252,15 @@ async def notify(
                 except Exception:
                     pass  # User offline, notification is in DB
 
-    # Send email to Admin for approval-worthy events
-    if event_type in _EMAIL_EVENTS and "Administrator" in recipients:
+    # Send email to admin-class users for approval-worthy events.
+    # Detects admin-class recipients dynamically (whitespace/case tolerant) rather
+    # than relying on a hardcoded "Administrator" string match.
+    if event_type in _EMAIL_EVENTS:
         try:
-            await _send_admin_email(db, title, content, entity_type, project_name)
+            from app.utils.rbac import is_admin_role
+            has_admin_recipient = any(is_admin_role(r) for r in recipients if isinstance(r, str))
+            if has_admin_recipient:
+                await _send_admin_email(db, title, content, entity_type, project_name)
         except Exception:
             pass  # Don't fail notification if email fails
 

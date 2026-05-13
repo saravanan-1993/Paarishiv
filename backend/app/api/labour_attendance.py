@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.utils.auth import get_current_user, validate_object_id
+from app.utils.rbac import require_sub_tab, get_users_with_permission
 from app.utils.logging import log_activity
 from app.utils.notifications import notify, EVENT_APPROVAL, EVENT_WORKFLOW
 
@@ -361,11 +362,8 @@ async def approve_attendance(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
 ):
-    """Coordinator/Admin approves submitted attendance."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles and "coordinator" not in user_role:
-        raise HTTPException(status_code=403, detail="Only Coordinator or Admin can approve attendance")
+    """Anyone with HRMS → Attendance edit access can approve submitted attendance."""
+    await require_sub_tab(db, current_user, "HRMS", "Attendance")
 
     oid = validate_object_id(id, "Labour Attendance ID")
     doc = await db.labour_attendance.find_one({"_id": oid})
@@ -390,7 +388,9 @@ async def approve_attendance(
     # Notify the person who marked attendance
     try:
         marked_by = doc.get("marked_by", "")
-        recipients = [marked_by, "Accountant"] if marked_by else ["Accountant"]
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        if marked_by and marked_by not in recipients:
+            recipients.append(marked_by)
         await notify(db, approver, recipients, EVENT_APPROVAL,
             "Labour Attendance Approved",
             f"Attendance for {doc.get('project_name')} ({doc.get('date')}) approved by {approver}.",
@@ -409,11 +409,8 @@ async def reject_attendance(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
 ):
-    """Coordinator/Admin rejects submitted attendance."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director", "project coordinator"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles and "coordinator" not in user_role:
-        raise HTTPException(status_code=403, detail="Only Coordinator or Admin can reject attendance")
+    """Anyone with HRMS → Attendance edit access can reject submitted attendance."""
+    await require_sub_tab(db, current_user, "HRMS", "Attendance")
 
     oid = validate_object_id(id, "Labour Attendance ID")
     doc = await db.labour_attendance.find_one({"_id": oid})
@@ -491,11 +488,8 @@ async def approve_payment(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
 ):
-    """Admin approves the payment request so Accountant can process it."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can approve payment requests")
+    """Anyone with Approvals → Labour Pay access can approve so Accountant can process."""
+    await require_sub_tab(db, current_user, "Approvals", "Labour Pay")
 
     oid = validate_object_id(id, "Labour Attendance ID")
     doc = await db.labour_attendance.find_one({"_id": oid})
@@ -537,11 +531,8 @@ async def reject_payment(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
 ):
-    """Admin rejects the payment request."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can reject payment requests")
+    """Anyone with Approvals → Labour Pay access can reject the payment request."""
+    await require_sub_tab(db, current_user, "Approvals", "Labour Pay")
 
     oid = validate_object_id(id, "Labour Attendance ID")
     doc = await db.labour_attendance.find_one({"_id": oid})

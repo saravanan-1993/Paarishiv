@@ -212,8 +212,13 @@ const Header = ({ setIsSidebarOpen, isSidebarOpen }) => {
                                                         <p style={{ fontSize: '12px', color: n.is_read ? '#94A3B8' : '#475569', lineHeight: '1.4', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                                                             {n.content}
                                                         </p>
-                                                        <span style={{ fontSize: '10px', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '10px', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                                                             <Clock size={10} /> {formatTime(n.created_at)}
+                                                            {n.sender_role && (
+                                                                <span style={{ fontSize: '9px', fontWeight: '700', padding: '1px 5px', borderRadius: '6px', backgroundColor: n.sender_role.trim() === 'System' ? '#F1F5F9' : '#EEF2FF', color: n.sender_role.trim() === 'System' ? '#64748B' : '#4F46E5' }} title={`From ${n.sender || ''}`}>
+                                                                    {n.sender_role.trim()}
+                                                                </span>
+                                                            )}
                                                             {n.project_name && <> &middot; {n.project_name}</>}
                                                         </span>
                                                     </div>

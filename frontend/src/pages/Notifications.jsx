@@ -130,7 +130,8 @@ const Notifications = () => {
         hasPermission(user, 'Accounts', 'view') && { key: 'finance', label: 'Finance' },
         hasPermission(user, 'HRMS', 'view') && { key: 'hr', label: 'HR' },
         hasPermission(user, 'Projects', 'view') && { key: 'project', label: 'Project' },
-        hasPermission(user, 'Tasks', 'view') && { key: 'task', label: 'Task' },
+        // "Task" filter — tasks are scoped under Projects module, so reuse Projects view permission
+        hasPermission(user, 'Projects', 'view') && { key: 'task', label: 'Task' },
     ].filter(Boolean);
 
     return (
@@ -261,10 +262,20 @@ const Notifications = () => {
                                     <p style={{ fontSize: '13px', color: n.is_read ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: '1.5', marginBottom: '4px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }} title={n.content}>
                                         {n.content}
                                     </p>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                                         <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <Clock size={11} /> {formatTime(n.created_at)}
                                         </span>
+                                        {n.sender && (
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }} title={`Sent by ${n.sender}${n.sender_role ? ' (' + n.sender_role.trim() + ')' : ''}`}>
+                                                <Users size={11} /> {n.sender}
+                                                {n.sender_role && (
+                                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '8px', backgroundColor: n.sender_role.trim() === 'System' ? '#F1F5F9' : '#EEF2FF', color: n.sender_role.trim() === 'System' ? '#64748B' : '#4F46E5', marginLeft: '2px' }}>
+                                                        {n.sender_role.trim()}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
                                         {n.project_name && (
                                             <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                 <Briefcase size={11} /> {n.project_name}

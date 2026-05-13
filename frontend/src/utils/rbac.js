@@ -197,15 +197,25 @@ export const saveRoles = (roles) => {
     } catch (err) { }
 };
 
+// Admin-class roles — single source of truth for the root bypass that all
+// permission helpers honour. Whitespace/case tolerant.
+export const ADMIN_CLASS_ROLES = ['Super Admin', 'Administrator'];
+
+const normRole = (r) => (r || '').trim().toLowerCase().replace(/\s+/g, '');
+
+export const isAdminRole = (role) => {
+    const n = normRole(role);
+    return ADMIN_CLASS_ROLES.some(a => normRole(a) === n);
+};
+
 export const hasPermission = (user, moduleName, action = 'view') => {
     if (!user) return false;
 
     // Backward compat: User Management merged into HRMS
     const effectiveModule = moduleName === 'User Management' ? 'HRMS' : moduleName;
 
-    // Super Admin / Administrator explicitly overrides everything
-    const roleNormalized = user.role?.trim();
-    if (roleNormalized === 'Super Admin' || roleNormalized === 'Administrator') return true;
+    // Admin-class roles bypass everything
+    if (isAdminRole(user.role)) return true;
 
     const roles = getRoles();
     const roleObj = roles.find(r => r.name === user.role);
@@ -214,7 +224,7 @@ export const hasPermission = (user, moduleName, action = 'view') => {
     let matchedRole = roleObj;
     if (!matchedRole && typeof user.role === 'string') {
         const userRolesArr = user.role.split(',').map(s => s.trim());
-        if (userRolesArr.includes('Super Admin') || userRolesArr.includes('Administrator')) return true;
+        if (userRolesArr.some(r => isAdminRole(r))) return true;
 
         // Find first matching role
         for (let r of userRolesArr) {
@@ -255,7 +265,7 @@ export const hasDashboardCard = (user, cardId) => {
     const matchedRole = getMatchedRole(user, roles);
     if (!matchedRole) {
         // Fallback for hardcoded Super Admin if role doesn't exist
-        if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
+        if (isAdminRole(user.role)) return true;
         return false;
     }
     // Default to true if dashboardCards array is missing (for legacy roles)
@@ -269,13 +279,13 @@ export const hasFeature = (user, featureId) => {
     const matchedRole = getMatchedRole(user, roles);
     if (!matchedRole) {
         // Fallback for hardcoded Super Admin if role doesn't exist
-        if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
+        if (isAdminRole(user.role)) return true;
         return false;
     }
     // If features array is missing or empty, fall back to permission check
     if (!matchedRole.features || matchedRole.features.length === 0) {
         // Administrator/Super Admin bypass — always allow
-        if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
+        if (isAdminRole(user.role)) return true;
         return false;
     }
     return matchedRole.features.includes(featureId);
@@ -283,7 +293,7 @@ export const hasFeature = (user, featureId) => {
 
 export const hasSubTabAccess = (user, moduleName, subTabName) => {
     if (!user) return false;
-    if (user.role === 'Super Admin' || user.role === 'Administrator') return true;
+    if (isAdminRole(user.role)) return true;
 
     const roles = getRoles();
     const matchedRole = getMatchedRole(user, roles);

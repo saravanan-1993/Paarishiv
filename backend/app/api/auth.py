@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from app.utils.auth import authenticate_user, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
 from datetime import timedelta
 from app.utils.logging import log_activity
+from app.utils.rbac import is_admin_role
 import os
 
 from database import get_database
@@ -74,15 +75,21 @@ async def quick_login(req: QuickLoginRequest, db = Depends(get_database)):
         "status": "Active"
     })
 
-    # Fallback: for Administrator role, check user_profiles if no employee found
-    if not db_user and req.role == "Administrator":
-        profile = await db.user_profiles.find_one({"designation": {"$in": ["Super Admin", "Administrator", "Admin"]}})
+    # Bootstrap fallback: for admin-class quick-login (first-time setup before any
+    # employee with the role exists), look in user_profiles for an admin-class
+    # profile. Uses is_admin_role helper for whitespace/case-tolerant matching.
+    if not db_user and is_admin_role(req.role):
+        profile = None
+        async for p in db.user_profiles.find({}):
+            if is_admin_role(p.get("designation", "")):
+                profile = p
+                break
         if profile:
             db_user = {
                 "_id": profile["_id"],
                 "employeeCode": profile.get("username", "admin"),
                 "fullName": profile.get("fullName", "Administrator"),
-                "roles": ["Administrator"],
+                "roles": [req.role],
                 "status": "Active"
             }
 

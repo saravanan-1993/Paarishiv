@@ -7,7 +7,7 @@ from typing import Optional
 from datetime import datetime
 from database import get_database
 from app.utils.auth import get_current_user, validate_object_id
-from app.utils.rbac import normalize_role
+from app.utils.rbac import normalize_role, is_admin_role, get_assigned_project_names
 from bson import ObjectId
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -34,18 +34,10 @@ async def get_notifications(
     elif is_read == "false":
         query["is_read"] = False
 
-    # Site Engineers only see notifications for their assigned projects
-    if user_role == "siteengineer":
-        emp_code = current_user.get("username") or current_user.get("employeeCode", "")
-        assigned_projects = await db.projects.find(
-            {"$or": [
-                {"engineer_id": emp_code},
-                {"engineer_id": current_user.get("id", "")},
-            ]},
-            {"name": 1}
-        ).to_list(200)
-        assigned_names = [p["name"] for p in assigned_projects if p.get("name")]
-        # Show: no project attached (system/personal) OR project they're assigned to
+    # Scoped users (assigned to projects, not admin) only see notifications for
+    # their assigned projects + system/personal ones.
+    if not is_admin_role(current_user.get("role", "")):
+        assigned_names = await get_assigned_project_names(db, current_user)
         query["$or"] = [
             {"project_name": {"$in": [None, "", *assigned_names]}},
             {"project_name": {"$exists": False}},
@@ -81,16 +73,8 @@ async def get_unread_count(
     user_role = normalize_role(current_user.get("role", ""))
     count_query = {"recipient": username, "is_read": False}
 
-    if user_role == "siteengineer":
-        emp_code = current_user.get("username") or current_user.get("employeeCode", "")
-        assigned_projects = await db.projects.find(
-            {"$or": [
-                {"engineer_id": emp_code},
-                {"engineer_id": current_user.get("id", "")},
-            ]},
-            {"name": 1}
-        ).to_list(200)
-        assigned_names = [p["name"] for p in assigned_projects if p.get("name")]
+    if not is_admin_role(current_user.get("role", "")):
+        assigned_names = await get_assigned_project_names(db, current_user)
         count_query["$or"] = [
             {"project_name": {"$in": [None, "", *assigned_names]}},
             {"project_name": {"$exists": False}},
