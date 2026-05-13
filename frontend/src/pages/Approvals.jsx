@@ -338,7 +338,14 @@ const Approvals = () => {
             <div style={{ marginTop: '8px', display: 'flex', gap: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: {item.employee_name || item.employeeName || 'Employee'}</p>
                 {item.status !== 'Pending' && item.approvedBy && (
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {item.status === 'Rejected' ? 'Rejected By' : 'Approved By'}: {item.approvedBy}
+                        {item.approvedByRole && (
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                {(item.approvedByRole || '').trim()}
+                            </span>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -422,7 +429,14 @@ const Approvals = () => {
             <div style={{ marginTop: '-4px', display: 'flex', gap: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: Procurement Admin</p>
                 {item.status !== 'Pending' && item.approvedBy && (
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {item.status === 'Rejected' ? 'Rejected By' : 'Approved By'}: {item.approvedBy}
+                        {item.approvedByRole && (
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                {(item.approvedByRole || '').trim()}
+                            </span>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -505,7 +519,14 @@ const Approvals = () => {
             <div style={{ marginTop: '0px', display: 'flex', gap: '16px', marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: {item.engineer_id || item.requested_by || item.submitted_by || 'Site Engineer'}</p>
                 {item.status !== 'Pending' && item.approvedBy && (
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {item.status === 'Rejected' ? 'Rejected By' : 'Approved By'}: {item.approvedBy}
+                        {item.approvedByRole && (
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                {(item.approvedByRole || '').trim()}
+                            </span>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -589,7 +610,14 @@ const Approvals = () => {
             <div style={{ marginTop: '0px', display: 'flex', gap: '16px', marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Requested By: Site Engineer</p>
                 {item.status !== 'Pending' && item.approvedBy && (
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {item.status === 'Rejected' ? 'Rejected By' : 'Approved By'}: {item.approvedBy}
+                        {item.approvedByRole && (
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                {(item.approvedByRole || '').trim()}
+                            </span>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -664,7 +692,14 @@ const Approvals = () => {
             <div style={{ marginTop: '0px', display: 'flex', gap: '16px', marginBottom: '16px' }}>
                 <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Initiated By: {(item.requested_by || item.user || 'Admin').toString()}</p>
                 {item.status !== 'Pending' && item.approvedBy && (
-                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>Approved By: {item.approvedBy}</p>
+                    <p style={{ fontSize: '13px', color: '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {item.status === 'Rejected' ? 'Rejected By' : 'Approved By'}: {item.approvedBy}
+                        {item.approvedByRole && (
+                            <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                {(item.approvedByRole || '').trim()}
+                            </span>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -734,21 +769,10 @@ const Approvals = () => {
         return { padding: '6px 12px', borderRadius: '8px', background: s.bg, color: s.color, fontSize: '12px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' };
     };
 
-    // Bug 26 - DPR workflow step labels
-    const dprWorkflowSteps = ['Pending', 'Coordinator Approved', 'Dept Approved', 'Approved'];
-    const getStepIndex = (status) => {
-        if (status === 'Rejected') return -1;
-        const idx = dprWorkflowSteps.indexOf(status);
-        return idx >= 0 ? idx : 0;
-    };
-
-    // Button label based on which stage the DPR is at
-    const getDprActionLabel = (status) => {
-        if (status === 'Pending') return 'Coordinator Approve';
-        if (status === 'Coordinator Approved') return 'Dept Approve';
-        if (status === 'Dept Approved') return 'Final Approve';
-        return 'Approve';
-    };
+    // Single-stage DPR approval — anyone with Approvals → DPR sub-tab can approve.
+    // Legacy intermediate statuses ("Coordinator Approved", "Dept Approved") are
+    // still treated as not-yet-finalised so old records keep working.
+    const isDprFinalised = (status) => status === 'Approved' || status === 'Rejected';
 
     const renderSCBillCard = (item) => (
         <div key={item._id} style={{
@@ -1048,10 +1072,17 @@ const Approvals = () => {
                         <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>SUBMITTED</p>
                         <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN') : '—'}</p>
                     </div>
-                    {item.approved_by && (
+                    {(item.approved_by || item.rejected_by) && (
                         <div>
-                            <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>APPROVED BY</p>
-                            <p style={{ fontSize: '13px', fontWeight: '600' }}>{item.approved_by}</p>
+                            <p style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>{item.rejected_by && !item.approved_by ? 'REJECTED BY' : 'APPROVED BY'}</p>
+                            <p style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {item.approved_by || item.rejected_by}
+                                {(item.approved_by_role || item.rejected_by_role) && (
+                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                        {(item.approved_by_role || item.rejected_by_role || '').trim()}
+                                    </span>
+                                )}
+                            </p>
                         </div>
                     )}
                 </div>
@@ -1198,7 +1229,12 @@ const Approvals = () => {
     );
 
     const renderDPRCard = (item) => {
-        const stepIdx = getStepIndex(item.status);
+        const finalised = isDprFinalised(item.status);
+        const approverName = item.approved_by || item.status_updated_by;
+        const approverRole = (item.approved_by_role || item.status_updated_by_role || '').trim();
+        const approverLabel = item.status === 'Approved' ? 'Approved By'
+            : item.status === 'Rejected' ? 'Rejected By'
+            : 'Last Updated By';
         return (
         <div key={item.id} style={{
             background: 'white', borderRadius: '16px', padding: '24px',
@@ -1220,39 +1256,6 @@ const Approvals = () => {
                 </div>
             </div>
 
-            {/* Workflow progress indicator */}
-            {item.status !== 'Rejected' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '8px 0' }}>
-                    {dprWorkflowSteps.map((step, i) => {
-                        const isCompleted = i <= stepIdx;
-                        const isCurrent = i === stepIdx;
-                        const stepLabels = ['SE Submitted', 'Coordinator', 'PO / HR', 'Admin'];
-                        return (
-                            <React.Fragment key={step}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                                    <div style={{
-                                        width: '28px', height: '28px', borderRadius: '50%',
-                                        background: isCompleted ? (isCurrent ? '#6366f1' : '#10b981') : '#e2e8f0',
-                                        color: isCompleted ? 'white' : '#94a3b8',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '12px', fontWeight: '800',
-                                        border: isCurrent ? '2px solid #4f46e5' : 'none'
-                                    }}>
-                                        {isCompleted && !isCurrent ? <CheckCircle size={14} /> : (i + 1)}
-                                    </div>
-                                    <span style={{ fontSize: '10px', fontWeight: '700', color: isCompleted ? '#334155' : '#94a3b8', marginTop: '4px', textAlign: 'center' }}>
-                                        {stepLabels[i]}
-                                    </span>
-                                </div>
-                                {i < dprWorkflowSteps.length - 1 && (
-                                    <div style={{ flex: 0.5, height: '2px', background: i < stepIdx ? '#10b981' : '#e2e8f0', marginBottom: '18px' }} />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
-            )}
-
             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
                 <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '12px' }}>
                     <div>
@@ -1263,16 +1266,17 @@ const Approvals = () => {
                         <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Weather</p>
                         <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.weather || '-'}</p>
                     </div>
-                    {item.approved_by && (
+                    {approverName && (
                         <div>
-                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Approved By</p>
-                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.approved_by}</p>
-                        </div>
-                    )}
-                    {!item.approved_by && item.status_updated_by && (
-                        <div>
-                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Updated By</p>
-                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.status_updated_by}</p>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>{approverLabel}</p>
+                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {approverName}
+                                {approverRole && (
+                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#EEF2FF', color: '#4F46E5' }}>
+                                        {approverRole}
+                                    </span>
+                                )}
+                            </p>
                         </div>
                     )}
                 </div>
@@ -1288,7 +1292,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'DPR', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {(item.status === 'Pending' || item.status === 'Coordinator Approved' || item.status === 'Dept Approved') && (
+                {!finalised && (
                     <>
                         <button
                             onClick={() => handleDprAction(item, 'reject')}
@@ -1302,17 +1306,13 @@ const Approvals = () => {
                             disabled={actionLoading}
                             style={{
                                 padding: '10px 24px', borderRadius: '12px', border: 'none',
-                                background: item.status === 'Dept Approved'
-                                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                                    : 'linear-gradient(135deg, #818cf8 0%, #6366f1 100%)',
+                                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                 color: 'white', fontWeight: '800', cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', gap: '8px',
-                                boxShadow: item.status === 'Dept Approved'
-                                    ? '0 4px 12px rgba(16, 185, 129, 0.2)'
-                                    : '0 4px 12px rgba(99, 102, 241, 0.2)'
+                                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)'
                             }}
                         >
-                            {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} {getDprActionLabel(item.status)}
+                            {actionLoading === `${item.id}-approve` ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />} Approve
                         </button>
                     </>
                 )}

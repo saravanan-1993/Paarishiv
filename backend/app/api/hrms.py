@@ -183,14 +183,15 @@ async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     return {"id": str(result.inserted_id)}
 
 @router.put("/leaves/{leave_id}", dependencies=[Depends(RBACPermission("HRMS", "edit", "Leave Management"))])
-async def update_leave_status(leave_id: str, status_update: dict, db = Depends(get_database)):
+async def update_leave_status(leave_id: str, status_update: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     status = status_update.get("status")
-    approved_by = status_update.get("approvedBy")
+    approved_by = status_update.get("approvedBy") or current_user.get("full_name") or current_user.get("username", "HR")
+    approved_by_role = current_user.get("role") or ""
     remarks = status_update.get("remarks")
-    
+
     await db.leaves.update_one(
         {"_id": ObjectId(leave_id)},
-        {"$set": {"status": status, "approvedBy": approved_by, "remarks": remarks}}
+        {"$set": {"status": status, "approvedBy": approved_by, "approvedByRole": approved_by_role, "remarks": remarks}}
     )
     
     # Notify employee about leave status

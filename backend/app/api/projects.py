@@ -700,13 +700,16 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     # or to Rejected. Legacy intermediate values ("Coordinator Approved",
     # "Dept Approved", "Reviewed") are still accepted as `new_status` for backward
     # compatibility with old records, but no role-based transition check applies.
+    user_role = current_user.get("role") or ""
     update_fields = {
         "dprs.$.status": new_status,
         "dprs.$.status_updated_by": user_name,
+        "dprs.$.status_updated_by_role": user_role,
         "dprs.$.status_updated_at": datetime.now().isoformat()
     }
     if new_status == "Approved":
         update_fields["dprs.$.approved_by"] = user_name
+        update_fields["dprs.$.approved_by_role"] = user_role
 
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id), "dprs.id": dpr_id},

@@ -243,8 +243,14 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
 
     status = "Approved" if action.lower() == "approve" else ("Completed" if action.lower() == "complete" else "Rejected")
     reason = request_data.get("reason", "")
-    
-    update_fields = {"status": status, "approvedBy": current_user.get("full_name") or current_user.get("username", "Admin")}
+
+    actor_name = current_user.get("full_name") or current_user.get("username", "Admin")
+    actor_role = current_user.get("role") or ""
+    update_fields = {
+        "status": status,
+        "approvedBy": actor_name,
+        "approvedByRole": actor_role,
+    }
     if reason:
         update_fields["remarks"] = reason
     
@@ -337,6 +343,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             if status == "Approved" and exp_doc:
                 await db.expenses.update_one({"_id": oid}, {"$set": {
                     "approved_by": update_fields["approvedBy"],
+                    "approved_by_role": actor_role,
                     "approved_at": datetime.now()
                 }})
                 exp_project = exp_doc.get("project")
@@ -357,8 +364,11 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             sc_update = {"status": status}
             if status == "Approved":
                 sc_update["approved_by"] = update_fields["approvedBy"]
+                sc_update["approved_by_role"] = actor_role
                 sc_update["approved_at"] = datetime.now().isoformat()
             elif status == "Rejected":
+                sc_update["rejected_by"] = update_fields["approvedBy"]
+                sc_update["rejected_by_role"] = actor_role
                 sc_update["rejection_reason"] = reason
             await db.subcontractor_bills.update_one({"_id": oid}, {"$set": sc_update})
         elif type == "subcontractor_advances":
@@ -373,6 +383,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 await db.subcontractor_advances.update_one({"_id": oid}, {"$set": {
                     "approval_status": "Approved",
                     "approved_by": approver_name,
+                    "approved_by_role": actor_role,
                     "approved_at": datetime.now().isoformat(),
                 }})
                 # Create the expense entry now (deferred from advance creation)
@@ -410,6 +421,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             else:
                 await db.subcontractor_advances.update_one({"_id": oid}, {"$set": {
                     "approval_status": "Rejected",
+                    "rejected_by": approver_name,
+                    "rejected_by_role": actor_role,
                     "rejection_reason": reason,
                 }})
                 try:
@@ -439,6 +452,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 await db.labour_attendance.update_one({"_id": oid}, {"$set": {
                     "payment_status": "Payment Approved",
                     "payment_approved_by": approver_name,
+                    "payment_approved_by_role": actor_role,
                     "updated_at": datetime.now(),
                 }})
                 try:
@@ -452,6 +466,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             else:
                 await db.labour_attendance.update_one({"_id": oid}, {"$set": {
                     "payment_status": "Payment Rejected",
+                    "payment_rejected_by": approver_name,
+                    "payment_rejected_by_role": actor_role,
                     "payment_rejection_reason": reason,
                     "updated_at": datetime.now(),
                 }})
@@ -474,6 +490,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     await db.material_transfer_requests.update_one({"_id": mt_oid}, {"$set": {
                         "status": "Admin Approved",
                         "admin_approved_by": approver_name,
+                        "admin_approved_by_role": actor_role,
                         "admin_approved_at": datetime.now(),
                     }})
                     try:
@@ -486,7 +503,11 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         pass
             else:
                 await db.material_transfer_requests.update_one({"_id": mt_oid}, {"$set": {
-                    "status": "Rejected", "rejection_reason": reason, "updated_at": datetime.now()
+                    "status": "Rejected",
+                    "rejected_by": update_fields["approvedBy"],
+                    "rejected_by_role": actor_role,
+                    "rejection_reason": reason,
+                    "updated_at": datetime.now(),
                 }})
         elif type == "stock_returns":
             await require_sub_tab(db, current_user, "Approvals", "Stock Returns")
@@ -510,9 +531,19 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                         ref = f"RET-{obj_id[-6:].upper()}"
                         await db.stock_ledger.insert_one({"date": now, "material_name": item["name"], "project_name": sr["project_name"], "type": "Stock Return", "ref": ref, "in_qty": 0, "out_qty": qty, "created_at": now})
                         await db.stock_ledger.insert_one({"date": now, "material_name": item["name"], "project_name": "Warehouse", "type": "Stock Return", "ref": ref, "in_qty": qty, "out_qty": 0, "created_at": now})
-                    await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Approved", "approved_by": update_fields["approvedBy"], "approved_at": datetime.now()}})
+                    await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {
+                        "status": "Approved",
+                        "approved_by": update_fields["approvedBy"],
+                        "approved_by_role": actor_role,
+                        "approved_at": datetime.now(),
+                    }})
             else:
-                await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Rejected", "rejection_reason": reason}})
+                await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {
+                    "status": "Rejected",
+                    "rejected_by": update_fields["approvedBy"],
+                    "rejected_by_role": actor_role,
+                    "rejection_reason": reason,
+                }})
         elif type == "payment_requests":
             await require_sub_tab(db, current_user, "Approvals", "Vendor Payments")
             pr_doc = await db.payment_requests.find_one({"_id": oid})
@@ -547,6 +578,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 await db.payment_requests.update_one({"_id": oid}, {"$set": {
                     "status": "Approved",
                     "approved_by": approver_name,
+                    "approved_by_role": actor_role,
                     "approved_at": datetime.now(),
                 }})
 
@@ -575,6 +607,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 await db.payment_requests.update_one({"_id": oid}, {"$set": {
                     "status": "Rejected",
                     "rejected_by": approver_name,
+                    "rejected_by_role": actor_role,
                     "rejection_reason": reason,
                     "rejected_at": datetime.now(),
                 }})
@@ -600,6 +633,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 await db.trip_requests.update_one({"_id": oid}, {"$set": {
                     "status": "Approved",
                     "approved_by": approver_name,
+                    "approved_by_role": actor_role,
                     "approved_at": datetime.now(),
                 }})
                 try:
@@ -616,6 +650,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "status": "Rejected",
                     "rejection_reason": reason,
                     "rejected_by": approver_name,
+                    "rejected_by_role": actor_role,
                     "rejected_at": datetime.now(),
                 }})
                 try:
@@ -639,6 +674,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
 
             dpr_update = {
                 "dprs.$.status_updated_by": approver_name,
+                "dprs.$.status_updated_by_role": actor_role,
                 "dprs.$.status_updated_at": datetime.now().isoformat()
             }
 
@@ -648,7 +684,10 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             if action.lower() == "approve":
                 status = "Approved"
                 dpr_update["dprs.$.approved_by"] = approver_name
-            # For reject action, status is already set to "Rejected"
+                dpr_update["dprs.$.approved_by_role"] = actor_role
+            else:
+                dpr_update["dprs.$.rejected_by"] = approver_name
+                dpr_update["dprs.$.rejected_by_role"] = actor_role
 
             dpr_update["dprs.$.status"] = status
             if reason:
