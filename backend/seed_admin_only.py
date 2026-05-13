@@ -40,7 +40,7 @@ async def seed_admin_only():
             {"name": "Accounts", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Overview", "Sales", "PurchaseBills", "Purchase", "Payments", "Ledger", "Quotations", "LabourWages"]},
             {"name": "Procurement", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Vendors", "POs", "Requests", "GRN"]},
             {"name": "HRMS", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Dashboard", "Employee Master", "Attendance", "Leave Management", "Payroll", "Surprise Visits", "Workforce", "Authorized Users", "Roles & Permissions"]},
-            {"name": "Approvals", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Leaves", "Purchase Orders", "Materials", "Expenses", "Manpower", "SC Bills", "Labour Pay"]},
+            {"name": "Approvals", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Leaves", "Purchase Orders", "Materials", "Expenses", "Manpower", "DPR", "SC Bills", "SC Advances", "Labour Pay", "Stock Returns", "Transfers", "Vendor Payments", "Trip Requests"]},
             {"name": "Inventory Management", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Materials", "Warehouse", "Coordination", "Machinery"]},
             {"name": "Reports", "actions": {"view": True, "add": True, "edit": True, "delete": True}, "subTabs": ["Financial", "Project", "HRMS", "Inventory", "Plant"]},
             {"name": "Team Chat", "actions": {"view": True, "add": True, "edit": True, "delete": True}},

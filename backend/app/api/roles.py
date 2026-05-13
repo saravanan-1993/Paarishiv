@@ -47,7 +47,7 @@ SUB_TABS = {
     'Procurement': ['Vendors', 'POs', 'Requests', 'GRN'],
     'Inventory Management': ['Materials', 'Warehouse', 'Coordination', 'Machinery'],
     'Fleet Management': ['Dashboard', 'Trips', 'Trip Requests', 'Vehicles', 'Drivers', 'Maintenance', 'Reports'],
-    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'SC Bills', 'Labour Pay', 'Vendor Payments', 'Trip Requests'],
+    'Approvals': ['Leaves', 'Purchase Orders', 'Materials', 'Expenses', 'Manpower', 'DPR', 'SC Bills', 'SC Advances', 'Labour Pay', 'Stock Returns', 'Transfers', 'Vendor Payments', 'Trip Requests'],
     'Settings': ['Profile', 'Company Profile', 'Security', 'Notifications', 'Cloudinary', 'SMTP']
 }
 

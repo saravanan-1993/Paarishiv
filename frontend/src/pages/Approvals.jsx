@@ -11,7 +11,7 @@ import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { hasFeature, hasSubTabAccess } from '../utils/rbac';
+import { hasPermission, hasFeature, hasSubTabAccess } from '../utils/rbac';
 import PODetailModal from '../components/PODetailModal';
 import MaterialRequestDetailModal from '../components/MaterialRequestDetailModal';
 import PromptModal from '../components/PromptModal';
@@ -24,9 +24,12 @@ const Approvals = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [activeTab, setActiveTab] = useState('leaves');
-    const userRole = (user?.role || '').toLowerCase();
-    const canApprovePO = ['super admin', 'administrator', 'general manager', 'manager'].includes(userRole);
-    const canApproveTripRequest = hasFeature(user, 'approve_trip_request') || ['super admin', 'administrator', 'managing director'].includes(userRole) || userRole.includes('coordinator') || userRole.includes('purchase');
+    // Action permission for any approval entity = module edit + sub-tab access.
+    // No role-name strings are hardcoded — the admin grants access via
+    // Settings → Roles → Approvals → (sub-tab checkboxes + edit checkbox).
+    const canEditApprovals = hasPermission(user, 'Approvals', 'edit');
+    const canApprovePO = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Purchase Orders');
+    const canApproveTripRequest = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Trip Requests');
     const [viewPayment, setViewPayment] = useState(null);
     const [viewDetail, setViewDetail] = useState(null);
 
@@ -1260,19 +1263,13 @@ const Approvals = () => {
                         <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Weather</p>
                         <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.weather || '-'}</p>
                     </div>
-                    {item.coordinator_approved_by && (
+                    {item.approved_by && (
                         <div>
-                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Coordinator</p>
-                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.coordinator_approved_by}</p>
+                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Approved By</p>
+                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.approved_by}</p>
                         </div>
                     )}
-                    {item.dept_approved_by && (
-                        <div>
-                            <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Dept Approved By</p>
-                            <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.dept_approved_by}</p>
-                        </div>
-                    )}
-                    {item.status_updated_by && !item.coordinator_approved_by && !item.dept_approved_by && (
+                    {!item.approved_by && item.status_updated_by && (
                         <div>
                             <p style={{ fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: '700', marginBottom: '4px' }}>Updated By</p>
                             <p style={{ fontSize: '14px', fontWeight: '700', color: '#334155' }}>{item.status_updated_by}</p>

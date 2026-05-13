@@ -53,26 +53,20 @@ const CreateProjectModal = ({ isOpen, onClose, onProjectCreated }) => {
                     return Array.from(uniqueMap.entries()).map(([value, label]) => ({ value, label }));
                 };
 
-                const engList = getUniqueStaff(
-                    emp => {
-                        const desig = (emp.designation || '').toLowerCase();
-                        const roles = (emp.roles || []).map(r => r.toLowerCase());
-                        const isEngineer = desig.includes('engineer') || desig.includes('engginer') || desig.includes('supervisor') || roles.some(r => r.includes('engineer') || r.includes('supervisor'));
-                        return isEngineer && (emp.salaryType === 'monthly' || !emp.salaryType);
-                    },
-                    [{ value: 'admin', label: 'Admin' }]
+                // Dynamic UX filters — include any monthly-salaried staff who has
+                // at least one role assigned (i.e. management/professional staff
+                // rather than daily-wage labour). No designation-string matching.
+                // The actual project assignment is recorded as engineer_id /
+                // coordinator_id and authorisation is enforced by RBAC elsewhere.
+                const isStaffWithRole = emp => (
+                    (emp.salaryType === 'monthly' || !emp.salaryType)
+                    && Array.isArray(emp.roles) && emp.roles.length > 0
                 );
+
+                const engList = getUniqueStaff(isStaffWithRole, [{ value: 'admin', label: 'Admin' }]);
                 setEngineers(engList);
 
-                const coordList = getUniqueStaff(
-                    emp => {
-                        const desig = (emp.designation || '').toLowerCase();
-                        const roles = (emp.roles || []).map(r => r.toLowerCase());
-                        const isCoord = desig.includes('coordinator') || desig.includes('manager') || desig.includes('admin') || roles.some(r => r.includes('coordinator') || r.includes('manager'));
-                        return isCoord && (emp.salaryType === 'monthly' || !emp.salaryType);
-                    },
-                    [{ value: 'admin', label: 'Admin' }]
-                );
+                const coordList = getUniqueStaff(isStaffWithRole, [{ value: 'admin', label: 'Admin' }]);
                 setCoordinators(coordList);
             } catch (err) {
                 console.error('Failed to fetch staff:', err);

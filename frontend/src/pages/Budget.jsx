@@ -58,7 +58,7 @@ const Budget = () => {
 
     const projectDropdown = ['All Projects', ...projects.map(p => p.name).filter(Boolean)];
 
-    if (!user || (!hasPermission(user, 'Budget Control', 'view') && user.role !== 'Super Admin' && user.role !== 'Manager')) {
+    if (!user || !hasPermission(user, 'Budget Control', 'view')) {
         return (
             <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
                 <AlertCircle size={48} style={{ color: '#EF4444', margin: '0 auto 16px' }} />

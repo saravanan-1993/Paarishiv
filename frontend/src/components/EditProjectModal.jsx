@@ -80,24 +80,20 @@ const EditProjectModal = ({ isOpen, onClose, project, onProjectUpdated }) => {
                     return Array.from(uniqueMap.entries()).map(([value, label]) => ({ value, label }));
                 };
 
-                const engList = getUniqueStaff(
-                    emp => emp.designation?.toLowerCase().includes('engineer') ||
-                           emp.roles?.some(role => role.toLowerCase().includes('engineer')),
-                    [
-                        { value: 'engineer', label: 'Suki Engineer' },
-                        { value: 'admin', label: 'Admin' }
-                    ]
-                );
+                // Dynamic — include any staff who has a role assigned. No
+                // designation-string matching.
+                const isStaffWithRole = emp => Array.isArray(emp.roles) && emp.roles.length > 0;
+
+                const engList = getUniqueStaff(isStaffWithRole, [
+                    { value: 'engineer', label: 'Suki Engineer' },
+                    { value: 'admin', label: 'Admin' }
+                ]);
                 setEngineers(engList);
 
-                const coordList = getUniqueStaff(
-                    emp => emp.designation?.toLowerCase().includes('coordinator') ||
-                           emp.roles?.some(role => role.toLowerCase().includes('coordinator')),
-                    [
-                        { value: 'coordinator', label: 'Project Coordinator' },
-                        { value: 'admin', label: 'Admin' }
-                    ]
-                );
+                const coordList = getUniqueStaff(isStaffWithRole, [
+                    { value: 'coordinator', label: 'Project Coordinator' },
+                    { value: 'admin', label: 'Admin' }
+                ]);
                 setCoordinators(coordList);
             } catch (err) {
                 console.error('Failed to fetch staff:', err);

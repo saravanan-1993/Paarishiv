@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 from database import get_database
 from app.utils.auth import get_current_user, validate_object_id
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, require_sub_tab, has_sub_tab_access, fetch_role_doc, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_APPROVAL
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -93,79 +93,85 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                 mp[k] = str(v)
     results["manpower"] = manpower
 
-    # DPR approvals: Role-based multi-stage workflow
-    # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
-    # Coordinator sees Pending, PO/HR sees Coordinator Approved, Admin sees Dept Approved
-    user_role = (current_user.get("role") or "").strip()
-    is_admin_user = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
-    is_coordinator_user = "coordinator" in user_role.lower()
-    is_po_user = "purchase" in user_role.lower()
-    is_hr_user = "hr" in user_role.lower() or user_role == "HR Manager"
+    # Dynamic per-entity visibility — purely driven by which Approvals sub-tabs
+    # the user's role has access to. Load the role doc ONCE and reuse for all
+    # sub-tab checks below (single DB round-trip instead of 8).
+    show_all = status.lower() == "all"
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_dpr             = await has_sub_tab_access(db, current_user, "Approvals", "DPR",             role_doc=role_doc)
+    can_sc_bills        = await has_sub_tab_access(db, current_user, "Approvals", "SC Bills",        role_doc=role_doc)
+    can_sc_advances     = await has_sub_tab_access(db, current_user, "Approvals", "SC Advances",     role_doc=role_doc)
+    can_labour_pay      = await has_sub_tab_access(db, current_user, "Approvals", "Labour Pay",      role_doc=role_doc)
+    can_stock_returns   = await has_sub_tab_access(db, current_user, "Approvals", "Stock Returns",   role_doc=role_doc)
+    can_transfers       = await has_sub_tab_access(db, current_user, "Approvals", "Transfers",       role_doc=role_doc)
+    can_vendor_payments = await has_sub_tab_access(db, current_user, "Approvals", "Vendor Payments", role_doc=role_doc)
+    can_trip            = await has_sub_tab_access(db, current_user, "Approvals", "Trip Requests",   role_doc=role_doc)
 
-    # Determine which DPR statuses this user should see for "Pending" tab
-    if status.lower() == "all":
-        dpr_visible_statuses = None  # Show all
-    elif is_admin_user:
-        dpr_visible_statuses = ["Dept Approved"]
-    elif is_coordinator_user:
-        dpr_visible_statuses = ["Pending"]
-    elif is_po_user or is_hr_user:
-        dpr_visible_statuses = ["Coordinator Approved"]
-    else:
-        dpr_visible_statuses = ["Pending", "Coordinator Approved", "Dept Approved"]
+    # DPRs
+    if can_dpr:
+        projects_with_dprs = await db.projects.find(
+            {"dprs": {"$exists": True, "$ne": []}},
+            {"dprs": 1, "name": 1}
+        ).to_list(500)
+        dpr_list = []
+        for proj in projects_with_dprs:
+            proj_id = str(proj["_id"])
+            proj_name = proj.get("name", "Unknown Project")
+            for dpr in (proj.get("dprs") or []):
+                dpr_s = dpr.get("status", "Pending")
+                if not show_all and dpr_s != "Pending":
+                    continue
+                # Consolidated audit trail — generic `approved_by`. No stage-specific
+                # field names hardcoded. For legacy records that stored audit info in
+                # fields ending with `_approved_by` (whatever the old stage names
+                # were), we scan dynamically and surface the first non-empty value.
+                approved_by_value = dpr.get("approved_by") or ""
+                if not approved_by_value:
+                    for _k, _v in dpr.items():
+                        if _k.endswith("_approved_by") and isinstance(_v, str) and _v:
+                            approved_by_value = _v
+                            break
+                    if not approved_by_value:
+                        approved_by_value = dpr.get("status_updated_by", "")
+                dpr_entry = {
+                    "id": dpr.get("id", ""),
+                    "project_id": proj_id,
+                    "project_name": proj_name,
+                    "date": dpr.get("date", ""),
+                    "submitted_by": dpr.get("submitted_by", ""),
+                    "status": dpr_s,
+                    "status_updated_by": dpr.get("status_updated_by", ""),
+                    "created_at": dpr.get("created_at", ""),
+                    "progress": dpr.get("progress", ""),
+                    "weather": dpr.get("weather", ""),
+                    "approved_by": approved_by_value,
+                }
+                resolve_names(dpr_entry)
+                dpr_list.append(dpr_entry)
+        dpr_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        results["dprs"] = dpr_list
 
-    projects_with_dprs = await db.projects.find(
-        {"dprs": {"$exists": True, "$ne": []}},
-        {"dprs": 1, "name": 1}
-    ).to_list(500)
-    dpr_list = []
-    for proj in projects_with_dprs:
-        proj_id = str(proj["_id"])
-        proj_name = proj.get("name", "Unknown Project")
-        for dpr in (proj.get("dprs") or []):
-            dpr_s = dpr.get("status", "Pending")
-            if dpr_visible_statuses is not None and dpr_s not in dpr_visible_statuses:
-                continue
-            dpr_entry = {
-                "id": dpr.get("id", ""),
-                "project_id": proj_id,
-                "project_name": proj_name,
-                "date": dpr.get("date", ""),
-                "submitted_by": dpr.get("submitted_by", ""),
-                "status": dpr_s,
-                "status_updated_by": dpr.get("status_updated_by", ""),
-                "created_at": dpr.get("created_at", ""),
-                "progress": dpr.get("progress", ""),
-                "weather": dpr.get("weather", ""),
-                "coordinator_approved_by": dpr.get("coordinator_approved_by", ""),
-                "dept_approved_by": dpr.get("dept_approved_by", ""),
-            }
-            resolve_names(dpr_entry)
-            dpr_list.append(dpr_entry)
-    dpr_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    results["dprs"] = dpr_list
-
-    # Subcontractor bills: only Admin/GM see pending bills
-    sc_query = {"status": "Pending Approval"} if status.lower() != "all" else {}
-    if is_admin_user or status.lower() == "all":
+    # Subcontractor bills
+    if can_sc_bills:
+        sc_query = {"status": "Pending Approval"} if not show_all else {}
         sc_bills = await db.subcontractor_bills.find(sc_query).sort("created_at", -1).to_list(100)
         for sb in sc_bills:
             sb["_id"] = str(sb["_id"])
             resolve_names(sb)
         results["subcontractor_bills"] = sc_bills
 
-    # Subcontractor advances: only Admin/GM see pending advances
-    sa_query = {"approval_status": "Pending Approval"} if status.lower() != "all" else {}
-    if is_admin_user or status.lower() == "all":
+    # Subcontractor advances
+    if can_sc_advances:
+        sa_query = {"approval_status": "Pending Approval"} if not show_all else {}
         sc_advances = await db.subcontractor_advances.find(sa_query).sort("created_at", -1).to_list(100)
         for sa in sc_advances:
             sa["_id"] = str(sa["_id"])
             resolve_names(sa)
         results["subcontractor_advances"] = sc_advances
 
-    # Labour payment approvals: Admin sees payment requests
-    lp_query = {"payment_status": "Payment Requested"} if status.lower() != "all" else {"payment_status": {"$exists": True, "$ne": ""}}
-    if is_admin_user or status.lower() == "all":
+    # Labour payment approvals
+    if can_labour_pay:
+        lp_query = {"payment_status": "Payment Requested"} if not show_all else {"payment_status": {"$exists": True, "$ne": ""}}
         from app.api.labour_attendance import _helper as la_helper, _compute_day_cost
         lp_records = await db.labour_attendance.find(lp_query).sort("updated_at", -1).to_list(100)
         for lp in lp_records:
@@ -175,8 +181,8 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             results["labour_payments"].append(lp_entry)
 
     # Stock return requests
-    sr_query = {"status": "Pending"} if status.lower() != "all" else {}
-    if is_admin_user or status.lower() == "all":
+    if can_stock_returns:
+        sr_query = {"status": "Pending"} if not show_all else {}
         sr_records = await db.stock_return_requests.find(sr_query).sort("created_at", -1).to_list(100)
         for sr in sr_records:
             sr["_id"] = str(sr["_id"])
@@ -186,9 +192,9 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             resolve_names(sr)
             results["stock_returns"].append(sr)
 
-    # Material transfer requests (Pending for Admin, Admin Approved for Accountant)
-    if is_admin_user or status.lower() == "all":
-        mt_statuses = ["Pending", "Admin Approved"] if status.lower() != "all" else ["Pending", "Admin Approved", "Completed", "Rejected"]
+    # Material transfer requests
+    if can_transfers:
+        mt_statuses = ["Pending", "Admin Approved"] if not show_all else ["Pending", "Admin Approved", "Completed", "Rejected"]
         mt_records = await db.material_transfer_requests.find({"status": {"$in": mt_statuses}}).sort("created_at", -1).to_list(100)
         for mt in mt_records:
             mt["_id"] = str(mt["_id"])
@@ -199,37 +205,28 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
             results["material_transfers"].append(mt)
 
     # Payment requests (purchase payment approvals)
-    pr_query = query.copy() if query else {}
-    pr_records = await db.payment_requests.find(pr_query).sort("created_at", -1).to_list(100)
-    for pr in pr_records:
-        pr["_id"] = str(pr["_id"])
-        resolve_names(pr)
-        for k, v in pr.items():
-            if hasattr(v, "isoformat"):
-                pr[k] = str(v)
-    results["payment_requests"] = pr_records
+    if can_vendor_payments:
+        pr_query = query.copy() if query else {}
+        pr_records = await db.payment_requests.find(pr_query).sort("created_at", -1).to_list(100)
+        for pr in pr_records:
+            pr["_id"] = str(pr["_id"])
+            resolve_names(pr)
+            for k, v in pr.items():
+                if hasattr(v, "isoformat"):
+                    pr[k] = str(v)
+        results["payment_requests"] = pr_records
 
-    # Trip requests (fleet trip approval workflow)
-    # Coordinator sees Pending, PO sees Coordinator Approved, Admin sees PO Approved
-    if status.lower() == "all":
-        tr_visible_statuses = ["Pending", "Coordinator Approved", "PO Approved", "Approved", "Rejected", "Assigned"]
-    elif is_admin_user:
-        tr_visible_statuses = ["PO Approved", "Pending"]
-    elif is_coordinator_user:
-        tr_visible_statuses = ["Pending"]
-    elif is_po_user:
-        tr_visible_statuses = ["Coordinator Approved"]
-    else:
-        tr_visible_statuses = ["Pending", "Coordinator Approved", "PO Approved"]
-
-    tr_records = await db.trip_requests.find({"status": {"$in": tr_visible_statuses}}).sort("created_at", -1).to_list(100)
-    for tr in tr_records:
-        tr["_id"] = str(tr["_id"])
-        resolve_names(tr)
-        for k, v in tr.items():
-            if hasattr(v, "isoformat"):
-                tr[k] = str(v)
-    results["trip_requests"] = tr_records
+    # Trip requests
+    if can_trip:
+        tr_query = {"status": "Pending"} if not show_all else {}
+        tr_records = await db.trip_requests.find(tr_query).sort("created_at", -1).to_list(100)
+        for tr in tr_records:
+            tr["_id"] = str(tr["_id"])
+            resolve_names(tr)
+            for k, v in tr.items():
+                if hasattr(v, "isoformat"):
+                    tr[k] = str(v)
+        results["trip_requests"] = tr_records
 
     return results
 
@@ -258,11 +255,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
         if type == "leaves":
             await db.leaves.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "purchase_orders":
-            # Only Super Admin, Administrator, General Manager, or Manager can approve/reject POs
-            allowed_roles = ["super admin", "administrator", "general manager", "manager"]
-            user_role = (current_user.get("role") or "").strip().lower()
-            if user_role not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Only General Manager or Super Admin can approve/reject Purchase Orders")
+            await require_sub_tab(db, current_user, "Approvals", "Purchase Orders")
             await db.purchase_orders.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "materials":
             await db.material_requests.update_one({"_id": oid}, {"$set": update_fields})
@@ -356,10 +349,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
         elif type == "manpower":
             await db.manpower_requests.update_one({"_id": oid}, {"$set": update_fields})
         elif type == "subcontractor_bills":
-            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-            user_role_check = (current_user.get("role") or "").strip().lower()
-            if user_role_check not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject subcontractor bills")
+            await require_sub_tab(db, current_user, "Approvals", "SC Bills")
             # Validate bill is in correct status for action
             sc_bill = await db.subcontractor_bills.find_one({"_id": oid})
             if sc_bill and sc_bill.get("status") != "Pending Approval":
@@ -372,10 +362,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 sc_update["rejection_reason"] = reason
             await db.subcontractor_bills.update_one({"_id": oid}, {"$set": sc_update})
         elif type == "subcontractor_advances":
-            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-            user_role_check = (current_user.get("role") or "").strip().lower()
-            if user_role_check not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject subcontractor advances")
+            await require_sub_tab(db, current_user, "Approvals", "SC Advances")
             sc_adv = await db.subcontractor_advances.find_one({"_id": oid})
             if not sc_adv:
                 raise HTTPException(status_code=404, detail="Advance not found")
@@ -434,16 +421,13 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 except Exception:
                     pass
         elif type == "labour_payments":
-            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-            user_role_check = (current_user.get("role") or "").strip().lower()
-            if user_role_check not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject labour payments")
+            await require_sub_tab(db, current_user, "Approvals", "Labour Pay")
             lp_doc = await db.labour_attendance.find_one({"_id": oid})
             if lp_doc and lp_doc.get("payment_status") != "Payment Requested":
                 raise HTTPException(status_code=400, detail="No pending payment request")
             approver_name = update_fields["approvedBy"]
             # Build recipients: Accountant + person who requested + person who marked
-            lp_recipients = ["Accountant"]
+            lp_recipients = await get_users_with_permission(db, "Accounts", "edit")
             if lp_doc.get("payment_requested_by"): lp_recipients.append(lp_doc["payment_requested_by"])
             if lp_doc.get("marked_by") and lp_doc["marked_by"] not in lp_recipients: lp_recipients.append(lp_doc["marked_by"])
             day_cost = sum(
@@ -480,6 +464,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 except Exception:
                     pass
         elif type == "material_transfers":
+            await require_sub_tab(db, current_user, "Approvals", "Transfers")
             from app.api.inventory import validate_object_id as vi2
             mt_oid = vi2(obj_id, "material transfer")
             mt = await db.material_transfer_requests.find_one({"_id": mt_oid})
@@ -504,6 +489,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "status": "Rejected", "rejection_reason": reason, "updated_at": datetime.now()
                 }})
         elif type == "stock_returns":
+            await require_sub_tab(db, current_user, "Approvals", "Stock Returns")
             from app.api.inventory import validate_object_id as vi
             sr_oid = vi(obj_id, "stock return")
             if status == "Approved":
@@ -528,10 +514,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             else:
                 await db.stock_return_requests.update_one({"_id": sr_oid}, {"$set": {"status": "Rejected", "rejection_reason": reason}})
         elif type == "payment_requests":
-            allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-            user_role_check = (current_user.get("role") or "").strip().lower()
-            if user_role_check not in allowed_roles:
-                raise HTTPException(status_code=403, detail="Only Admin/GM can approve/reject payment requests")
+            await require_sub_tab(db, current_user, "Approvals", "Vendor Payments")
             pr_doc = await db.payment_requests.find_one({"_id": oid})
             if not pr_doc:
                 raise HTTPException(status_code=404, detail="Payment request not found")
@@ -605,34 +588,25 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 except Exception:
                     pass
         elif type == "trip_requests":
+            await require_sub_tab(db, current_user, "Approvals", "Trip Requests")
             tr_doc = await db.trip_requests.find_one({"_id": oid})
             if not tr_doc:
                 raise HTTPException(status_code=404, detail="Trip request not found")
             approver_name = update_fields["approvedBy"]
-            user_role = (current_user.get("role") or "").strip()
-            is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
-            is_coordinator = "coordinator" in user_role.lower()
-            is_po = "purchase" in user_role.lower()
-            current_tr_status = tr_doc.get("status", "Pending")
 
+            # Authorization is enforced upstream by RBACPermission("Approvals", "edit")
+            # on the route + the sub-tab gate above. No role-name logic here.
             if action.lower() == "approve":
-                if is_coordinator and not is_admin and current_tr_status == "Pending":
-                    new_status = "Coordinator Approved"
-                elif is_po and not is_admin and current_tr_status in ("Pending", "Coordinator Approved"):
-                    new_status = "PO Approved"
-                else:
-                    new_status = "Approved"
-
                 await db.trip_requests.update_one({"_id": oid}, {"$set": {
-                    "status": new_status,
+                    "status": "Approved",
                     "approved_by": approver_name,
                     "approved_at": datetime.now(),
                 }})
                 try:
                     requester = tr_doc.get("requested_by", "")
                     await notify(db, approver_name, [requester, "Administrator"], EVENT_APPROVAL,
-                        f"Trip Request {new_status}",
-                        f"Trip request for {tr_doc.get('load_type', '')} — {tr_doc.get('project_name', '')} ({tr_doc.get('from_location', '')} → {tr_doc.get('to_location', '')}) {new_status.lower()} by {approver_name}.",
+                        "Trip Request Approved",
+                        f"Trip request for {tr_doc.get('load_type', '')} — {tr_doc.get('project_name', '')} ({tr_doc.get('from_location', '')} → {tr_doc.get('to_location', '')}) approved by {approver_name}.",
                         entity_type="trip_request", entity_id=obj_id,
                         project_name=tr_doc.get("project_name"), priority="high")
                 except Exception:
@@ -654,47 +628,26 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 except Exception:
                     pass
         elif type == "dprs":
-            # Bug 26 - Multi-stage DPR approval workflow
-            # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
+            await require_sub_tab(db, current_user, "Approvals", "DPR")
             # obj_id format: "project_id:dpr_id"
             parts = obj_id.split(":")
             if len(parts) != 2:
                 raise HTTPException(status_code=400, detail="DPR ID must be in format project_id:dpr_id")
             project_id, dpr_id = parts
 
-            user_role = (current_user.get("role") or "").strip()
             approver_name = update_fields["approvedBy"]
-            is_admin = user_role in ("Super Admin", "Administrator", "Admin", "Managing Director")
-            is_coordinator = "coordinator" in user_role.lower()
-            is_po = "purchase" in user_role.lower()
-            is_hr = "hr" in user_role.lower() or user_role == "HR Manager"
-
-            # Get current DPR status
-            proj = await db.projects.find_one(
-                {"_id": ObjectId(project_id), "dprs.id": dpr_id},
-                {"dprs.$": 1}
-            )
-            current_dpr_status = "Pending"
-            if proj and proj.get("dprs"):
-                current_dpr_status = proj["dprs"][0].get("status", "Pending")
 
             dpr_update = {
                 "dprs.$.status_updated_by": approver_name,
                 "dprs.$.status_updated_at": datetime.now().isoformat()
             }
 
+            # Authorization is enforced upstream by RBACPermission("Approvals", "edit")
+            # on the route + sub-tab access (Approvals → DPR) in the UI. No role-name
+            # logic here — anyone authorised to approve DPRs approves directly.
             if action.lower() == "approve":
-                # Multi-stage transitions based on role
-                if is_coordinator and not is_admin and current_dpr_status == "Pending":
-                    status = "Coordinator Approved"
-                    dpr_update["dprs.$.coordinator_approved_by"] = approver_name
-                elif (is_po or is_hr) and not is_admin and current_dpr_status == "Coordinator Approved":
-                    status = "Dept Approved"
-                    dpr_update["dprs.$.dept_approved_by"] = approver_name
-                elif is_admin:
-                    status = "Approved"
-                else:
-                    status = "Approved"
+                status = "Approved"
+                dpr_update["dprs.$.approved_by"] = approver_name
             # For reject action, status is already set to "Rejected"
 
             dpr_update["dprs.$.status"] = status
@@ -756,7 +709,7 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 po = await db.purchase_orders.find_one({"_id": oid})
                 if po:
                     # Notify PO creator + project stakeholders
-                    recipients = ["Purchase Officer"]
+                    recipients = await get_users_with_permission(db, "Procurement", "edit")
                     stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
                     if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
                     if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
@@ -789,34 +742,29 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             elif type == "manpower":
                 mp = await db.manpower_requests.find_one({"_id": oid})
                 if mp:
-                    recipients = ["HR Manager"]
+                    recipients = await get_users_with_permission(db, "HRMS", "edit")
                     stakeholders = await get_project_stakeholders(db, project_id=mp.get("project_id"))
                     if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+                    # Always notify the original requester so they know the outcome
+                    requester = mp.get("requested_by") or mp.get("engineer_id") or mp.get("submitted_by")
+                    if requester and requester not in recipients:
+                        recipients.append(requester)
                     await notify(db, approver_name, recipients, EVENT_APPROVAL,
                         f"Manpower Request {status}",
                         f"Manpower request for {mp.get('project_name', stakeholders.get('project_name', ''))} has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
                         entity_type="manpower", entity_id=obj_id, project_name=mp.get("project_name"), priority="high")
 
             elif type == "dprs":
-                # Notify SE about DPR approval status
+                # Notify SE + Coordinator on DPR approval status. Single-stage flow
+                # — no role-encoded intermediate notifications.
                 proj = await db.projects.find_one({"_id": ObjectId(project_id)})
                 if proj:
                     proj_name = proj.get("name", "")
                     se = proj.get("engineer_id", "")
                     coord = proj.get("coordinator_id", "")
                     recipients = []
-                    if status == "Coordinator Approved":
-                        if se: recipients.append(se)
-                        recipients.extend(["Purchase Officer", "HR Manager"])
-                    elif status == "Dept Approved":
-                        if coord: recipients.append(coord)
-                        recipients.append("Administrator")
-                    elif status == "Approved":
-                        if se: recipients.append(se)
-                        if coord: recipients.append(coord)
-                    elif status == "Rejected":
-                        if se: recipients.append(se)
-                        if coord: recipients.append(coord)
+                    if se: recipients.append(se)
+                    if coord: recipients.append(coord)
                     await notify(db, approver_name, recipients, EVENT_APPROVAL,
                         f"DPR {status}",
                         f"DPR for project '{proj_name}' has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),

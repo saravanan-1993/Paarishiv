@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_FINANCE, EVENT_APPROVAL
 
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -452,7 +452,7 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
     # Notify stakeholders about payment
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        recipients = ["Administrator"]
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
         if expense.project and expense.project != "General":
             stakeholders = await get_project_stakeholders(db, project_name=expense.project)
             if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
@@ -565,7 +565,7 @@ async def create_bill(bill: BillCreate, db = Depends(get_database)):
 
         # Notify PM/Admin about new client bill
         try:
-            recipients = ["Administrator", "General Manager", "Project Manager"]
+            recipients = await get_users_with_permission(db, "Accounts", "edit")
             stakeholders = await get_project_stakeholders(db, project_name=proj_clean)
             if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
             await notify(db, "Accountant", recipients, EVENT_FINANCE,
@@ -624,7 +624,7 @@ async def get_receipts(db = Depends(get_database)):
     return receipts
 
 @router.post("/receipts", dependencies=[Depends(RBACPermission("Accounts", "edit", "Sales"))])
-async def create_receipt(receipt: ReceiptBase, db = Depends(get_database)):
+async def create_receipt(receipt: ReceiptBase, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     receipt_dict = receipt.dict()
     result = await db.receipts.insert_one(receipt_dict)
 
@@ -642,7 +642,19 @@ async def create_receipt(receipt: ReceiptBase, db = Depends(get_database)):
                 {"_id": bill_oid},
                 {"$inc": {"collection_amount": receipt.amount}, "$set": {"status": new_status}}
             )
-            
+
+    # T2.11 — Notify Accounts about new receipt
+    try:
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        requester = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, requester, recipients, EVENT_FINANCE,
+            "Receipt Recorded",
+            f"Receipt of Rs.{receipt.amount:,.0f} from {receipt.received_from or 'client'} recorded for {receipt.project or 'project'} by {requester}.",
+            entity_type="receipt", entity_id=str(result.inserted_id),
+            project_name=receipt.project, priority="normal")
+    except Exception:
+        pass
+
     receipt_dict["id"] = str(result.inserted_id)
     return receipt_dict
 
@@ -705,7 +717,19 @@ async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_databa
             )
         except Exception:
             pass
-        
+
+    # T2.12 — Notify Accounts about new purchase bill
+    try:
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        creator = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, creator, recipients, EVENT_FINANCE,
+            "Purchase Bill Created",
+            f"Purchase bill {bill.bill_no} for {bill.vendor_name} (Rs.{bill.total_amount:,.0f}) created by {creator}.",
+            entity_type="purchase_bill", entity_id=str(result.inserted_id),
+            project_name=bill.project_name, priority="normal")
+    except Exception:
+        pass
+
     return {
         "id": str(result.inserted_id),
         "bill_no": bill_dict.get("bill_no"),
@@ -731,6 +755,10 @@ async def delete_purchase_bill(bill_id: str, db = Depends(get_database), current
         raise HTTPException(status_code=404, detail="Purchase bill not found")
     if bill.get("status") == "Paid":
         raise HTTPException(status_code=400, detail="Cannot delete a paid purchase bill")
+    # Capture fields BEFORE delete for notification
+    bill_no = bill.get("bill_no", bill_id[-6:])
+    vendor_name = bill.get("vendor_name", "vendor")
+    project_name = bill.get("project_name", "")
     # Unmark linked GRN as billed
     if bill.get("grn_id"):
         try:
@@ -743,6 +771,19 @@ async def delete_purchase_bill(bill_id: str, db = Depends(get_database), current
     await db.purchase_bills.delete_one({"_id": oid})
     from app.utils.logging import log_activity
     await log_activity(db, str(current_user.get("_id", current_user["username"])), current_user["username"], "Delete Purchase Bill", f"Purchase bill {bill.get('bill_no', bill_id[-6:])} deleted", "warning")
+
+    # T2.13 — Notify Accounts about purchase bill deletion
+    try:
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        deleter = current_user.get("full_name") or current_user.get("username", "")
+        await notify(db, deleter, recipients, EVENT_FINANCE,
+            "Purchase Bill Deleted",
+            f"Purchase bill {bill_no} for {vendor_name} deleted by {deleter}.",
+            entity_type="purchase_bill", entity_id=bill_id,
+            project_name=project_name, priority="high")
+    except Exception:
+        pass
+
     return {"success": True, "message": "Purchase bill deleted"}
 
 # ── Project Finance Summary ──────────────────────────────────────────────────

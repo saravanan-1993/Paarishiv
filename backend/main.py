@@ -65,6 +65,45 @@ app.include_router(api_router)
 
 @app.on_event("startup")
 async def startup_event():
+    # Idempotent role-sub-tabs migration — adds any sub-tab keys that the code
+    # now requires but existing role docs in the DB don't have yet. Without this,
+    # roles created before the sub-tab list grew would silently lose approval
+    # access for new entity types (DPR, SC Advances, Stock Returns, Transfers).
+    try:
+        from app.api.roles import SUB_TABS
+        from database import db
+        roles_doc = await db.roles.find_one({"_id": "global_roles"})
+        if roles_doc and isinstance(roles_doc.get("roles"), list):
+            changed = False
+            for role in roles_doc["roles"]:
+                perms = role.get("permissions")
+                if not isinstance(perms, list):
+                    continue
+                for p in perms:
+                    if not isinstance(p, dict):
+                        continue
+                    mod = p.get("name")
+                    expected = SUB_TABS.get(mod)
+                    if not expected:
+                        continue
+                    existing = p.get("subTabs")
+                    if not isinstance(existing, list):
+                        continue
+                    # Backfill ONLY for the Administrator role (which should
+                    # always have everything). For other roles we don't touch
+                    # what the admin configured — they keep exactly what they
+                    # granted, but new sub-tab keys can be added via the UI.
+                    if role.get("name") == "Administrator":
+                        merged = sorted(set(existing) | set(expected), key=lambda x: expected.index(x) if x in expected else 999)
+                        if merged != existing:
+                            p["subTabs"] = merged
+                            changed = True
+            if changed:
+                await db.roles.update_one({"_id": "global_roles"}, {"$set": {"roles": roles_doc["roles"]}})
+                print("Role sub-tabs migrated: Administrator role updated with new sub-tab keys.")
+    except Exception as e:
+        print(f"Role migration check failed (non-fatal): {e}")
+
     if not os.environ.get("VERCEL"):
         try:
             from app.services.scheduler import start_scheduler

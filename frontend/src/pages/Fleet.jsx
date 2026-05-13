@@ -58,7 +58,7 @@ const Fleet = () => {
 
     const [tripRequests, setTripRequests] = useState([]);
     const [assigningRequest, setAssigningRequest] = useState(null); // trip request being assigned
-    const [assignForm, setAssignForm] = useState({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' });
+    const [assignForm, setAssignForm] = useState({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '', tripRevenue: '' });
 
     // Modals
     const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
@@ -378,8 +378,10 @@ const Fleet = () => {
                                 <td>{trip.loadType}</td>
                                 <td style={{ fontWeight: '700' }}>₹{trip.totalRevenue.toLocaleString()}</td>
                                 <td style={{ color: '#EF4444' }}>₹{trip.totalExpense.toLocaleString()}</td>
-                                <td style={{ fontWeight: '800', color: trip.netProfit >= 0 ? '#10B981' : '#EF4444' }}>
-                                    ₹{trip.netProfit.toLocaleString()}
+                                <td style={{ fontWeight: '800', color: trip.totalRevenue === 0 ? '#F59E0B' : (trip.netProfit >= 0 ? '#10B981' : '#EF4444') }}>
+                                    {trip.totalRevenue === 0
+                                        ? <span title="Internal logistics — no customer revenue">Cost: ₹{Math.abs(trip.totalExpense).toLocaleString()}</span>
+                                        : `₹${trip.netProfit.toLocaleString()}`}
                                 </td>
                                 <td>
                                     <span className={`badge ${trip.status === 'Closed' ? 'badge-success' : 'badge-warning'}`} style={{ marginBottom: '4px', display: 'block', textAlign: 'center' }}>
@@ -556,9 +558,10 @@ const Fleet = () => {
             await fleetAPI.assignTripRequest(req.id || req._id, {
                 ...assignForm,
                 transportCost: parseFloat(assignForm.transportCost) || 0,
+                tripRevenue: parseFloat(assignForm.tripRevenue) || 0,
             });
             setAssigningRequest(null);
-            setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' });
+            setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '', tripRevenue: '' });
             fetchData();
             toast.success('Vehicle assigned! Trip created and expense recorded to project.');
         } catch (err) {
@@ -618,7 +621,7 @@ const Fleet = () => {
                     <button
                         className="btn btn-primary btn-sm"
                         style={{ width: '100%', marginTop: '4px', fontWeight: '700', fontSize: '13px' }}
-                        onClick={() => { setAssigningRequest(req); setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '' }); }}
+                        onClick={() => { setAssigningRequest(req); setAssignForm({ vehicleId: '', vehicleNumber: '', driverId: '', driverName: '', transportCost: '', tripRevenue: '' }); }}
                     >
                         <Truck size={14} /> Assign Vehicle & Create Trip
                     </button>
@@ -726,18 +729,33 @@ const Fleet = () => {
                                         ))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Transport Cost (₹)</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        placeholder="e.g. 5000"
-                                        value={assignForm.transportCost}
-                                        onChange={e => setAssignForm(f => ({ ...f, transportCost: e.target.value }))}
-                                        style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}
-                                    />
-                                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Will be added as project expense automatically</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    <div>
+                                        <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Transport Cost (₹) *</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="e.g. 5000"
+                                            value={assignForm.transportCost}
+                                            onChange={e => setAssignForm(f => ({ ...f, transportCost: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                        />
+                                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>What you pay for transport</p>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '12px', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Trip Revenue (₹)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            placeholder="0 (internal)"
+                                            value={assignForm.tripRevenue}
+                                            onChange={e => setAssignForm(f => ({ ...f, tripRevenue: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}
+                                        />
+                                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Leave 0 if internal logistics</p>
+                                    </div>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>

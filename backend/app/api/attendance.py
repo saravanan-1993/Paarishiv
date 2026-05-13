@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.models.attendance import AttendanceRecord, ClockInRequest, AttendanceSummary
 from app.utils.auth import get_current_user
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, is_admin_role, role_in, get_users_with_permission
+from app.utils.notifications import notify, EVENT_HR
 from database import get_database
 from datetime import datetime, timedelta
 from bson import ObjectId
@@ -47,8 +48,9 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
                         if bk.get("end") and isinstance(bk["end"], datetime): bk["end"] = bk["end"].isoformat(timespec='seconds')
             return {"message": "Already clocked in", **existing}
         
-        # Geofencing check
-        is_admin = current_user.get("role") in ["Super Admin", "Administrator", "HR Manager"]
+        # Geofencing check — admin-class users and HR Manager bypass site fencing.
+        # Uses dynamic helper for whitespace/case tolerance.
+        is_admin = is_admin_role(current_user.get("role")) or role_in(current_user.get("role"), ["HR Manager"])
         
         if not is_admin:
             # 1. Get employee data to find assigned site
@@ -86,14 +88,30 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
         
         result = await db.attendance.insert_one(record)
         print(f"Clock-in successful for {username}. ID: {result.inserted_id}")
-        
+
         record["id"] = str(result.inserted_id)
         if "_id" in record: record.pop("_id")
-        
+
+        # T2.8 — Late arrival detection (after 9:30 AM)
+        try:
+            from datetime import time as _time
+            LATE_THRESHOLD = _time(9, 30)
+            clock_in_time = datetime.now().time()
+            if clock_in_time > LATE_THRESHOLD:
+                actor = current_user.get("full_name") or username
+                recipients = await get_users_with_permission(db, "HRMS", "edit")
+                await notify(db, actor, recipients, EVENT_HR,
+                    "Late Clock-in",
+                    f"{actor} clocked in late at {clock_in_time.strftime('%I:%M %p')}.",
+                    entity_type="attendance", entity_id=str(result.inserted_id),
+                    priority="low")
+        except Exception:
+            pass
+
         # Format for JSON
         record["check_in"] = record["check_in"].isoformat(timespec='seconds')
         record["created_at"] = record["created_at"].isoformat(timespec='seconds')
-        
+
         return record
     except Exception as e:
         print(f"CRITICAL ERROR in clock_in: {str(e)}")

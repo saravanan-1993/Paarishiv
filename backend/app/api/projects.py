@@ -12,7 +12,7 @@ from app.utils.rbac import role_in
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission, _resolve_v2
+from app.utils.rbac import RBACPermission, _resolve_v2, require_sub_tab, has_sub_tab_access, get_users_with_permission
 from app.utils.sanitize import sanitize_string, sanitize_list
 from app.utils.notifications import notify, EVENT_PROJECT, EVENT_TASK, EVENT_WORKFLOW
 
@@ -103,10 +103,9 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
     # Notify assigned engineer and coordinator
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        recipients = []
+        recipients = await get_users_with_permission(db, "Projects", "view")
         if project_dict.get("engineer_id"): recipients.append(project_dict["engineer_id"])
         if project_dict.get("coordinator_id"): recipients.append(project_dict["coordinator_id"])
-        recipients.extend(["Administrator", "General Manager"])
         await notify(db, sender, recipients, EVENT_PROJECT,
             "New Project Created",
             f"Project '{project_dict.get('name')}' has been created. Client: {project_dict.get('client', 'N/A')}. Budget: Rs.{project_dict.get('estimated_budget', 0):,.0f}",
@@ -119,59 +118,12 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
 @router.get("/", response_model=List[ProjectModel])
 async def get_projects(all: bool = False, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    user_role = (current_user.get("role") or "").lower()
-    user_role_norm = user_role.replace(" ", "")
-    if user_role_norm == "siteengineer" and not all:
-        emp_username = current_user.get("username")
-        emp_id = current_user.get("id")
-        emp_code = current_user.get("employeeCode") or ""
-        or_conditions = [
-            {"engineer_id": emp_username},
-            {"engineer_id": emp_id}
-        ]
-        if emp_code:
-            or_conditions.append({"engineer_id": emp_code})
-
-        # Also find projects where this employee is assigned via siteId
-        try:
-            employee = await db.employees.find_one({
-                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
-            })
-            if employee:
-                or_conditions.append({"engineer_id": str(employee["_id"])})
-                if employee.get("employeeCode"):
-                    or_conditions.append({"engineer_id": employee["employeeCode"]})
-                if employee.get("siteId"):
-                    try:
-                        or_conditions.append({"_id": ObjectId(employee["siteId"])})
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-
-        query["$or"] = or_conditions
-
-    elif "coordinator" in user_role_norm and not all:
-        emp_username = current_user.get("username")
-        emp_id = current_user.get("id")
-        emp_code = current_user.get("employeeCode") or ""
-        or_conditions = [
-            {"coordinator_id": emp_username},
-            {"coordinator_id": emp_id}
-        ]
-        if emp_code:
-            or_conditions.append({"coordinator_id": emp_code})
-        try:
-            employee = await db.employees.find_one({
-                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
-            })
-            if employee:
-                or_conditions.append({"coordinator_id": str(employee["_id"])})
-                if employee.get("employeeCode"):
-                    or_conditions.append({"coordinator_id": employee["employeeCode"]})
-        except Exception:
-            pass
-        query["$or"] = or_conditions
+    # Dynamic scoping — admin-class sees all. Anyone else with project assignments
+    # (engineer or coordinator) sees only those projects, unless ?all=true.
+    from app.utils.rbac import is_admin_role as _is_admin_role
+    if not all and not _is_admin_role(current_user.get("role", "")):
+        from app.utils.rbac import _build_assignment_or_clauses
+        query["$or"] = await _build_assignment_or_clauses(db, current_user)
 
     projects = await db.projects.find(query).to_list(100)
 
@@ -200,9 +152,8 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
 
 @router.get("/all-dprs")
 async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Fetch all DPRs from all projects for Coordinator/Admin."""
-    if not role_in(current_user.get("role", ""), ["Project Coordinator", "Super Admin", "Administrator"]):
-        raise HTTPException(status_code=403, detail="Not authorized")
+    """Fetch all DPRs from all projects — requires Approvals → DPR access."""
+    await require_sub_tab(db, current_user, "Approvals", "DPR")
 
     # Pre-fetch employees to resolve IDs/usernames to names
     employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "username": 1, "employeeCode": 1}).to_list(1000)
@@ -213,27 +164,11 @@ async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(
         if "username" in e: emp_map[e["username"]] = full_name
         if "employeeCode" in e: emp_map[e["employeeCode"]] = full_name
 
-    # For Coordinators, only fetch DPRs from their assigned projects
+    # Scope DPRs to assigned projects unless user is admin-class.
     project_query = {"dprs": {"$exists": True}}
-    user_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
-    if "coordinator" in user_role_norm and user_role_norm not in ("superadmin", "administrator"):
-        emp_username = current_user.get("username")
-        emp_id = current_user.get("id") or current_user.get("_id", "")
-        or_conditions = [
-            {"coordinator_id": emp_username},
-            {"coordinator_id": str(emp_id)},
-        ]
-        try:
-            employee = await db.employees.find_one({
-                "$or": [{"employeeCode": emp_username}, {"username": emp_username}]
-            })
-            if employee:
-                or_conditions.append({"coordinator_id": str(employee["_id"])})
-                if employee.get("employeeCode"):
-                    or_conditions.append({"coordinator_id": employee["employeeCode"]})
-        except Exception:
-            pass
-        project_query["$or"] = or_conditions
+    from app.utils.rbac import is_admin_role as _is_admin_role, _build_assignment_or_clauses
+    if not _is_admin_role(current_user.get("role", "")):
+        project_query["$or"] = await _build_assignment_or_clauses(db, current_user)
 
     projects = await db.projects.find(project_query, {"name": 1, "dprs": 1}).to_list(1000)
     all_dprs = []
@@ -261,10 +196,18 @@ async def get_project(project_id: str, db = Depends(get_database), current_user:
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    # RBAC: Site Engineer can only view assigned projects
-    user_role = (current_user.get("role") or "").lower()
-    if user_role.replace(" ", "") == "siteengineer":
-        if project.get("engineer_id") != current_user.get("username") and project.get("engineer_id") != current_user.get("id"):
+    # RBAC: scoped users can only view projects they're assigned to.
+    from app.utils.rbac import is_admin_role as _is_admin_role
+    if not _is_admin_role(current_user.get("role", "")):
+        eng = project.get("engineer_id")
+        coord = project.get("coordinator_id")
+        emp_keys = {
+            current_user.get("username"),
+            current_user.get("employeeCode"),
+            str(current_user.get("id") or ""),
+            str(current_user.get("_id") or ""),
+        }
+        if eng not in emp_keys and coord not in emp_keys:
             raise HTTPException(status_code=403, detail="Not authorized to view this project")
 
     new_progress = _calc_progress(project)
@@ -329,10 +272,11 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if project:
         current = project.get("status", "Planning")
-        # Prevent reverting Completed projects (except by Admin)
+        # Prevent reverting Completed projects (except by admin-class users)
         if current == "Completed" and new_status != "Completed":
-            if not role_in(current_user.get("role", ""), ["Super Admin", "Administrator"]):
-                raise HTTPException(status_code=403, detail="Only Admin can revert a Completed project")
+            from app.utils.rbac import is_admin_role
+            if not is_admin_role(current_user.get("role", "")):
+                raise HTTPException(status_code=403, detail="Only admin-class users can revert a Completed project")
 
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id)},
@@ -352,7 +296,7 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
         project = await db.projects.find_one({"_id": ObjectId(project_id)})
         if project:
             sender = current_user.get("full_name") or current_user.get("username", "")
-            recipients = ["Administrator", "General Manager"]
+            recipients = await get_users_with_permission(db, "Projects", "edit")
             if project.get("engineer_id"): recipients.append(project["engineer_id"])
             if project.get("coordinator_id"): recipients.append(project["coordinator_id"])
             await notify(db, sender, recipients, EVENT_PROJECT,
@@ -365,7 +309,7 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
     return {"success": True, "new_status": new_status}
 
 @router.post("/{project_id}/tasks", dependencies=[Depends(RBACPermission("Projects", "edit"))])
-async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)):
+async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -379,7 +323,7 @@ async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)
         {"_id": ObjectId(project_id)},
         {"$push": {"tasks": task_dict}}
     )
-    
+
     # Send Auto Message if assigned
     if task_dict.get("assignedTo"):
         from app.api.chat import send_system_message
@@ -389,6 +333,22 @@ async def add_task(project_id: str, task: TaskCreate, db = Depends(get_database)
             content=f"New Task Assigned: {task_dict['name']} in Project: {project.get('name')}. Priority: {task_dict['priority']}.",
             msg_type="task_update"
         )
+
+    # Notify assigned user about task assignment
+    try:
+        actor = current_user.get("full_name") or current_user.get("username", "")
+        recipients = []
+        if task_dict.get("assignedTo"):
+            recipients.append(task_dict["assignedTo"])
+        if recipients:
+            proj_name = project.get("name", "")
+            await notify(db, actor, recipients, EVENT_TASK,
+                "Task Assigned",
+                f"Task '{task_dict.get('name', '')}' assigned to you by {actor}.",
+                entity_type="task", entity_id=str(task_id),
+                project_name=proj_name, priority="normal")
+    except Exception:
+        pass
 
     # Recalculate and persist progress
     updated = await db.projects.find_one({"_id": ObjectId(project_id)})
@@ -401,13 +361,11 @@ async def update_task(
     project_id: str, task_id: str, task_update: TaskUpdate,
     db = Depends(get_database), current_user: dict = Depends(get_current_user)
 ):
-    is_admin_or_pm = role_in(current_user.get("role", ""), [
-        "Administrator", "Super Admin", "General Manager", "Managing Director",
-        "Project Manager", "Project Coordinator", "Site Engineer"
-    ])
+    # Anyone with Projects → Tasks edit access can change task to any status;
+    # users without it can only mark as Completed.
+    can_manage_tasks = await has_sub_tab_access(db, current_user, "Projects", "Tasks")
 
-    # Non-admin users may only mark a task as Completed (not change to other statuses)
-    if not is_admin_or_pm and task_update.status != "Completed":
+    if not can_manage_tasks and task_update.status != "Completed":
         raise HTTPException(status_code=403, detail="You can only mark tasks as Completed.")
 
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
@@ -706,7 +664,7 @@ async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), c
     # Notify Coordinator about new DPR submission
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        recipients = ["Project Coordinator", "Administrator"]
+        recipients = await get_users_with_permission(db, "Approvals", "view")
         if project.get("coordinator_id"): recipients.append(project["coordinator_id"])
         await notify(db, sender, recipients, EVENT_WORKFLOW,
             "DPR Submitted",
@@ -722,24 +680,13 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     if not new_status:
         raise HTTPException(status_code=400, detail="Status is required")
 
-    user_role = (current_user.get("role") or "").strip()
     user_name = current_user.get("full_name") or current_user.get("username", "Unknown")
-    user_role_norm = user_role.lower().replace(" ", "")  # space-insensitive comparison
 
-    # Bug 26 - Multi-stage DPR approval workflow
-    # Workflow: Pending → Coordinator Approved → Dept Approved → Approved
-    # Coordinator: Pending -> Coordinator Approved / Rejected
-    # PO/HR: Coordinator Approved -> Dept Approved / Rejected
-    # Admin: any transition
-    is_admin = role_in(user_role, ["Super Admin", "Administrator", "Admin", "Managing Director"])
-    is_coordinator = "coordinator" in user_role_norm
-    is_po = "purchase" in user_role_norm
-    is_hr = "hr" in user_role_norm or "humanresource" in user_role_norm
+    # Dynamic permission: anyone with Approvals → DPR sub-tab + edit on Approvals
+    # module can move a DPR through its status. No role-name string matching.
+    await require_sub_tab(db, current_user, "Approvals", "DPR")
 
-    if not is_admin and not is_coordinator and not is_po and not is_hr:
-        raise HTTPException(status_code=403, detail="Only Coordinators, PO, HR or Admins can update DPR status")
-
-    # Get current DPR status
+    # Get current DPR
     project = await db.projects.find_one(
         {"_id": ObjectId(project_id), "dprs.id": dpr_id},
         {"dprs.$": 1}
@@ -749,34 +696,17 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
 
     current_status = project["dprs"][0].get("status", "Pending")
 
-    # Role-based transition validation
-    if not is_admin:
-        if is_coordinator:
-            allowed_transitions = {
-                "Pending": ["Coordinator Approved", "Reviewed", "Rejected"],
-                "Reviewed": ["Coordinator Approved", "Approved", "Rejected"],
-                "Coordinator Approved": ["Approved", "Rejected"],
-            }
-        elif is_po or is_hr:
-            allowed_transitions = {
-                "Coordinator Approved": ["Dept Approved", "Rejected"],
-                "Reviewed": ["Dept Approved", "Approved", "Rejected"],
-            }
-        else:
-            allowed_transitions = {}
-        valid_next = allowed_transitions.get(current_status, [])
-        if new_status not in valid_next:
-            raise HTTPException(status_code=400, detail=f"Cannot change from '{current_status}' to '{new_status}'. Allowed: {', '.join(valid_next) if valid_next else 'none'}")
-
+    # Single-stage workflow now: any authorised user can move Pending → Approved
+    # or to Rejected. Legacy intermediate values ("Coordinator Approved",
+    # "Dept Approved", "Reviewed") are still accepted as `new_status` for backward
+    # compatibility with old records, but no role-based transition check applies.
     update_fields = {
         "dprs.$.status": new_status,
         "dprs.$.status_updated_by": user_name,
         "dprs.$.status_updated_at": datetime.now().isoformat()
     }
-    if new_status == "Coordinator Approved":
-        update_fields["dprs.$.coordinator_approved_by"] = user_name
-    elif new_status == "Dept Approved":
-        update_fields["dprs.$.dept_approved_by"] = user_name
+    if new_status == "Approved":
+        update_fields["dprs.$.approved_by"] = user_name
 
     result = await db.projects.update_one(
         {"_id": ObjectId(project_id), "dprs.id": dpr_id},

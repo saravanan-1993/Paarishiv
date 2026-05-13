@@ -4,8 +4,9 @@ from app.models.fleet import VehicleBase, TripBase, MaintenanceRecord, FuelStock
 from database import get_database
 from bson import ObjectId
 from datetime import datetime
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, get_users_with_permission
 from app.utils.auth import get_current_user, validate_object_id
+from app.utils.notifications import notify, EVENT_FLEET
 
 router = APIRouter(prefix="/fleet", tags=["fleet"])
 
@@ -85,7 +86,7 @@ async def get_trips(db = Depends(get_database)):
     return [{"id": str(t["_id"]), **{k: v for k, v in t.items() if k != "_id"}} for t in trips]
 
 @router.post("/trips", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def create_trip(trip: TripBase, db = Depends(get_database)):
+async def create_trip(trip: TripBase, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     trip_data = trip.dict()
     # Validate non-negative amounts
     if float(trip_data.get("totalRevenue", 0) or 0) < 0:
@@ -95,10 +96,23 @@ async def create_trip(trip: TripBase, db = Depends(get_database)):
     trip_data["netProfit"] = float(trip_data.get("totalRevenue", 0) or 0) - float(trip_data.get("totalExpense", 0) or 0)
     result = await db.trips.insert_one(trip_data)
     if "_id" in trip_data: del trip_data["_id"]
+
+    # T2.5 — Notify Fleet Management editors about new trip
+    try:
+        creator = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "Fleet Management", "edit")
+        await notify(db, creator, recipients, EVENT_FLEET,
+            "New Trip Created",
+            f"Trip for {trip_data.get('vehicleNumber', '')} ({trip_data.get('tripId', '')}) created by {creator}.",
+            entity_type="trip", entity_id=str(result.inserted_id),
+            project_name=trip_data.get("projectName"), priority="normal")
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id), **trip_data}
 
 @router.put("/trips/{trip_id}", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def update_trip(trip_id: str, trip_update: dict, db = Depends(get_database)):
+async def update_trip(trip_id: str, trip_update: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(trip_id, "trip")
     if "_id" in trip_update: del trip_update["_id"]
 
@@ -106,14 +120,44 @@ async def update_trip(trip_id: str, trip_update: dict, db = Depends(get_database
     existing_trip = await db.trips.find_one({"_id": oid})
     if not existing_trip:
         raise HTTPException(status_code=404, detail="Trip not found")
-        
+
     # Merge existing data with update
     revenue = trip_update.get("totalRevenue", existing_trip.get("totalRevenue", 0))
     expenses = trip_update.get("totalExpense", existing_trip.get("totalExpense", 0))
-    
+
     trip_update["netProfit"] = revenue - expenses
-        
+
     await db.trips.update_one({"_id": ObjectId(trip_id)}, {"$set": trip_update})
+
+    # T2.6 — Notify on significant trip state transitions (Closed/Completed or Paid)
+    try:
+        old_status = existing_trip.get("status")
+        new_status = trip_update.get("status", old_status)
+        old_pay = existing_trip.get("paymentStatus")
+        new_pay = trip_update.get("paymentStatus", old_pay)
+
+        # Human-readable label: prefer tripId (e.g. "0003"), fall back to vehicle number
+        readable_trip = existing_trip.get("tripId") or existing_trip.get("vehicleNumber") or "trip"
+        trip_label = f"T-{readable_trip}" if existing_trip.get("tripId") else readable_trip
+
+        significant = False
+        msg = ""
+        if old_status != new_status and new_status in ("Closed", "Completed"):
+            significant = True
+            msg = f"Trip {trip_label} marked {new_status}"
+        elif old_pay != new_pay and new_pay == "Paid":
+            significant = True
+            msg = f"Trip {trip_label} payment received"
+
+        if significant:
+            actor = current_user.get("full_name") or current_user.get("username", "")
+            recipients = await get_users_with_permission(db, "Accounts", "edit")
+            await notify(db, actor, recipients, EVENT_FLEET, msg,
+                f"{msg} by {actor}.",
+                entity_type="trip", entity_id=trip_id, priority="normal")
+    except Exception:
+        pass
+
     return {"success": True}
 
 @router.delete("/trips/{trip_id}", dependencies=[Depends(RBACPermission("Fleet Management", "delete"))])
@@ -191,7 +235,7 @@ async def get_fleet_summary(db = Depends(get_database)):
 # ── Maintenance ───────────────────────────────────────────────────────────────
 
 @router.post("/maintenance", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
-async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database)):
+async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # C13 Fix: Validate vehicleId exists before creating maintenance record
     v_oid = validate_object_id(record.vehicleId, "vehicle")
     vehicle = await db.vehicles.find_one({"_id": v_oid})
@@ -207,6 +251,19 @@ async def add_maintenance(record: MaintenanceRecord, db = Depends(get_database))
             "currentKm": record.odometer
         }}
     )
+
+    # T2.7 — Notify Fleet Management editors about maintenance record
+    try:
+        actor = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "Fleet Management", "edit")
+        await notify(db, actor, recipients, EVENT_FLEET,
+            "Vehicle Maintenance Recorded",
+            f"Maintenance recorded for vehicle {vehicle.get('vehicleNumber', '')} by {actor}.",
+            entity_type="maintenance", entity_id=str(result.inserted_id),
+            priority="normal")
+    except Exception:
+        pass
+
     return {"id": str(result.inserted_id), **record.dict()}
 
 @router.get("/maintenance/{vehicle_id}", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
@@ -379,6 +436,7 @@ async def assign_trip_request(req_id: str, assign_data: dict = Body(...), db=Dep
     driver_name = assign_data.get("driverName", "")
     rate_per_load = float(assign_data.get("ratePerLoad", 0) or 0)
     transport_cost = float(assign_data.get("transportCost", 0) or 0)
+    trip_revenue = float(assign_data.get("tripRevenue", 0) or 0)
 
     # Auto-generate trip ID
     count = await db.trips.count_documents({})
@@ -397,9 +455,9 @@ async def assign_trip_request(req_id: str, assign_data: dict = Body(...), db=Dep
         "projectName": req.get("project_name", ""),
         "tripType": "Project Trip",
         "ratePerLoad": rate_per_load,
-        "totalRevenue": 0.0,
+        "totalRevenue": trip_revenue,
         "totalExpense": transport_cost,
-        "netProfit": -transport_cost,
+        "netProfit": trip_revenue - transport_cost,
         "status": "Open",
         "date": datetime.now(),
         "paymentStatus": "Pending",

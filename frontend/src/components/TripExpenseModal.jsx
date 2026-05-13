@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
     const toast = useToast();
     const [expenses, setExpenses] = useState([]);
+    const [revenue, setRevenue] = useState(0);
     const [loading, setLoading] = useState(false);
     const [initializing, setInitializing] = useState(false);
 
@@ -15,39 +16,53 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
         if (isOpen && trip) {
             initExpenses();
             setIsPaid(trip.paymentStatus === 'Paid');
+            setRevenue(parseFloat(trip.totalRevenue || 0));
         }
     }, [isOpen, trip]);
 
     const initExpenses = async () => {
         setInitializing(true);
         try {
-            // 1. Load existing expenses if any
+            // 1. Load existing itemised expenses if any
             if (trip.expenses && trip.expenses.length > 0) {
                 setExpenses(trip.expenses);
-            } else {
-                // ... same as before but without re-initializing isPaid here
-                const defaultExpenses = [
-                    { category: 'Driver Bata', amount: 0, remarks: '' },
-                    { category: 'Fuel', amount: 0, remarks: '' },
-                    { category: 'Toll', amount: 0, remarks: '' }
-                ];
-
-                if (trip.driverId) {
-                    try {
-                        const drvRes = await employeeAPI.getOne(trip.driverId);
-                        if (drvRes.data && drvRes.data.dailyWage > 0) {
-                            defaultExpenses.unshift({
-                                category: 'Driver Salary',
-                                amount: drvRes.data.dailyWage,
-                                remarks: `Auto-filled from ${trip.driverName}'s master data`
-                            });
-                        }
-                    } catch (e) {
-                        console.warn('Could not fetch driver daily wage', e);
-                    }
-                }
-                setExpenses(defaultExpenses);
+                return;
             }
+
+            // 2. Legacy / direct totalExpense without breakdown — preserve as one line
+            //    so saving the modal does not silently overwrite the stored total.
+            const legacyTotal = parseFloat(trip.totalExpense || 0);
+            if (legacyTotal > 0) {
+                setExpenses([{
+                    category: 'Other',
+                    amount: legacyTotal,
+                    remarks: 'Existing trip expense (no itemised breakdown)'
+                }]);
+                return;
+            }
+
+            // 3. Fresh trip — seed with common categories + driver salary if available
+            const defaultExpenses = [
+                { category: 'Driver Bata', amount: 0, remarks: '' },
+                { category: 'Fuel', amount: 0, remarks: '' },
+                { category: 'Toll', amount: 0, remarks: '' }
+            ];
+
+            if (trip.driverId) {
+                try {
+                    const drvRes = await employeeAPI.getOne(trip.driverId);
+                    if (drvRes.data && drvRes.data.dailyWage > 0) {
+                        defaultExpenses.unshift({
+                            category: 'Driver Salary',
+                            amount: drvRes.data.dailyWage,
+                            remarks: `Auto-filled from ${trip.driverName}'s master data`
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch driver daily wage', e);
+                }
+            }
+            setExpenses(defaultExpenses);
         } finally {
             setInitializing(false);
         }
@@ -74,6 +89,7 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
             const updateData = {
                 expenses: expenses,
                 totalExpense: totalExpense,
+                totalRevenue: parseFloat(revenue || 0),
                 status: shouldClose ? 'Closed' : trip.status,
                 paymentStatus: isPaid ? 'Paid' : 'Pending'
             };
@@ -111,22 +127,22 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                     </div>
                     {initializing ? (
                         <div style={{ textAlign: 'center', padding: '20px' }}><Loader2 className="animate-spin" /></div>
-                    ) : expenses.map((exp, i) => (
+                    ) : expenses.map((exp, i) => {
+                        const standardCategories = [
+                            'Driver Salary', 'Driver Bata', 'Fuel', 'Toll',
+                            'Loading / Unloading', 'Quarry Payment / Material',
+                            'Transport', 'Maintenance', 'Repair', 'Other'
+                        ];
+                        const isUnknown = exp.category && !standardCategories.includes(exp.category);
+                        return (
                         <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '12px', marginBottom: '8px' }}>
                             <select
                                 value={exp.category}
                                 onChange={e => updateExpense(i, 'category', e.target.value)}
                                 style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid var(--border)' }}
                             >
-                                <option>Driver Salary</option>
-                                <option>Driver Bata</option>
-                                <option>Fuel</option>
-                                <option>Toll</option>
-                                <option>Loading / Unloading</option>
-                                <option>Quarry Payment / Material</option>
-                                <option>Maintenance</option>
-                                <option>Repair</option>
-                                <option>Other</option>
+                                {isUnknown && <option value={exp.category}>{exp.category}</option>}
+                                {standardCategories.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                             <div style={{ position: 'relative' }}>
                                 <IndianRupee size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -139,14 +155,23 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                             </div>
                             <button className="icon-btn" style={{ color: '#EF4444' }} onClick={() => removeExpenseRow(i)}><Trash2 size={16} /></button>
                         </div>
-                    ))}
+                        );
+                    })}
                     <button className="btn btn-outline btn-sm" onClick={addExpenseRow} style={{ marginTop: '8px' }}><Plus size={14} /> Add Line Item</button>
                 </div>
 
                 <div style={{ padding: '20px', backgroundColor: '#F8FAFC', borderRadius: '12px', marginBottom: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <span style={{ fontWeight: '600' }}>Trip Revenue:</span>
-                        <span style={{ fontWeight: '700' }}>₹{trip.totalRevenue.toLocaleString()}</span>
+                        <div style={{ position: 'relative', width: '140px' }}>
+                            <IndianRupee size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input
+                                type="number"
+                                value={revenue}
+                                onChange={e => setRevenue(parseFloat(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px 8px 6px 28px', borderRadius: '6px', border: '1px solid var(--border)', fontWeight: '700', textAlign: 'right' }}
+                            />
+                        </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#EF4444' }}>
                         <span style={{ fontWeight: '600' }}>Total Expenses:</span>
@@ -154,8 +179,8 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                     </div>
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px', marginTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '18px' }}>
                         <span style={{ fontWeight: '800' }}>Estimated Profit:</span>
-                        <span style={{ fontWeight: '900', color: (trip.totalRevenue - total) >= 0 ? '#10B981' : '#EF4444' }}>
-                            ₹{(trip.totalRevenue - total).toLocaleString()}
+                        <span style={{ fontWeight: '900', color: (revenue - total) >= 0 ? '#10B981' : '#EF4444' }}>
+                            ₹{(revenue - total).toLocaleString()}
                         </span>
                     </div>
                 </div>

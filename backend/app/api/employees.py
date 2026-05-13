@@ -6,7 +6,8 @@ from database import get_database
 from bson import ObjectId
 from app.utils.auth import get_current_user
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, is_admin_role, get_users_with_permission
+from app.utils.notifications import notify, EVENT_HR
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -32,7 +33,7 @@ async def get_employee(emp_id: str, db = Depends(get_database)):
     return employee
 
 @router.post("/", response_model=EmployeeResponse, dependencies=[Depends(RBACPermission("HRMS", "edit"))])
-async def create_employee(employee: EmployeeCreate, db = Depends(get_database)):
+async def create_employee(employee: EmployeeCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     import re
     from datetime import datetime as dt
     employee_dict = employee.dict()
@@ -111,6 +112,19 @@ async def create_employee(employee: EmployeeCreate, db = Depends(get_database)):
     result = await db.employees.insert_one(employee_dict)
     employee_dict["_id"] = str(result.inserted_id)
     await log_activity(db, "system", "Admin", "Create Employee", f"New employee {employee_dict.get('fullName', employee_dict.get('employeeCode'))} added", "success")
+
+    # T2.3 — Notify HRMS editors about new employee
+    try:
+        creator = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "HRMS", "edit")
+        await notify(db, creator, recipients, EVENT_HR,
+            "New Employee Added",
+            f"Employee {employee_dict.get('fullName', '')} ({employee_dict.get('employeeCode', '')}) added by {creator}.",
+            entity_type="employee", entity_id=str(result.inserted_id),
+            priority="normal")
+    except Exception:
+        pass
+
     return employee_dict
 
 @router.put("/{emp_id}", response_model=EmployeeResponse, dependencies=[Depends(RBACPermission("HRMS", "edit"))])
@@ -122,13 +136,13 @@ async def update_employee(emp_id: str, employee: EmployeeUpdate, db = Depends(ge
         from app.utils.auth import get_password_hash
         employee_dict["hashed_password"] = get_password_hash(employee_dict.pop("password"))
 
-    # C13 Fix: Prevent role escalation - only Super Admin can assign admin roles
+    # Prevent privilege escalation — only admin-class users can assign admin-class
+    # roles to others. is_admin_role() is whitespace/case tolerant via role_in().
     if "roles" in employee_dict:
-        admin_roles = {"Super Admin", "Administrator"}
-        if any(r in admin_roles for r in employee_dict.get("roles", [])):
-            if current_user.get("role") not in ["Super Admin"]:
-                raise HTTPException(status_code=403, detail="Only Super Admin can assign admin roles")
-    
+        if any(is_admin_role(r) for r in employee_dict.get("roles", [])):
+            if not is_admin_role(current_user.get("role")):
+                raise HTTPException(status_code=403, detail="Only admin-class users can assign admin roles")
+
     # Update siteName if siteId is changed
     if "siteId" in employee_dict:
         if employee_dict["siteId"]:
@@ -138,17 +152,46 @@ async def update_employee(emp_id: str, employee: EmployeeUpdate, db = Depends(ge
         else:
             employee_dict["siteName"] = None
 
+    # T2.4 — Read existing employee BEFORE update to compare old vs new
+    existing_emp = await db.employees.find_one({"_id": ObjectId(emp_id)})
+    if not existing_emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
     result = await db.employees.update_one(
         {"_id": ObjectId(emp_id)},
         {"$set": employee_dict}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Employee not found")
-        
+
     updated = await db.employees.find_one({"_id": ObjectId(emp_id)})
     updated["_id"] = str(updated["_id"])
     await log_activity(db, emp_id, updated.get("username", "admin"), "Update Employee", f"Employee {updated.get('fullName', emp_id)} profile updated", "info")
+
+    # T2.4 — Notify only on significant changes (roles or status)
+    try:
+        old_roles = set(existing_emp.get("roles", []) or [])
+        new_roles = set(employee_dict.get("roles", old_roles))
+        old_status = existing_emp.get("status", "")
+        new_status = employee_dict.get("status", old_status)
+        significant_change = (old_roles != new_roles) or (old_status != new_status)
+        if significant_change:
+            actor = current_user.get("full_name") or current_user.get("username", "")
+            recipients = await get_users_with_permission(db, "HRMS", "edit")
+            change_summary = []
+            if old_roles != new_roles:
+                change_summary.append(f"roles: {', '.join(old_roles)} -> {', '.join(new_roles)}")
+            if old_status != new_status:
+                change_summary.append(f"status: {old_status} -> {new_status}")
+            await notify(db, actor, recipients, EVENT_HR,
+                "Employee Updated",
+                f"Employee {existing_emp.get('fullName', '')} updated by {actor}. " + "; ".join(change_summary),
+                entity_type="employee", entity_id=emp_id,
+                priority="high")
+    except Exception:
+        pass
+
     return updated
 
 @router.delete("/{emp_id}", dependencies=[Depends(RBACPermission("HRMS", "delete"))])
@@ -159,11 +202,12 @@ async def delete_employee(emp_id: str, db = Depends(get_database), current_user:
     emp = await db.employees.find_one({"_id": ObjectId(emp_id)})
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
-    # C13 Fix: Prevent non-Super Admin from deleting admin-level users
+    # Prevent privilege escalation — only admin-class users can delete other
+    # admin-class accounts. is_admin_role() is whitespace/case tolerant.
     emp_roles = emp.get("roles", [])
-    if any(r in ["Super Admin", "Administrator"] for r in emp_roles):
-        if current_user.get("role") not in ["Super Admin"]:
-            raise HTTPException(status_code=403, detail="Only Super Admin can delete admin accounts")
+    if any(is_admin_role(r) for r in emp_roles):
+        if not is_admin_role(current_user.get("role")):
+            raise HTTPException(status_code=403, detail="Only admin-class users can delete admin accounts")
     # Check if employee is assigned as engineer/coordinator on active projects
     emp_code = emp.get("employeeCode") or emp.get("username", "")
     active_assignments = await db.projects.count_documents({

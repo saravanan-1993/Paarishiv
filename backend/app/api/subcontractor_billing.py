@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from app.utils.auth import get_current_user
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission
+from app.utils.rbac import RBACPermission, require_sub_tab, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_APPROVAL, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/subcontractor-billing", tags=["subcontractor-billing"])
@@ -348,8 +348,9 @@ async def submit_advance(advance_id: str, current_user: dict = Depends(get_curre
 
     submitter = current_user.get("full_name") or current_user.get("username", "")
     try:
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
         await notify(
-            db, submitter, ["Administrator", "General Manager"], EVENT_APPROVAL,
+            db, submitter, recipients, EVENT_APPROVAL,
             "SC Advance Pending Approval",
             f"Advance {adv.get('advance_no')} of Rs.{adv.get('amount', 0):,.0f} for {adv.get('contractor_name')} needs approval.",
             entity_type="subcontractor_advance", entity_id=advance_id,
@@ -369,11 +370,8 @@ async def submit_advance(advance_id: str, current_user: dict = Depends(get_curre
 
 @router.put("/advances/{advance_id}/approve")
 async def approve_advance(advance_id: str, current_user: dict = Depends(get_current_user)):
-    """Admin/GM approves an advance — creates the expense entry on approval."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can approve advances")
+    """Anyone with Approvals → SC Advances access can approve — creates expense entry."""
+    await require_sub_tab(db, current_user, "Approvals", "SC Advances")
 
     if not ObjectId.is_valid(advance_id):
         raise HTTPException(status_code=400, detail="Invalid advance ID")
@@ -419,8 +417,9 @@ async def approve_advance(advance_id: str, current_user: dict = Depends(get_curr
     await db.expenses.insert_one(expense_doc)
 
     try:
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
         await notify(
-            db, approver, ["Accountant"], EVENT_APPROVAL,
+            db, approver, recipients, EVENT_APPROVAL,
             "SC Advance Approved",
             f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} (Rs.{adv.get('amount', 0):,.0f}) approved by {approver}.",
             entity_type="subcontractor_advance", entity_id=advance_id,
@@ -441,13 +440,10 @@ async def approve_advance(advance_id: str, current_user: dict = Depends(get_curr
 @router.post("/advances/sync-expenses")
 async def sync_advance_expenses(current_user: dict = Depends(get_current_user)):
     """One-time sync: ensure every Approved advance has a matching expense doc
-    with project + project_id + description filled in. Admin/GM only.
-    Idempotent — safe to run repeatedly.
+    with project + project_id + description filled in. Requires Approvals → SC
+    Advances access. Idempotent — safe to run repeatedly.
     """
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can run sync")
+    await require_sub_tab(db, current_user, "Approvals", "SC Advances")
 
     approved_advances = await db.subcontractor_advances.find(
         {"approval_status": "Approved"}
@@ -523,11 +519,8 @@ async def reject_advance(
     body: dict = Body(default={}),
     current_user: dict = Depends(get_current_user)
 ):
-    """Admin/GM rejects an advance."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can reject advances")
+    """Anyone with Approvals → SC Advances access can reject an advance."""
+    await require_sub_tab(db, current_user, "Approvals", "SC Advances")
 
     if not ObjectId.is_valid(advance_id):
         raise HTTPException(status_code=400, detail="Invalid advance ID")
@@ -545,8 +538,9 @@ async def reject_advance(
 
     try:
         rejector = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
         await notify(
-            db, rejector, ["Accountant"], EVENT_APPROVAL,
+            db, rejector, recipients, EVENT_APPROVAL,
             "SC Advance Rejected",
             f"Advance {adv.get('advance_no')} for {adv.get('contractor_name')} rejected. Reason: {reason or 'No reason given'}",
             entity_type="subcontractor_advance", entity_id=advance_id,
@@ -858,8 +852,9 @@ async def submit_bill(bill_id: str, current_user: dict = Depends(get_current_use
 
     try:
         submitter = current_user.get("full_name") or current_user.get("username", "")
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
         await notify(
-            db, submitter, ["Administrator", "General Manager"], EVENT_APPROVAL,
+            db, submitter, recipients, EVENT_APPROVAL,
             "SC Bill Pending Approval",
             f"Subcontractor bill {bill.get('bill_no')} for {bill.get('contractor_name')} (Rs.{bill.get('payable_amount', 0):,.0f}) needs approval.",
             entity_type="subcontractor_bill", entity_id=bill_id,
@@ -876,11 +871,8 @@ async def submit_bill(bill_id: str, current_user: dict = Depends(get_current_use
 
 @router.put("/{bill_id}/approve")
 async def approve_bill(bill_id: str, current_user: dict = Depends(get_current_user)):
-    """Admin approves subcontractor bill."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can approve subcontractor bills")
+    """Anyone with Approvals → SC Bills access can approve a subcontractor bill."""
+    await require_sub_tab(db, current_user, "Approvals", "SC Bills")
 
     if not ObjectId.is_valid(bill_id):
         raise HTTPException(status_code=400, detail="Invalid bill ID")
@@ -975,11 +967,8 @@ async def reject_bill(
     body: dict = Body(default={}),
     current_user: dict = Depends(get_current_user)
 ):
-    """Admin rejects subcontractor bill."""
-    allowed_roles = ["super admin", "administrator", "general manager", "manager", "managing director"]
-    user_role = (current_user.get("role") or "").strip().lower()
-    if user_role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Only Admin/GM can reject subcontractor bills")
+    """Anyone with Approvals → SC Bills access can reject a subcontractor bill."""
+    await require_sub_tab(db, current_user, "Approvals", "SC Bills")
 
     if not ObjectId.is_valid(bill_id):
         raise HTTPException(status_code=400, detail="Invalid bill ID")

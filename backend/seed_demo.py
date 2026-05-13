@@ -14,44 +14,55 @@ async def seed():
     client = AsyncIOMotorClient(os.getenv("MONGODB_URL"))
     db = client[os.getenv("DATABASE_NAME", "civil_erp")]
 
-    # 1. Seed roles
+    # 1. Seed roles — pull sub-tab lists from the canonical SUB_TABS map so
+    # every demo role grants exactly the sub-tab keys the backend RBAC layer
+    # expects. Avoids drift between seed and code.
+    from app.api.roles import SUB_TABS
+
+    APPROVALS_ALL = SUB_TABS['Approvals']
+
     roles_doc = {
         "_id": "global_roles",
         "roles": [
             {"name": "Administrator", "permissions": [
-                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "HRMS", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Inventory", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Fleet Management", "actions": {"view": True, "edit": True, "delete": True}},
+                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Projects']},
+                {"name": "HRMS", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['HRMS']},
+                {"name": "Inventory Management", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Inventory Management']},
+                {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Accounts']},
+                {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Procurement']},
+                {"name": "Fleet Management", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Fleet Management']},
                 {"name": "User Management", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Settings", "actions": {"view": True, "edit": True, "delete": True}},
+                {"name": "Settings", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Settings']},
                 {"name": "Reports", "actions": {"view": True, "edit": True, "delete": True}},
                 {"name": "Chat", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": True}},
+                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": APPROVALS_ALL},
             ]},
             {"name": "Site Engineer", "permissions": [
-                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": False}},
+                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": False}, "subTabs": SUB_TABS['Projects']},
                 {"name": "HRMS", "actions": {"view": True, "edit": False, "delete": False}},
-                {"name": "Inventory", "actions": {"view": True, "edit": True, "delete": False}},
+                {"name": "Inventory Management", "actions": {"view": True, "edit": True, "delete": False}, "subTabs": ['Materials']},
                 {"name": "Chat", "actions": {"view": True, "edit": True, "delete": False}},
             ]},
             {"name": "Project Coordinator", "permissions": [
-                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}},
+                {"name": "Projects", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Projects']},
                 {"name": "HRMS", "actions": {"view": True, "edit": True, "delete": False}},
-                {"name": "Inventory", "actions": {"view": True, "edit": True, "delete": False}},
-                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": False}},
+                {"name": "Inventory Management", "actions": {"view": True, "edit": True, "delete": False}, "subTabs": SUB_TABS['Inventory Management']},
+                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": False},
+                 "subTabs": ['DPR', 'Materials', 'Manpower', 'Transfers', 'Trip Requests']},
                 {"name": "Chat", "actions": {"view": True, "edit": True, "delete": False}},
             ]},
             {"name": "Purchase Officer", "permissions": [
-                {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Inventory", "actions": {"view": True, "edit": True, "delete": False}},
+                {"name": "Procurement", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Procurement']},
+                {"name": "Inventory Management", "actions": {"view": True, "edit": True, "delete": False}, "subTabs": SUB_TABS['Inventory Management']},
+                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": False},
+                 "subTabs": ['Purchase Orders', 'Materials']},
                 {"name": "Chat", "actions": {"view": True, "edit": True, "delete": False}},
             ]},
             {"name": "Accountant", "permissions": [
-                {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}},
-                {"name": "Procurement", "actions": {"view": True, "edit": False, "delete": False}},
+                {"name": "Accounts", "actions": {"view": True, "edit": True, "delete": True}, "subTabs": SUB_TABS['Accounts']},
+                {"name": "Procurement", "actions": {"view": True, "edit": False, "delete": False}, "subTabs": SUB_TABS['Procurement']},
+                {"name": "Approvals", "actions": {"view": True, "edit": True, "delete": False},
+                 "subTabs": ['Expenses', 'SC Bills', 'SC Advances', 'Labour Pay', 'Vendor Payments']},
                 {"name": "Chat", "actions": {"view": True, "edit": True, "delete": False}},
             ]},
         ]
