@@ -34,9 +34,21 @@ const PromptModal = ({
 
     const handleSubmit = (e) => {
         e?.preventDefault?.();
+        e?.stopPropagation?.();
         if (required && !value.trim()) return;
         onSubmit(value);
         onClose();
+    };
+
+    // Submit on Enter (single-line) or Ctrl/Cmd+Enter (multi-line).
+    // Implemented at the input level so the wrapping element can stay a <div>
+    // and avoid nested-<form> problems when this modal is opened from inside
+    // another form (e.g. AddEmployeeModal).
+    const handleKeyDown = (e) => {
+        if (e.key !== 'Enter') return;
+        if (multiline && !(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        handleSubmit(e);
     };
 
     return (
@@ -53,9 +65,8 @@ const PromptModal = ({
                 animation: 'pm-fade 150ms ease-out'
             }}
         >
-            <form
+            <div
                 onClick={(e) => e.stopPropagation()}
-                onSubmit={handleSubmit}
                 role="dialog"
                 aria-modal="true"
                 style={{
@@ -90,6 +101,7 @@ const PromptModal = ({
                         <textarea
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             placeholder={placeholder}
                             rows={4}
                             autoFocus
@@ -109,6 +121,7 @@ const PromptModal = ({
                             type="text"
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             placeholder={placeholder}
                             autoFocus
                             style={{
@@ -135,7 +148,8 @@ const PromptModal = ({
                         {cancelText}
                     </button>
                     <button
-                        type="submit"
+                        type="button"
+                        onClick={handleSubmit}
                         disabled={required && !value.trim()}
                         style={{
                             padding: '8px 16px', borderRadius: '8px', fontWeight: 600, fontSize: '13px',
@@ -153,7 +167,7 @@ const PromptModal = ({
                     @keyframes pm-fade { from { opacity: 0; } to { opacity: 1; } }
                     @keyframes pm-pop  { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
                 `}</style>
-            </form>
+            </div>
         </div>
     );
 };
