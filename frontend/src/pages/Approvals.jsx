@@ -759,6 +759,8 @@ const Approvals = () => {
     const getStatusBadge = (status) => {
         const map = {
             'Pending': { bg: '#fef3c7', color: '#b45309' },
+            // Legacy intermediate statuses — kept for backward-compat colour display
+            // of any DPRs still in these states. New DPRs go straight to Approved.
             'Coordinator Approved': { bg: '#dbeafe', color: '#1d4ed8' },
             'Dept Approved': { bg: '#e0e7ff', color: '#4338ca' },
             'Approved': { bg: '#dcfce7', color: '#166534' },
@@ -1015,6 +1017,9 @@ const Approvals = () => {
     );
 
     const renderTripRequestCard = (item) => {
+        // Legacy intermediate statuses ('Coordinator Approved', 'PO Approved') —
+        // kept for backward-compat colour display of any trip requests still in
+        // those states. New trip requests are single-stage Pending → Approved.
         const statusColor = {
             'Pending': { bg: '#FEF3C7', color: '#92400E' },
             'Coordinator Approved': { bg: '#DBEAFE', color: '#1E40AF' },

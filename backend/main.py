@@ -71,6 +71,7 @@ async def startup_event():
     # access for new entity types (DPR, SC Advances, Stock Returns, Transfers).
     try:
         from app.api.roles import SUB_TABS
+        from app.utils.rbac import is_admin_role
         from database import db
         roles_doc = await db.roles.find_one({"_id": "global_roles"})
         if roles_doc and isinstance(roles_doc.get("roles"), list):
@@ -89,11 +90,13 @@ async def startup_event():
                     existing = p.get("subTabs")
                     if not isinstance(existing, list):
                         continue
-                    # Backfill ONLY for the Administrator role (which should
+                    # Backfill ONLY for admin-class roles (which should
                     # always have everything). For other roles we don't touch
                     # what the admin configured — they keep exactly what they
                     # granted, but new sub-tab keys can be added via the UI.
-                    if role.get("name") == "Administrator":
+                    # Use is_admin_role so Super Admin / casing variants are
+                    # also covered, not just literal "Administrator".
+                    if is_admin_role(role.get("name", "")):
                         merged = sorted(set(existing) | set(expected), key=lambda x: expected.index(x) if x in expected else 999)
                         if merged != existing:
                             p["subTabs"] = merged

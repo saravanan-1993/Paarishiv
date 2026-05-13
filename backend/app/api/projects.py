@@ -721,11 +721,7 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="DPR or Project not found")
 
-    if new_status == "Coordinator Approved":
-        await trigger_workflow_event(project_id, "dpr_verified", current_user, db, f"DPR {dpr_id} approved by coordinator")
-    elif new_status == "Dept Approved":
-        await trigger_workflow_event(project_id, "dpr_dept_approved", current_user, db, f"DPR {dpr_id} department approved")
-    elif new_status == "Approved":
+    if new_status == "Approved":
         await trigger_workflow_event(project_id, "dpr_approved", current_user, db, f"DPR {dpr_id} final approved")
         # Deduct used materials from project inventory on final approval
         try:

@@ -697,10 +697,16 @@ def _transfer_helper(r):
 
 @router.get("/transfers/pending")
 async def get_pending_transfers(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Get all transfer requests — filtered by assigned projects for coordinators."""
+    """Get all transfer requests — filtered by assigned projects for coordinator-class approvers."""
     query = {}
-    xf_role_norm = (current_user.get("role") or "").lower().replace(" ", "")
-    if "coordinator" in xf_role_norm and xf_role_norm not in ("superadmin", "administrator"):
+    # Dynamic detection — whoever has Inventory Management → Transfers sub-tab access
+    # AND is not admin-class is treated as a coordinator-level approver (scoped to
+    # their assigned projects). Admin-class sees everything (no filter).
+    is_coordinator_approver = (
+        await has_sub_tab_access(db, current_user, "Inventory Management", "Transfers")
+        and not is_admin_role(current_user.get("role", ""))
+    )
+    if is_coordinator_approver:
         emp_username = current_user.get("username")
         emp_id = current_user.get("id") or current_user.get("_id", "")
         or_conditions = [

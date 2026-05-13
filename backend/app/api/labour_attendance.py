@@ -345,7 +345,8 @@ async def submit_for_approval(
     submitter = current_user.get("full_name") or current_user.get("username", "")
     try:
         total_count = sum(c.get("count", 0) for c in doc.get("categories", []))
-        await notify(db, submitter, ["Project Coordinator", "Administrator"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
+        await notify(db, submitter, recipients, EVENT_APPROVAL,
             "Labour Attendance Submitted",
             f"Labour attendance for {doc.get('project_name')} ({doc.get('date')}) submitted by {submitter}. {total_count} workers. Awaiting approval.",
             entity_type="labour_attendance", entity_id=id,
@@ -468,7 +469,9 @@ async def request_payment_approval(
 
     # Notify Admin
     try:
-        await notify(db, requester, ["Administrator", "General Manager"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Approvals", "edit")
+        recipients = list({*recipients, requester}) if requester else recipients
+        await notify(db, requester, recipients, EVENT_APPROVAL,
             "Labour Payment Approval Required",
             f"Payment of Rs.{day_cost:,.0f} requested for {doc.get('project_name')} ({doc.get('date')}). {doc.get('total_count', sum(c.get('count',0) for c in doc.get('categories',[])))} workers. Awaiting approval.",
             entity_type="labour_payment", entity_id=id,
@@ -510,7 +513,8 @@ async def approve_payment(
 
     # Notify Accountant
     try:
-        await notify(db, approver, ["Accountant"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        await notify(db, approver, recipients, EVENT_APPROVAL,
             "Labour Payment Approved",
             f"Payment for {doc.get('project_name')} ({doc.get('date')}) approved by {approver}. You can now process the payment.",
             entity_type="labour_payment", entity_id=id,
@@ -551,7 +555,8 @@ async def reject_payment(
     )
 
     try:
-        await notify(db, rejector, ["Accountant"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        await notify(db, rejector, recipients, EVENT_APPROVAL,
             "Labour Payment Rejected",
             f"Payment for {doc.get('project_name')} ({doc.get('date')}) rejected by {rejector}." + (f" Reason: {reason}" if reason else ""),
             entity_type="labour_payment", entity_id=id,

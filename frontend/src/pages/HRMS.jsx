@@ -11,7 +11,7 @@ import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI, settingsAPI } from '../
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { hasPermission, hasSubTabAccess, getRoles, saveRoles, fetchAndSyncRoles } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, getRoles, saveRoles, fetchAndSyncRoles, isAdminRole, isEngineerRole } from '../utils/rbac';
 import AddEmployeeModal from '../components/AddEmployeeModal';
 import EmployeeDetailsModal from '../components/EmployeeDetailsModal';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
@@ -187,7 +187,10 @@ const HRMS = () => {
     };
 
     const handleDeleteRole = async (roleName) => {
-        if (roleName === 'Administrator' || roleName === 'Super Admin') { toast.warning(`Cannot delete ${roleName} role`); return; }
+        if (isAdminRole(roleName)) {
+            toast.warning(`Cannot delete ${roleName} role`);
+            return;
+        }
         if (await confirm({ title: 'Delete Role', message: `Are you sure you want to delete the ${roleName} role?`, confirmText: 'Delete', danger: true })) {
             const updated = umRoles.filter(r => r.name !== roleName);
             setUmRoles(updated);
@@ -1885,8 +1888,8 @@ const HRMS = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                                     {[
                                         { label: 'Total Users', value: umUsers.length, icon: Shield, color: '#3B82F6' },
-                                        { label: 'Super Admins', value: umUsers.filter(u => u.role === 'Super Admin' || u.role === 'Admin' || u.role === 'Administrator').length, icon: ShieldCheck, color: '#10B981' },
-                                        { label: 'Site Engineers', value: umUsers.filter(u => u.role.includes('Engineer')).length, icon: Shield, color: '#F59E0B' },
+                                        { label: 'Super Admins', value: umUsers.filter(u => isAdminRole(u.role)).length, icon: ShieldCheck, color: '#10B981' },
+                                        { label: 'Site Engineers', value: umUsers.filter(u => isEngineerRole(u.role)).length, icon: Shield, color: '#F59E0B' },
                                         { label: 'Active Now', value: umUsers.filter(u => u.status === 'Active').length, icon: CheckCircle, color: '#8B5CF6' },
                                     ].map((stat, i) => (
                                         <div key={i} className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px' }}>
@@ -1993,7 +1996,7 @@ const HRMS = () => {
                                                 {canEditHRMS && (
                                                 <div style={{ display: 'flex', gap: '8px', marginLeft: '12px', flexShrink: 0 }}>
                                                     <button onClick={() => { setEditingRole(role); setIsRoleModalOpen(true); }} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#0284c7' }}><Edit3 size={14} /> Edit</button>
-                                                    {canDeleteHRMS && role.name !== 'Administrator' && role.name !== 'Super Admin' && (
+                                                    {canDeleteHRMS && !isAdminRole(role.name) && (
                                                         <button onClick={() => handleDeleteRole(role.name)} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: '600', color: '#dc2626' }}><Trash2 size={14} /> Delete</button>
                                                     )}
                                                 </div>

@@ -16,20 +16,27 @@ def now_ist_iso():
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
+# WORKFLOW_STAGES — seed data for workflow_stage_master collection.
+#
+# The `responsible_role_label` field is METADATA/DISPLAY ONLY. It is a hint to
+# the UI showing which role typically performs each stage. It is NOT used for
+# access control. To check whether the current user may advance a stage,
+# call RBACPermission(...) or has_sub_tab_access(...). Do NOT introduce
+# string comparisons against these label values.
 WORKFLOW_STAGES = [
-    {"order": 1, "stage": "Project Created", "role": "Administrator", "auto_trigger": "project_created"},
-    {"order": 2, "stage": "Site Engineer Assigned", "role": "Administrator", "auto_trigger": "engineer_assigned"},
-    {"order": 3, "stage": "DPR Submitted", "role": "Site Engineer", "auto_trigger": "dpr_submitted"},
-    {"order": 4, "stage": "DPR Verified by Project Coordinator", "role": "Project Coordinator", "auto_trigger": "dpr_verified"},
-    {"order": 5, "stage": "Material Consolidated", "role": "Site Engineer", "auto_trigger": "material_consolidated"},
-    {"order": 6, "stage": "Sent to Purchase Officer", "role": "Site Engineer", "auto_trigger": "sent_to_po"},
-    {"order": 7, "stage": "PO Created", "role": "Purchase Officer", "auto_trigger": "po_created"},
-    {"order": 8, "stage": "Vendor Dispatched", "role": "Vendor", "auto_trigger": "vendor_dispatched"},
-    {"order": 9, "stage": "GRN Updated", "role": "Inventory Manager", "auto_trigger": "grn_updated"},
-    {"order": 10, "stage": "Accounts Purchase Entry", "role": "Accountant", "auto_trigger": "accounts_entry"},
-    {"order": 11, "stage": "Vendor Payment Settled", "role": "Accountant", "auto_trigger": "payment_settled"},
-    {"order": 12, "stage": "Project Ongoing", "role": "Site Engineer", "auto_trigger": "project_ongoing"},
-    {"order": 13, "stage": "Project Completed", "role": "Administrator", "auto_trigger": "project_completed"}
+    {"order": 1, "stage": "Project Created", "responsible_role_label": "Administrator", "auto_trigger": "project_created"},
+    {"order": 2, "stage": "Site Engineer Assigned", "responsible_role_label": "Administrator", "auto_trigger": "engineer_assigned"},
+    {"order": 3, "stage": "DPR Submitted", "responsible_role_label": "Site Engineer", "auto_trigger": "dpr_submitted"},
+    {"order": 4, "stage": "DPR Verified by Project Coordinator", "responsible_role_label": "Project Coordinator", "auto_trigger": "dpr_verified"},
+    {"order": 5, "stage": "Material Consolidated", "responsible_role_label": "Site Engineer", "auto_trigger": "material_consolidated"},
+    {"order": 6, "stage": "Sent to Purchase Officer", "responsible_role_label": "Site Engineer", "auto_trigger": "sent_to_po"},
+    {"order": 7, "stage": "PO Created", "responsible_role_label": "Purchase Officer", "auto_trigger": "po_created"},
+    {"order": 8, "stage": "Vendor Dispatched", "responsible_role_label": "Vendor", "auto_trigger": "vendor_dispatched"},
+    {"order": 9, "stage": "GRN Updated", "responsible_role_label": "Inventory Manager", "auto_trigger": "grn_updated"},
+    {"order": 10, "stage": "Accounts Purchase Entry", "responsible_role_label": "Accountant", "auto_trigger": "accounts_entry"},
+    {"order": 11, "stage": "Vendor Payment Settled", "responsible_role_label": "Accountant", "auto_trigger": "payment_settled"},
+    {"order": 12, "stage": "Project Ongoing", "responsible_role_label": "Site Engineer", "auto_trigger": "project_ongoing"},
+    {"order": 13, "stage": "Project Completed", "responsible_role_label": "Administrator", "auto_trigger": "project_completed"}
 ]
 
 async def init_workflow_master(db):
@@ -47,7 +54,7 @@ async def initialize_project_workflow(project_id: str, db):
             "stage_name": s["stage"],
             "order": s["order"],
             "status": "Pending",
-            "responsible_role": s["role"],
+            "responsible_role": s["responsible_role_label"],
             "timestamp": None,
             "remarks": ""
         })

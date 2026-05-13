@@ -4,7 +4,7 @@ import { FileText, Search, Filter, Loader2, Eye, CheckCircle, XCircle, Clock, Ma
 import { projectAPI, inventoryAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { hasPermission } from '../utils/rbac';
+import { hasPermission, isAdminRole } from '../utils/rbac';
 import DPRViewModal from '../components/DPRViewModal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -16,8 +16,7 @@ const PAGE_SIZE = 15;
 
 const SiteReports = () => {
     const { user } = useAuth();
-    const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
-    const isAdminRole = ['administrator', 'superadmin', 'purchaseofficer'].includes(userRoleNorm);
+    const canSeeAllSites = isAdminRole(user?.role) || hasPermission(user, 'Purchase Orders', 'view');
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -315,7 +314,7 @@ const SiteReports = () => {
                         <div style={{ flex: '1 1 150px' }}>
                             <CustomSelect
                                 label="Project Filter"
-                                options={[{ value: 'all', label: isAdminRole ? 'All Projects' : 'All My Projects' }, ...projects.map(p => ({ value: p.name, label: p.name }))]}
+                                options={[{ value: 'all', label: canSeeAllSites ? 'All Projects' : 'All My Projects' }, ...projects.map(p => ({ value: p.name, label: p.name }))]}
                                 value={selectedProject} onChange={setSelectedProject} icon={MapPin}
                             />
                         </div>
@@ -376,7 +375,7 @@ const SiteReports = () => {
                                             paginatedDPRs.map((dpr, i) => (
                                                 <tr key={i}>
                                                     <td>{dpr.date}</td><td style={{ fontWeight: '700', color: 'var(--primary)' }}>{dpr.project_name}</td><td>{dpr.submitted_by}</td>
-                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Reviewed' ? 'badge-info' : dpr.status === 'Coordinator Approved' || dpr.status === 'Dept Approved' ? 'badge-info' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{dpr.status}</span></td>
+                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Rejected' ? 'badge-danger' : ['Reviewed', 'Coordinator Approved', 'Dept Approved'].includes(dpr.status) ? 'badge-info' : 'badge-warning'}`}>{dpr.status}</span></td>
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
@@ -495,8 +494,11 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
                                                             {xf.status !== 'Pending' && (
-                                                                <span className={`badge ${xf.status === 'Completed' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : xf.status === 'Coordinator Approved' ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
-                                                                    {xf.status === 'Coordinator Approved' ? 'Awaiting Admin' : xf.status}
+                                                                // Single-stage transfer approval. New records use 'Approved'
+                                                                // (awaiting accountant execution). 'Coordinator Approved'
+                                                                // kept for backward-compat display of legacy records.
+                                                                <span className={`badge ${xf.status === 'Completed' ? 'badge-success' : xf.status === 'Rejected' ? 'badge-danger' : (xf.status === 'Approved' || xf.status === 'Coordinator Approved') ? 'badge-info' : 'badge-warning'}`} style={{ fontSize: '11px' }}>
+                                                                    {xf.status === 'Approved' || xf.status === 'Coordinator Approved' ? 'Awaiting Execution' : xf.status}
                                                                 </span>
                                                             )}
                                                             <div style={{ display: 'flex', gap: '8px' }}>

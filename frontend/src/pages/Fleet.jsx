@@ -103,6 +103,8 @@ const Fleet = () => {
             setVehicles(vehiclesRes.data);
             setTrips(tripsRes.data);
             setProjects(projectsRes.data);
+            // 'Driver' is a canonical employment role (employee category), not an RBAC
+            // permission. Vehicles need an assigned driver-class employee.
             setDrivers(employeesRes.data.filter(e => e.roles?.includes('Driver') || e.role === 'Driver'));
             setTripRequests(tripReqRes.data || []);
         } catch (err) {
@@ -570,12 +572,13 @@ const Fleet = () => {
     };
 
     const renderTripRequests = () => {
-        const pendingApproval = tripRequests.filter(r => ['Pending', 'Coordinator Approved', 'PO Approved'].includes(r.status));
+        const pendingApproval = tripRequests.filter(r => r.status === 'Pending');
         const approved = tripRequests.filter(r => r.status === 'Approved');
         const assigned = tripRequests.filter(r => r.status === 'Assigned');
         const rejected = tripRequests.filter(r => r.status === 'Rejected');
 
         const statusBadge = (status) => {
+            // Intermediate statuses are legacy — kept for backward-compat display only
             const map = {
                 'Pending': { bg: '#FEF3C7', color: '#92400E' },
                 'Coordinator Approved': { bg: '#DBEAFE', color: '#1E40AF' },

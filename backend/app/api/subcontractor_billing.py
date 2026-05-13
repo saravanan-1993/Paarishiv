@@ -947,7 +947,8 @@ async def approve_bill(bill_id: str, current_user: dict = Depends(get_current_us
     )
 
     try:
-        await notify(db, approver, ["Accountant"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        await notify(db, approver, recipients, EVENT_APPROVAL,
             "SC Bill Approved",
             f"Bill {bill.get('bill_no')} for {bill.get('contractor_name')} approved by {approver}. Ready for payment.",
             entity_type="subcontractor_bill", entity_id=bill_id,
@@ -988,7 +989,8 @@ async def reject_bill(
 
     try:
         rejector = current_user.get("full_name") or current_user.get("username", "")
-        await notify(db, rejector, ["Accountant"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        await notify(db, rejector, recipients, EVENT_APPROVAL,
             "SC Bill Rejected",
             f"Bill {bill.get('bill_no')} for {bill.get('contractor_name')} rejected. Reason: {reason or 'No reason given'}",
             entity_type="subcontractor_bill", entity_id=bill_id,
@@ -1079,7 +1081,8 @@ async def record_payment(
 
     if new_status == "Paid":
         try:
-            await notify(db, payment_entry["recorded_by"], ["Administrator", "General Manager"], EVENT_WORKFLOW,
+            recipients = await get_users_with_permission(db, "Approvals", "edit")
+            await notify(db, payment_entry["recorded_by"], recipients, EVENT_WORKFLOW,
                 "SC Bill Fully Paid",
                 f"Bill {bill.get('bill_no')} for {bill.get('contractor_name')} is fully paid (Rs.{new_paid:,.0f}).",
                 entity_type="subcontractor_bill", entity_id=bill_id,

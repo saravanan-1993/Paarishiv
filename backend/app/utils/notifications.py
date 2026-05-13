@@ -300,9 +300,15 @@ def _generate_approval_email_html(title: str, content: str, entity_type: str = N
 async def _send_admin_email(db, title: str, content: str, entity_type: str = None, project_name: str = None):
     """Send email notification to all Admin users for approval requests."""
     try:
-        admin_roles = ["Super Admin", "Administrator", "Admin", "Managing Director"]
+        # Dynamic recipient resolution — whoever has Approvals → edit permission
+        # is treated as an approval-class admin. No hardcoded role names.
+        from app.utils.rbac import get_users_with_permission
+        admin_usernames = await get_users_with_permission(db, "Approvals", "edit")
+        if not admin_usernames:
+            return
         admins = await db.employees.find(
-            {"role": {"$in": admin_roles}, "status": {"$ne": "Inactive"}},
+            {"$or": [{"username": {"$in": admin_usernames}}, {"employeeCode": {"$in": admin_usernames}}],
+             "status": {"$ne": "Inactive"}},
             {"email": 1, "fullName": 1}
         ).to_list(50)
 
