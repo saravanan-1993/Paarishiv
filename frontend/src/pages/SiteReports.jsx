@@ -380,56 +380,17 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
-                                                            {/* Bug 26 - Multi-stage DPR workflow: Pending → Coordinator Approved → Dept Approved → Approved */}
-                                                            {dpr.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
+                                                            {/* Single-stage DPR approval. Anyone with Approvals → DPR edit
+                                                                approves directly to "Approved". Legacy intermediate
+                                                                statuses (Reviewed / Coordinator Approved / Dept Approved)
+                                                                stay actionable so old records can still be finalised. */}
+                                                            {dpr.status !== 'Approved' && dpr.status !== 'Rejected' && hasPermission(user, 'Approvals', 'edit') && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, hasPermission(user, 'Approvals', 'edit') ? 'Coordinator Approved' : 'Reviewed')}
-                                                                        disabled={processingId === dpr.id}
-                                                                        title={hasPermission(user, 'Approvals', 'edit') ? 'Approve DPR' : 'Review DPR'}
-                                                                    >
-                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                                                                    </button>
-                                                                    <button
-                                                                        className="btn btn-outline btn-sm"
-                                                                        style={{ color: '#ef4444' }}
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
-                                                                        disabled={processingId === dpr.id}
-                                                                        title="Reject DPR"
-                                                                    >
-                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {dpr.status === 'Reviewed' && hasPermission(user, 'Site Reports', 'edit') && (
-                                                                <>
-                                                                    <button
-                                                                        className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Coordinator Approved')}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Approved')}
                                                                         disabled={processingId === dpr.id}
                                                                         title="Approve DPR"
-                                                                    >
-                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-                                                                    </button>
-                                                                    <button
-                                                                        className="btn btn-outline btn-sm"
-                                                                        style={{ color: '#ef4444' }}
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
-                                                                        disabled={processingId === dpr.id}
-                                                                        title="Reject DPR"
-                                                                    >
-                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {dpr.status === 'Coordinator Approved' && hasPermission(user, 'Approvals', 'edit') && (
-                                                                <>
-                                                                    <button
-                                                                        className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Dept Approved')}
-                                                                        disabled={processingId === dpr.id}
-                                                                        title="Dept Approve DPR"
                                                                     >
                                                                         {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                                                     </button>

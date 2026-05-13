@@ -1107,7 +1107,7 @@ const Approvals = () => {
                                 onClick={() => handleAction('trip_requests', item._id || item.id, 'approve')}
                                 style={{ padding: '8px 18px', fontSize: '12px' }}>
                                 {actionLoading === `${item._id || item.id}-approve` ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                                {item.status === 'Pending' ? ' Approve' : item.status === 'Coordinator Approved' ? ' PO Approve' : ' Final Approve'}
+                                {' Approve'}
                             </button>
                             <button className="btn btn-outline btn-sm" disabled={!!actionLoading}
                                 onClick={() => handleAction('trip_requests', item._id || item.id, 'reject')}
