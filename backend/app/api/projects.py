@@ -79,6 +79,8 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
     project_dict = project.model_dump(by_alias=True)
     if "_id" in project_dict and project_dict["_id"] is None:
         del project_dict["_id"]
+    if "name" in project_dict:
+        project_dict["name"] = project_dict["name"].strip()
     result = await db.projects.insert_one(project_dict)
     project_dict["_id"] = result.inserted_id
     

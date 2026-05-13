@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List, Optional
 from app.models.hrms import AttendanceBase, LeaveBase, PayrollBase
 from database import get_database
@@ -340,6 +340,48 @@ async def generate_payroll(month: str, db = Depends(get_database)):
         pass
 
     return {"message": f"Payroll generated for {len(employees)} employees", "count": len(employees)}
+
+
+@router.put("/payroll/process", dependencies=[Depends(RBACPermission("HRMS", "edit", "Payroll"))])
+async def process_individual_payroll(data: dict = Body(...), db=Depends(get_database), current_user=Depends(get_current_user)):
+    """Process payroll for a single employee with detailed salary breakdown."""
+    emp_id = data.get("employeeId")
+    month = data.get("month")
+    if not emp_id or not month:
+        raise HTTPException(status_code=400, detail="employeeId and month required")
+
+    record = {
+        "employeeId": emp_id,
+        "employeeName": data.get("employeeName", ""),
+        "employeeCode": data.get("employeeCode", ""),
+        "month": month,
+        "totalDays": data.get("totalDays", 0),
+        "presentDays": data.get("presentDays", 0),
+        "leaveDays": data.get("casualLeave", 0),
+        "lopDays": data.get("lopDays", 0),
+        "absentDays": data.get("absentDays", 0),
+        "basicSalary": data.get("basicSalary", 0),
+        "hra": data.get("hra", 0),
+        "grossEarnings": data.get("grossEarnings", 0),
+        "pfAmount": data.get("pfAmount", 0),
+        "ptAmount": data.get("ptAmount", 0),
+        "lopAmount": data.get("lopAmount", 0),
+        "advanceAmount": data.get("advanceAmount", 0),
+        "totalDeductions": data.get("totalDeductions", 0),
+        "netSalary": data.get("netSalary", 0),
+        "status": "Processed",
+        "processedAt": datetime.now().isoformat(),
+        "processedBy": current_user.get("full_name") or current_user.get("username", "")
+    }
+
+    await db.payroll.update_one(
+        {"employeeId": emp_id, "month": month},
+        {"$set": record},
+        upsert=True
+    )
+
+    return {"success": True, "message": f"Payroll processed for {record['employeeName']}"}
+
 
 # ── Master Data (Designations & Departments) ──────────────────────────────────
 

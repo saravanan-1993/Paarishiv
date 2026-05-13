@@ -169,10 +169,12 @@ const TaskStatusDropdown = ({ task, onStatusChange }) => {
 
 const DPRStatusDropdown = ({ dpr, onStatusChange }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const options = ['Pending', 'Reviewed', 'Approved', 'Rejected'];
+    const options = ['Pending', 'Reviewed', 'Coordinator Approved', 'Dept Approved', 'Approved', 'Rejected'];
 
     const getColors = (status) => {
         if (status === 'Approved') return { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0', dot: '#10B981' };
+        if (status === 'Coordinator Approved') return { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', dot: '#3B82F6' };
+        if (status === 'Dept Approved') return { bg: '#DBEAFE', text: '#1D4ED8', border: '#93C5FD', dot: '#3B82F6' };
         if (status === 'Reviewed') return { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE', dot: '#3B82F6' };
         if (status === 'Rejected') return { bg: '#FEF2F2', text: '#EF4444', border: '#FECACA', dot: '#EF4444' };
         return { bg: '#FFFBEB', text: '#D97706', border: '#FDE68A', dot: '#F59E0B' };

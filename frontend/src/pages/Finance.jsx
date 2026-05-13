@@ -1133,12 +1133,15 @@ const Finance = () => {
         // ── 6. EXPENSES / PAYMENTS (Money paid out) — Debit: cash out ──
         expenses.filter(e => matchesProject(e.project)).forEach(e => {
             const isSCAdvance = e.category === 'Subcontractor Advance';
-            // Show under Vendor/Expenses always; show SC Advances under any filter
-            // when a specific project is selected
-            if (!showVendor && !(isSCAdvance && showSCAdvancesAnyway)) return;
+            const isTransfer = e.category?.includes('Transfer');
+            // Show under Vendor/Expenses always; show SC Advances and Material Transfers
+            // under any filter when a specific project is selected
+            if (!showVendor && !(isSCAdvance && showSCAdvancesAnyway) && !(isTransfer && projectScoped)) return;
 
-            const entryParty = e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense');
-            if (!matchesParty(entryParty)) return;
+            const entryParty = isTransfer
+                ? (e.description?.match(/(?:Transfer (?:to|from)) (.+?) \(Ref/)?.[1] || e.project || 'Material Transfer')
+                : (e.payee || (e.grn_id ? (payables.find(p => p.id === e.grn_id)?.vendor || 'Vendor') : 'General Expense'));
+            if (!matchesParty(entryParty) && !(isTransfer && ledgerParty === 'All Parties')) return;
             const amount = parseFloat(e.amount) || 0;
             if (amount === 0) return; // Skip ₹0 pending entries
 
@@ -2271,7 +2274,7 @@ const Finance = () => {
                                     {ledgerType === 'Expenses' ? (
                                         <div>
                                             {(() => {
-                                                const expEntries = entries.filter(e => e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour');
+                                                const expEntries = entries.filter(e => e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour' || e.type === 'Transfer' || e.type === 'SC Advance');
                                                 if (expEntries.length === 0) return <div style={{ textAlign: 'center', padding: 40, color: '#64748B' }}>No expense entries found.</div>;
 
                                                 // Group by category
@@ -2279,14 +2282,16 @@ const Finance = () => {
                                                 expEntries.forEach(e => {
                                                     const cat = (e.particulars || '').includes('Labour') || e.type === 'Labour' ? 'Labour Wages'
                                                         : (e.particulars || '').includes('Payment to') ? 'Material Purchase'
+                                                        : e.type === 'Transfer' ? 'Material Transfer'
+                                                        : e.type === 'SC Advance' ? 'Subcontractor Advance'
                                                         : (e.particulars || '').match(/Expense:\s*([^-]+)/)?.[1]?.trim() || 'Other';
                                                     if (!catMap[cat]) catMap[cat] = { entries: [], total: 0 };
                                                     catMap[cat].entries.push(e);
-                                                    catMap[cat].total += e.debit;
+                                                    catMap[cat].total += e.debit || e.credit;
                                                 });
 
                                                 return Object.entries(catMap).sort((a, b) => b[1].total - a[1].total).map(([catName, data]) => {
-                                                    const catColors = { 'Material Purchase': '#3B82F6', 'Labour Wages': '#EC4899', 'Site Office': '#F59E0B', 'Fuel/Diesel': '#EF4444', 'Other': '#64748B' };
+                                                    const catColors = { 'Material Purchase': '#3B82F6', 'Labour Wages': '#EC4899', 'Site Office': '#F59E0B', 'Fuel/Diesel': '#EF4444', 'Material Transfer': '#F97316', 'Subcontractor Advance': '#0EA5E9', 'Other': '#64748B' };
                                                     const accent = catColors[catName] || '#8B5CF6';
                                                     return (
                                                         <div key={catName} style={{ marginBottom: 16, border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
@@ -2433,7 +2438,7 @@ const Finance = () => {
                                             </thead>
                                             <tbody>
                                                 {entries.slice((ledgerPage - 1) * FIN_PAGE_SIZE, ledgerPage * FIN_PAGE_SIZE).map((entry, i) => {
-                                                    const typeColors = { Sales: '#3B82F6', Receipt: '#10B981', Purchase: '#8B5CF6', Payment: '#EF4444', Expense: '#64748B', Labour: '#EC4899', Fleet: '#F59E0B', 'Fleet Receipt': '#10B981' };
+                                                    const typeColors = { Sales: '#3B82F6', Receipt: '#10B981', Purchase: '#8B5CF6', Payment: '#EF4444', Expense: '#64748B', Labour: '#EC4899', Fleet: '#F59E0B', 'Fleet Receipt': '#10B981', Transfer: '#F97316', 'SC Advance': '#0EA5E9' };
                                                     return (
                                                     <tr key={i}>
                                                         <td style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>{new Date(entry.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
