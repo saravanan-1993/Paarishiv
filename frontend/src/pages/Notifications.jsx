@@ -64,6 +64,7 @@ const Notifications = () => {
         } catch (err) { console.error(err); }
     };
 
+    // User-self action: marking own notification read needs no module permission
     const handleMarkRead = async (id) => {
         try {
             await notificationAPI.markAsRead(id);
@@ -72,6 +73,7 @@ const Notifications = () => {
         } catch (err) { console.error(err); }
     };
 
+    // User-self action: deleting own notification needs no module permission
     const handleDelete = async (e, id) => {
         e.stopPropagation();
         try {
@@ -83,6 +85,7 @@ const Notifications = () => {
         } catch (err) { console.error(err); }
     };
 
+    // User-self action: bulk-deleting own notifications needs no module permission
     const handleBulkDelete = async () => {
         if (selectedIds.length === 0) return;
         try {
@@ -156,6 +159,7 @@ const Notifications = () => {
                     <button onClick={fetchNotifications} className="btn-icon" style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: 'var(--text-muted)' }}>
                         <RefreshCw size={14} aria-hidden="true" /> Refresh
                     </button>
+                    {/* User-self action: marking own notifications read needs no module permission */}
                     <button onClick={handleMarkAllRead} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: '600' }}>
                         <CheckCheck size={14} aria-hidden="true" /> Mark all read
                     </button>

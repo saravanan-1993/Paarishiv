@@ -407,7 +407,7 @@ async def get_trip_requests(db=Depends(get_database)):
             r["created_at"] = r["created_at"].isoformat()
     return reqs
 
-@router.post("/trip-requests", dependencies=[Depends(RBACPermission("Fleet Management", "view"))])
+@router.post("/trip-requests", dependencies=[Depends(RBACPermission("Fleet Management", "edit"))])
 async def create_trip_request(data: TripRequestCreate, db=Depends(get_database), current_user=Depends(get_current_user)):
     doc = data.dict()
     doc["requested_by"] = current_user.get("full_name") or current_user.get("username", "")

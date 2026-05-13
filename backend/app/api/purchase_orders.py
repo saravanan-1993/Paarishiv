@@ -9,7 +9,7 @@ from app.utils.email import send_email, generate_po_html
 from app.utils.auth import get_current_user
 from app.api.workflow import trigger_workflow_event
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission, require_sub_tab, is_admin_role, get_assigned_project_names, get_users_with_permission
+from app.utils.rbac import RBACPermission, require_sub_tab, is_admin_role, is_assignment_scoped, get_assigned_project_names, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_WORKFLOW, EVENT_APPROVAL
 router = APIRouter(prefix="/purchase-orders", tags=["purchase-orders"])
 
@@ -71,13 +71,17 @@ def po_helper(po) -> dict:
         "vendor_names": vendor_names if vendor_names else ([po.get("vendor_name", "")] if po.get("vendor_name") else [])
     }
 
-@router.get("/", response_model=List[dict])
+@router.get("/", response_model=List[dict], dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_pos(current_user: dict = Depends(get_current_user)):
     query = {}
-    # Scoped users (assigned to projects, not admin) see only their projects' POs
+    # Scoping — admin-class sees all POs. Cross-project Procurement specialists
+    # (Purchase Officer who manages POs across all projects) also see all.
+    # ONLY users whose access is project-assignment-scoped (Site Engineer /
+    # Project Coordinator) are filtered to their assigned projects.
     if not is_admin_role(current_user.get("role", "")):
-        project_names = await get_assigned_project_names(db, current_user)
-        query["project_name"] = {"$in": project_names}
+        if await is_assignment_scoped(db, current_user):
+            project_names = await get_assigned_project_names(db, current_user)
+            query["project_name"] = {"$in": project_names}
 
     pos = await db.purchase_orders.find(query).to_list(100)
     return [po_helper(p) for p in pos]

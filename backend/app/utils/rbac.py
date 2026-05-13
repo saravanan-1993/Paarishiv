@@ -284,6 +284,30 @@ async def require_sub_tab(db, user: dict, module: str, sub_tab: str, role_doc: O
         )
 
 
+async def has_module_action(db, user: dict, module: str, action: str, role_doc: Optional[dict] = None) -> bool:
+    """Check whether the user's role grants `action` on `module`.
+
+    Admin-class roles always pass. Pass an already-fetched `role_doc` to skip
+    the DB roundtrip when running multiple permission checks in the same
+    request handler.
+    """
+    role_name = user.get("role") or ""
+    if is_admin_role(role_name):
+        return True
+    role = role_doc if role_doc is not None else await fetch_role_doc(db, role_name)
+    if not role:
+        return False
+    permissions = role.get("permissions", [])
+    if isinstance(permissions, dict):
+        return bool(_resolve_v2(permissions, module, action, None))
+    if isinstance(permissions, list):
+        mod = next((p for p in permissions if isinstance(p, dict) and p.get("name") == module), None)
+        if not mod:
+            return False
+        return bool(mod.get("actions", {}).get(action))
+    return False
+
+
 class RBACPermission:
     """
     RBAC dependency for FastAPI routes.

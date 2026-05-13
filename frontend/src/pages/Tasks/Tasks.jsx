@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     CheckCircle2, Clock, PlayCircle, Plus, Search, Filter,
     MoreVertical, FileText, CheckCircle, Package, Share2, Mail, MessageCircle, Briefcase, ChevronDown, Loader2, Bell, Eye, X
@@ -67,6 +68,7 @@ const Tasks = () => {
     const [selectedTask, setSelectedTask] = useState(null);
     const [selectedProject, setSelectedProject] = useState(null);
     const [openStatusId, setOpenStatusId] = useState(null);
+    const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
     const [notifiedTaskIds, setNotifiedTaskIds] = useState(new Set());
 
     const statusOptions = [
@@ -166,6 +168,22 @@ const Tasks = () => {
 
     // Actions
     const handleStatusChange = async (task, newStatus) => {
+        // Defensive permission re-check: allow edit perm OR the task's assignee
+        const uidLocal = (user?.username || user?.employeeCode || user?.full_name || '').toString();
+        const assigneeId = typeof task.assignedTo === 'object'
+            ? (task.assignedTo?.username || task.assignedTo?.employeeCode || task.assignedTo?._id || '')
+            : (task.assignedTo || '');
+        const isTaskAssignee = !!uidLocal && (
+            assigneeId === uidLocal ||
+            assigneeId === user?.username ||
+            assigneeId === user?.employeeCode ||
+            assigneeId === user?.full_name
+        );
+        if (!hasPermission(user, 'Projects', 'edit') && !isTaskAssignee) {
+            toast.error("You don't have permission to change task status.");
+            return;
+        }
+
         if (newStatus === 'Completed') {
             setSelectedTask(task);
             setSelectedProject({ _id: task.pId, name: task.projectName });
@@ -393,9 +411,15 @@ const Tasks = () => {
                                     <td>
                                         <div style={{ position: 'relative', display: 'inline-block' }}>
                                             <button
-                                                onClick={() => {
-                                                    if (t.status !== 'Completed') {
-                                                        setOpenStatusId(openStatusId === `${t.pId}-${t.id}` ? null : `${t.pId}-${t.id}`);
+                                                onClick={(e) => {
+                                                    if (t.status === 'Completed') return;
+                                                    const id = `${t.pId}-${t.id}`;
+                                                    if (openStatusId === id) {
+                                                        setOpenStatusId(null);
+                                                    } else {
+                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                        setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                                                        setOpenStatusId(id);
                                                     }
                                                 }}
                                                 style={{
@@ -410,14 +434,16 @@ const Tasks = () => {
                                                 {t.status !== 'Completed' && <ChevronDown size={14} />}
                                             </button>
 
-                                            {openStatusId === `${t.pId}-${t.id}` && (
+                                            {openStatusId === `${t.pId}-${t.id}` && createPortal(
                                                 <>
-                                                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 90 }} onClick={() => setOpenStatusId(null)}></div>
+                                                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9990 }} onClick={() => setOpenStatusId(null)}></div>
                                                     <div style={{
-                                                        position: 'absolute', top: '100%', left: '0', marginTop: '4px',
+                                                        position: 'fixed',
+                                                        top: `${dropdownPos.top}px`,
+                                                        left: `${dropdownPos.left}px`,
                                                         backgroundColor: 'white', border: '1px solid var(--border)',
                                                         borderRadius: '8px', boxShadow: '0 4px 12px -1px rgba(0,0,0,0.1)',
-                                                        zIndex: 100, flexDirection: 'column', minWidth: '130px', padding: '4px',
+                                                        zIndex: 9991, flexDirection: 'column', minWidth: '140px', padding: '4px',
                                                         display: 'flex'
                                                     }}>
                                                         {['Pending', 'In Progress', 'Completed'].map(st => (
@@ -438,7 +464,8 @@ const Tasks = () => {
                                                             </button>
                                                         ))}
                                                     </div>
-                                                </>
+                                                </>,
+                                                document.body
                                             )}
                                         </div>
                                     </td>
@@ -489,27 +516,42 @@ const Tasks = () => {
                                                         <CheckCircle size={12} /> Updated
                                                     </span>
                                                 ) : (
-                                                    <button
-                                                        className="btn btn-outline hover-scale"
-                                                        style={{ padding: '4px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
-                                                        onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
-                                                        title="Notify Admin about this completed task"
-                                                    >
-                                                        <Bell size={12} /> Update Admin
-                                                    </button>
+                                                    hasPermission(user, 'Projects', 'edit') && (
+                                                        <button
+                                                            className="btn btn-outline hover-scale"
+                                                            style={{ padding: '4px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
+                                                            onClick={(e) => { e.stopPropagation(); handleNotifyAdmin(t); }}
+                                                            title="Notify Admin about this completed task"
+                                                        >
+                                                            <Bell size={12} /> Update Admin
+                                                        </button>
+                                                    )
                                                 )}
                                                 <span style={{ color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: '700', justifyContent: 'flex-end' }}>
                                                     <CheckCircle size={16} /> Done
                                                 </span>
                                             </div>
                                         ) : (
-                                            <button
-                                                className="btn btn-primary btn-sm"
-                                                onClick={() => handleStatusChange(t, 'Completed')}
-                                                style={{ padding: '6px 12px', fontSize: '12px', minWidth: '85px' }}
-                                            >
-                                                Mark Done
-                                            </button>
+                                            (() => {
+                                                const assigneeId = typeof t.assignedTo === 'object'
+                                                    ? (t.assignedTo?.username || t.assignedTo?.employeeCode || t.assignedTo?._id || '')
+                                                    : (t.assignedTo || '');
+                                                const taskBelongsToUser = !!uid && (
+                                                    assigneeId === uid ||
+                                                    assigneeId === user?.username ||
+                                                    assigneeId === user?.employeeCode ||
+                                                    assigneeId === user?.full_name
+                                                );
+                                                return (hasPermission(user, 'Projects', 'edit') || taskBelongsToUser) && (
+                                                    <button
+                                                        className="btn btn-primary btn-sm"
+                                                        onClick={() => handleStatusChange(t, 'Completed')}
+                                                        style={{ padding: '6px 12px', fontSize: '12px', minWidth: '85px' }}
+                                                    >
+                                                        Mark Done
+                                                    </button>
+                                                );
+                                            })()
                                         )}
                                     </td>
                                 </tr>

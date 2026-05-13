@@ -88,19 +88,25 @@ async def startup_event():
                     if not expected:
                         continue
                     existing = p.get("subTabs")
-                    if not isinstance(existing, list):
-                        continue
                     # Backfill ONLY for admin-class roles (which should
                     # always have everything). For other roles we don't touch
                     # what the admin configured — they keep exactly what they
                     # granted, but new sub-tab keys can be added via the UI.
                     # Use is_admin_role so Super Admin / casing variants are
                     # also covered, not just literal "Administrator".
-                    if is_admin_role(role.get("name", "")):
-                        merged = sorted(set(existing) | set(expected), key=lambda x: expected.index(x) if x in expected else 999)
-                        if merged != existing:
-                            p["subTabs"] = merged
-                            changed = True
+                    if not is_admin_role(role.get("name", "")):
+                        continue
+                    if not isinstance(existing, list):
+                        # Module had no subTabs field at all — add the full
+                        # expected list (e.g. new "Dashboard" module getting
+                        # its sub-tabs for the first time).
+                        p["subTabs"] = list(expected)
+                        changed = True
+                        continue
+                    merged = sorted(set(existing) | set(expected), key=lambda x: expected.index(x) if x in expected else 999)
+                    if merged != existing:
+                        p["subTabs"] = merged
+                        changed = True
             if changed:
                 await db.roles.update_one({"_id": "global_roles"}, {"$set": {"roles": roles_doc["roles"]}})
                 print("Role sub-tabs migrated: Administrator role updated with new sub-tab keys.")

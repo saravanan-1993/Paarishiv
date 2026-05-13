@@ -62,10 +62,12 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
             inventoryAPI.getRequests().then(res => {
                 const approved = (res.data || []).filter(r => r.status === 'Approved');
                 setApprovedRequests(approved);
-                // Auto-fill form when opened from a specific request (CREATE PO button)
+                // Auto-fill when opened from a CREATE PO button. handleRequestSelect
+                // reads from STATE which won't be updated yet on first render — pass
+                // the matched request object explicitly to bypass the stale-state race.
                 if (requestIdProp) {
                     const match = approved.find(r => r.id === requestIdProp);
-                    if (match) handleRequestSelect(requestIdProp);
+                    if (match) autoFillFromRequest(match);
                 }
             }).catch(() => { });
 
@@ -73,14 +75,57 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
             inventoryAPI.getConsolidated().then(res => {
                 const pending = (res.data || []).filter(r => r.status === 'Consolidated');
                 setConsolidatedRequests(pending);
-                // Auto-fill for consolidated requests
-                if (requestIdProp && !approvedRequests.find(r => r.id === requestIdProp)) {
+                // Same stale-state fix for consolidated requests path.
+                if (requestIdProp) {
                     const match = pending.find(r => r.id === requestIdProp);
-                    if (match) handleConsolidatedSelect(requestIdProp);
+                    if (match) autoFillFromConsolidated(match);
                 }
             }).catch(() => { });
         }
     }, [isOpen, requestIdProp]);
+
+    // Auto-fill helpers that take the request object directly — used at modal
+    // open time before state has settled. The handleXxxSelect functions below
+    // (still used by the dropdown change handler) read from state which IS
+    // populated by then.
+    const autoFillFromRequest = (req) => {
+        setFormData(prev => ({
+            ...prev,
+            project_name: req.project_name,
+            request_id: req.id,
+            is_consolidated: false,
+            is_direct: false,
+        }));
+        const newItems = (req.requested_items || []).map(it => ({
+            id: Date.now() + Math.random(),
+            name: it.name,
+            qty: it.quantity,
+            unit: it.unit,
+            rate: '',
+            vendor_name: '',
+        }));
+        setItems(newItems);
+        checkWarehouseForItems(newItems);
+    };
+    const autoFillFromConsolidated = (con) => {
+        setFormData(prev => ({
+            ...prev,
+            project_name: con.sites && con.sites.length > 1 ? 'Multiple Sites (Bulk Purchase)' : (con.sites?.[0] || ''),
+            request_id: con.id,
+            is_consolidated: true,
+            is_direct: false,
+        }));
+        const newItems = (con.requested_items || []).map(it => ({
+            id: Date.now() + Math.random(),
+            name: it.name,
+            qty: it.quantity,
+            unit: it.unit,
+            rate: '',
+            vendor_name: '',
+        }));
+        setItems(newItems);
+        checkWarehouseForItems(newItems);
+    };
 
     // When switching to multi-vendor mode, copy top-level vendor to all items that don't have one
     const toggleMultiVendor = () => {

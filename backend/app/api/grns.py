@@ -42,7 +42,7 @@ def grn_helper(grn) -> dict:
         "created_at": grn.get("created_at")
     }
 
-@router.get("/", response_model=List[dict])
+@router.get("/", response_model=List[dict], dependencies=[Depends(RBACPermission("Procurement", "view"))])
 async def get_grns(current_user: dict = Depends(get_current_user)):
     query = {}
     # Dynamic scoping — admin sees all; scoped users limited to assigned projects' GRNs.

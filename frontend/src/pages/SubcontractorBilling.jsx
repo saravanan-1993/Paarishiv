@@ -51,6 +51,7 @@ const SubcontractorBilling = () => {
     const { user } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
+    const canAdd = hasPermission(user, 'Subcontractor Billing', 'add');
     const canEdit = hasPermission(user, 'Subcontractor Billing', 'edit');
     const canDelete = hasPermission(user, 'Subcontractor Billing', 'delete');
 
@@ -169,6 +170,10 @@ const SubcontractorBilling = () => {
     };
 
     const handleEditBill = (bill) => {
+        if (!canEdit) {
+            toast.error("You don't have permission to edit bills.");
+            return;
+        }
         setEditBill(bill);
         setShowCreateModal(true);
     };
@@ -396,7 +401,7 @@ const SubcontractorBilling = () => {
                             </button>
                         )}
                     </div>
-                    {activeTab === 'Bills' && canEdit && (
+                    {activeTab === 'Bills' && canAdd && (
                         <button
                             className="btn btn-primary"
                             onClick={() => { setEditBill(null); setShowCreateModal(true); }}
@@ -404,7 +409,7 @@ const SubcontractorBilling = () => {
                             <Plus size={18} /> Create Bill
                         </button>
                     )}
-                    {activeTab === 'Advances' && canEdit && (
+                    {activeTab === 'Advances' && canAdd && (
                         <button
                             className="btn btn-primary"
                             onClick={() => { setEditAdvance(null); setShowAdvanceModal(true); }}

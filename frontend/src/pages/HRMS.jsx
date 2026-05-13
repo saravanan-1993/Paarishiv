@@ -139,11 +139,20 @@ const HRMS = () => {
                 email: u.email || 'No email', role: u.roles ? u.roles[0] : (u.role || 'Staff'),
                 status: u.status || 'Active', lastLogin: u.lastLogin || 'N/A'
             })));
-        } catch (err) { console.error('Failed to fetch users', err); }
+        } catch (err) {
+            console.error('Failed to fetch users', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
+        }
         finally { setUmLoading(false); }
     };
 
     const handleDeleteUser = async (userId) => {
+        if (!hasPermission(user, 'HRMS', 'delete')) {
+            toast.error("You don't have permission to delete users.");
+            return;
+        }
         if (!(await confirm({ title: 'Delete User', message: 'Are you sure you want to delete this user?', confirmText: 'Delete', danger: true }))) return;
         try { await employeeAPI.delete(userId); fetchUmUsers(); }
         catch (err) { console.error('Delete failed', err); toast.error('Failed to delete user'); }
@@ -156,6 +165,10 @@ const HRMS = () => {
     };
 
     const handleCreateUser = async () => {
+        if (!hasPermission(user, 'HRMS', 'add') && !hasPermission(user, 'HRMS', 'edit')) {
+            toast.error("You don't have permission to create/update users.");
+            return;
+        }
         if (!newUser.fullName || !newUser.employeeCode || (!editingUser && !newUser.password)) {
             toast.warning('Please fill in required fields (Name, Code, Password)'); return;
         }
@@ -187,6 +200,10 @@ const HRMS = () => {
     };
 
     const handleDeleteRole = async (roleName) => {
+        if (!hasPermission(user, 'HRMS', 'delete')) {
+            toast.error("You don't have permission to delete roles.");
+            return;
+        }
         if (isAdminRole(roleName)) {
             toast.warning(`Cannot delete ${roleName} role`);
             return;
@@ -242,6 +259,9 @@ const HRMS = () => {
 
         } catch (err) {
             console.error('Failed to fetch HRMS data', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         } finally {
             setLoading(false);
         }
@@ -253,6 +273,9 @@ const HRMS = () => {
             setAttendance(res.data);
         } catch (err) {
             console.error('Failed to fetch attendance', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
     };
 
@@ -269,6 +292,9 @@ const HRMS = () => {
         } catch (err) {
             console.error('Failed to fetch leaves', err);
             setLeaves([]);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
     };
 
@@ -278,6 +304,9 @@ const HRMS = () => {
             setPayroll(res.data);
         } catch (err) {
             console.error('Failed to fetch payroll', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
     };
 
@@ -299,6 +328,9 @@ const HRMS = () => {
             setLabourByProjectDate(map);
         } catch (err) {
             console.error('Failed to fetch surprise visits', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
     };
 
@@ -309,6 +341,9 @@ const HRMS = () => {
             setManpowerRequests(mpRes.data.manpower || []);
         } catch (err) {
             console.error('Failed to fetch manpower requests', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         } finally {
             setTimeout(() => setRefreshingManpower(false), 500);
         }
@@ -529,6 +564,10 @@ const HRMS = () => {
     };
 
     const generatePayrollRecord = async () => {
+        if (!hasPermission(user, 'HRMS', 'add', 'Payroll') && !hasPermission(user, 'HRMS', 'edit', 'Payroll') && !hasPermission(user, 'HRMS', 'add')) {
+            toast.error("You don't have permission to generate payroll.");
+            return;
+        }
         if (!(await confirm({ title: 'Generate Payroll', message: `Generate payroll for ${selectedMonth}?`, confirmText: 'Generate' }))) return;
         try {
             await hrmsAPI.generatePayroll(selectedMonth);
@@ -755,6 +794,10 @@ const HRMS = () => {
     };
 
     const handleToggleEmployeeStatus = async (emp) => {
+        if (!hasPermission(user, 'HRMS', 'edit')) {
+            toast.error("You don't have permission to change employee status.");
+            return;
+        }
         if (!(await confirm({ title: 'Change Status', message: `Change status for ${emp.fullName}?`, confirmText: 'Change' }))) return;
         try {
             const newStatus = emp.status === 'Active' ? 'Inactive' : 'Active';
@@ -1013,9 +1056,11 @@ const HRMS = () => {
                         icon={Briefcase}
                     />
                 </div>
-                <button className="btn btn-primary" onClick={() => setIsAddEmployeeOpen(true)} style={{ flex: '1 1 auto', justifyContent: 'center' }}>
-                    <UserPlus size={18} /> ADD EMPLOYEE
-                </button>
+                {hasPermission(user, 'HRMS', 'add') && (
+                    <button className="btn btn-primary" onClick={() => setIsAddEmployeeOpen(true)} style={{ flex: '1 1 auto', justifyContent: 'center' }}>
+                        <UserPlus size={18} /> ADD EMPLOYEE
+                    </button>
+                )}
             </div>
 
             <div className="card" style={{ padding: 0 }}>
@@ -1244,23 +1289,25 @@ const HRMS = () => {
                                             />
                                         </td>
                                         <td>
-                                            <button
-                                                className="icon-btn"
-                                                title="Save Row"
-                                                onClick={() => handleSaveSingleAttendance(emp)}
-                                                style={{
-                                                    background: '#f0fdf4',
-                                                    color: '#16a34a',
-                                                    borderRadius: '8px',
-                                                    border: '1px solid #bbf7d0',
-                                                    padding: '8px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}
-                                            >
-                                                <Check size={16} />
-                                            </button>
+                                            {canEditHRMS && (
+                                                <button
+                                                    className="icon-btn"
+                                                    title="Save Row"
+                                                    onClick={() => handleSaveSingleAttendance(emp)}
+                                                    style={{
+                                                        background: '#f0fdf4',
+                                                        color: '#16a34a',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid #bbf7d0',
+                                                        padding: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    <Check size={16} />
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -1368,7 +1415,7 @@ const HRMS = () => {
                             </button>
                         ))}
                     </div>
-                    {user && (
+                    {hasPermission(user, 'HRMS', 'add') && (
                         <button className="btn btn-primary" onClick={() => setIsApplyLeaveOpen(true)}>
                             <Plus size={18} aria-hidden="true" /> APPLY LEAVE
                         </button>
@@ -1404,13 +1451,13 @@ const HRMS = () => {
                                     </span>
                                 </td>
                                 <td>
-                                    {(isAdmin && l.status === 'Pending') && (
+                                    {(canEditHRMS && l.status === 'Pending') && (
                                         <div style={{ display: 'flex', gap: '8px' }}>
                                             <button onClick={() => handleLeaveAction(l.id, 'Approved')} className="btn btn-success btn-sm" style={{ padding: '4px 8px', fontSize: '11px' }}>Approve</button>
                                             <button onClick={() => handleLeaveAction(l.id, 'Rejected')} className="btn btn-outline btn-sm" style={{ padding: '4px 8px', fontSize: '11px', color: '#EF4444' }}>Reject</button>
                                         </div>
                                     )}
-                                    {(!isAdmin && l.status === 'Pending') && (
+                                    {(!canEditHRMS && l.status === 'Pending') && (
                                         <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Pending Review</span>
                                     )}
                                     {(l.status !== 'Pending') && (
@@ -1493,6 +1540,7 @@ const HRMS = () => {
                                 <td>
                                     <div style={{ display: 'flex', gap: '6px' }}>
                                         {p.status !== 'Processed' && p.status !== 'Paid' ? (
+                                            (hasPermission(user, 'HRMS', 'edit', 'Payroll') || hasPermission(user, 'HRMS', 'add', 'Payroll')) && (
                                             <button
                                                 title="Process Payroll"
                                                 onClick={() => {
@@ -1510,6 +1558,7 @@ const HRMS = () => {
                                             >
                                                 <Edit3 size={14} /> Process
                                             </button>
+                                            )
                                         ) : (
                                             <>
                                                 <span style={{ padding: '6px 14px', borderRadius: '8px', background: '#f0fdf4', color: '#16a34a', fontSize: '12px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
@@ -1657,7 +1706,7 @@ const HRMS = () => {
                                     </span>
                                 </td>
                                 <td>
-                                    {req.status === 'Approved' && (
+                                    {req.status === 'Approved' && canEditHRMS && (
                                         <button
                                             className="btn btn-success btn-sm"
                                             style={{ padding: '6px 12px', fontSize: '11px', fontWeight: '800' }}
@@ -1751,7 +1800,7 @@ const HRMS = () => {
                                         <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: 'var(--text-main)' }}>Surprise Inspection Logs</h3>
                                         <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Admin-marked audit attendance per project session</p>
                                     </div>
-                                    {hasPermission(user, 'HRMS', 'edit') && (
+                                    {hasPermission(user, 'HRMS', 'add') && (
                                         <button className="btn btn-primary" onClick={() => setIsSurpriseVisitOpen(true)}>
                                             <Shield size={18} style={{ marginRight: '8px' }} /> MARK SURPRISE VISIT
                                         </button>
@@ -1979,7 +2028,7 @@ const HRMS = () => {
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>Role Definitions</h3>
                                         <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Define access permissions for each role below</p>
                                     </div>
-                                    {canEditHRMS && (
+                                    {hasPermission(user, 'HRMS', 'add') && (
                                         <button className="btn btn-primary" style={{ padding: '10px 20px', fontWeight: '800' }} onClick={() => { setEditingRole(null); setIsRoleModalOpen(true); }}>
                                             <Plus size={18} /> CREATE ROLE
                                         </button>

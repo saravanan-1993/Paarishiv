@@ -8,9 +8,13 @@ import { useNavigate } from 'react-router-dom';
 import { settingsAPI, employeeAPI } from '../utils/api';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
     const navigate = useNavigate();
+    const { user } = useAuth();
+    const canGeneratePayslip = hasPermission(user, 'HRMS', 'view');
     const [attSummary, setAttSummary] = useState({ present_days: 0, absent_days: 0, total_hours: 0 });
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -426,18 +430,20 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                             </section>
 
                             <section style={{ marginTop: 'auto' }}>
-                                <button
-                                    onClick={handleGeneratePayslip}
-                                    className="btn btn-primary"
-                                    style={{
-                                        width: '100%', marginBottom: '16px', padding: '16px',
-                                        borderRadius: '16px', fontSize: '15px', fontWeight: '800',
-                                        boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.2)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
-                                    }}
-                                >
-                                    <Download size={20} /> GENERATE PAYSLIP
-                                </button>
+                                {canGeneratePayslip && (
+                                    <button
+                                        onClick={handleGeneratePayslip}
+                                        className="btn btn-primary"
+                                        style={{
+                                            width: '100%', marginBottom: '16px', padding: '16px',
+                                            borderRadius: '16px', fontSize: '15px', fontWeight: '800',
+                                            boxShadow: '0 10px 15px -3px rgba(37, 99, 235, 0.2)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
+                                        }}
+                                    >
+                                        <Download size={20} /> GENERATE PAYSLIP
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => {
                                         onClose();

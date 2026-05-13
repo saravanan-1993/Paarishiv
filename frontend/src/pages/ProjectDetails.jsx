@@ -393,6 +393,9 @@ const ProjectDetails = () => {
                 setEmployeesMap(map);
             } catch (err) {
                 console.error("Failed to fetch employees in project details", err);
+                if (err?.response?.status === 403) {
+                    toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+                }
             }
         };
         fetchEmps();
@@ -440,6 +443,9 @@ const ProjectDetails = () => {
             setProject(res.data);
         } catch (err) {
             console.error('Reload project error:', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
     };
 
@@ -551,6 +557,9 @@ const ProjectDetails = () => {
             setSiteMaterials((res.data || []).filter(m => (m.stock || 0) > 0));
         } catch (err) {
             console.error('Failed to load site materials:', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
         setSiteMaterialsLoading(false);
     };
@@ -573,6 +582,9 @@ const ProjectDetails = () => {
             setLabourSummary(sumRes.data || null);
         } catch (err) {
             console.error('Failed to load labour data:', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         }
         setLabourLoading(false);
     };
@@ -593,6 +605,9 @@ const ProjectDetails = () => {
                     setFinData(res.data);
                 } catch (err) {
                     console.error('Failed to load project finance data:', err);
+                    if (err?.response?.status === 403) {
+                        toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+                    }
                 } finally {
                     setFinLoading(false);
                 }
@@ -655,7 +670,13 @@ const ProjectDetails = () => {
                             <h1 style={{ fontSize: 'min(28px, 6vw)', fontWeight: '700', color: 'var(--text-main)', margin: 0 }}>
                                 {project.name || 'Unnamed Project'}
                             </h1>
-                            <ProjectStatusDropdown project={project} onStatusChange={handleUpdateProjectStatus} />
+                            {canEditProjects ? (
+                                <ProjectStatusDropdown project={project} onStatusChange={handleUpdateProjectStatus} />
+                            ) : (
+                                <span className={`badge ${project.status === 'Completed' ? 'badge-success' : project.status === 'On Hold' ? 'badge-warning' : 'badge-info'}`} style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+                                    {project.status || 'Ongoing'}
+                                </span>
+                            )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', color: 'var(--text-muted)', fontSize: '13px', flexWrap: 'wrap', marginTop: '6px' }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -674,7 +695,7 @@ const ProjectDetails = () => {
                                 <FileText size={16} /> Submit DPR
                             </button>
                         )}
-                        {hasPermission(user, 'Projects', 'edit') && (
+                        {(hasPermission(user, 'Projects', 'add') || hasPermission(user, 'Inventory Management', 'add')) && (
                             <button onClick={() => setIsUrgentMaterialOpen(true)}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', backgroundColor: '#EF4444', color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
                                 <AlertTriangle size={16} /> Urgent Material
@@ -860,7 +881,7 @@ const ProjectDetails = () => {
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px', alignItems: 'center' }}>
                             <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Task Management</h2>
-                            {!isEngineer && (
+                            {hasPermission(user, 'Projects', 'add') && (
                                 <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
                                     <Plus size={18} /> Add Task
                                 </button>
@@ -872,7 +893,7 @@ const ProjectDetails = () => {
                                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>No Tasks Yet</h4>
                                 <p style={{ marginBottom: '24px', fontSize: '14px' }}>Add tasks to track work on this project.</p>
-                                {!isEngineer && (
+                                {hasPermission(user, 'Projects', 'add') && (
                                     <button className="btn btn-primary" onClick={() => setIsAddTaskOpen(true)}>
                                         <Plus size={16} /> Add First Task
                                     </button>
@@ -916,7 +937,13 @@ const ProjectDetails = () => {
                                                     {task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'Completed' && <span style={{ marginLeft: '6px', fontSize: '10px', padding: '1px 6px', borderRadius: '4px', backgroundColor: '#FEE2E2', color: '#EF4444', fontWeight: '700' }}>OVERDUE</span>}
                                                 </td>
                                                 <td>
-                                                    <TaskStatusDropdown task={task} onStatusChange={handleTaskStatusChange} />
+                                                    {canEditProjects ? (
+                                                        <TaskStatusDropdown task={task} onStatusChange={handleTaskStatusChange} />
+                                                    ) : (
+                                                        <span className={`badge ${task.status === 'Completed' ? 'badge-success' : task.status === 'In Progress' ? 'badge-info' : 'badge-warning'}`} style={{ padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+                                                            {task.status || 'Pending'}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -928,7 +955,7 @@ const ProjectDetails = () => {
                                                             <Eye size={14} />
                                                         </button>
 
-                                                        {task.status === 'Completed' && (
+                                                        {task.status === 'Completed' && hasPermission(user, 'Projects', 'edit') && (
                                                             <button
                                                                 className="btn btn-outline"
                                                                 style={{ padding: '6px 10px', fontSize: '11px', minWidth: 'auto', gap: '4px' }}
@@ -966,9 +993,11 @@ const ProjectDetails = () => {
                                 <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Daily Progress Reports</h2>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Chronological log of all daily site reports</p>
                             </div>
-                            <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
-                                <Plus size={18} /> Submit DPR
-                            </button>
+                            {hasPermission(user, 'Projects', 'add') && (
+                                <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
+                                    <Plus size={18} /> Submit DPR
+                                </button>
+                            )}
                         </div>
 
                         {dprList.length === 0 ? (
@@ -976,9 +1005,11 @@ const ProjectDetails = () => {
                                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>No DPRs Filed Yet</h4>
                                 <p style={{ marginBottom: '24px', fontSize: '14px' }}>Submit a Daily Progress Report (DPR) for today's site work.</p>
-                                <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
-                                    <Plus size={16} /> Submit First DPR
-                                </button>
+                                {hasPermission(user, 'Projects', 'add') && (
+                                    <button className="btn btn-primary" onClick={() => setIsDPRModalOpen(true)}>
+                                        <Plus size={16} /> Submit First DPR
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1184,9 +1215,11 @@ const ProjectDetails = () => {
                                 <h2 style={{ fontSize: '20px', fontWeight: '800' }}>Project Documents</h2>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>Store and manage site drawings, permits and contracts</p>
                             </div>
-                            <button className="btn btn-primary" onClick={() => setIsUploadDocOpen(true)}>
-                                <Upload size={18} /> Upload New
-                            </button>
+                            {hasPermission(user, 'Projects', 'add') && (
+                                <button className="btn btn-primary" onClick={() => setIsUploadDocOpen(true)}>
+                                    <Upload size={18} /> Upload New
+                                </button>
+                            )}
                         </div>
 
                         {docList.length === 0 ? (
@@ -1194,9 +1227,11 @@ const ProjectDetails = () => {
                                 <Briefcase size={64} style={{ margin: '0 auto 24px', opacity: 0.4 }} />
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px', color: 'var(--text-main)' }}>No Documents Found</h4>
                                 <p style={{ marginBottom: '24px', fontSize: '14px' }}>Architectural drawings, permits, and contracts will appear here.</p>
-                                <button className="btn btn-primary" onClick={() => setIsUploadDocOpen(true)}>
-                                    <Upload size={16} /> Upload First Document
-                                </button>
+                                {hasPermission(user, 'Projects', 'add') && (
+                                    <button className="btn btn-primary" onClick={() => setIsUploadDocOpen(true)}>
+                                        <Upload size={16} /> Upload First Document
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
@@ -1295,6 +1330,8 @@ const ProjectDetails = () => {
                 {activeTab === 'Labour Attendance' && (() => {
                     // Wage visibility: admin-class users OR anyone with Accounts edit permission.
                     const canSeeWages = isAdminRole(user?.role) || hasPermission(user, 'Accounts', 'edit');
+                    const canAddLabour = hasPermission(user, 'Projects', 'add');
+                    const canEditLabour = hasPermission(user, 'Projects', 'edit');
                     return (
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -1302,7 +1339,7 @@ const ProjectDetails = () => {
                                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>Labour Attendance</h2>
                                 <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Daily labour & contractor attendance for this project</p>
                             </div>
-                            {hasPermission(user, 'Projects', 'edit') && (
+                            {canAddLabour && (
                                 <button className="btn btn-primary" onClick={() => { setEditingLabourRecord(null); setIsLabourModalOpen(true); }}>
                                     <Plus size={16} /> Mark Attendance
                                 </button>
@@ -1359,8 +1396,8 @@ const ProjectDetails = () => {
                                             };
                                             const sc = statusColors[status] || statusColors['Pending'];
                                             return (
-                                            <tr key={rec.id} style={{ borderTop: '1px solid #F1F5F9', cursor: 'pointer' }}
-                                                onClick={() => { setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}>
+                                            <tr key={rec.id} style={{ borderTop: '1px solid #F1F5F9', cursor: canEditLabour ? 'pointer' : 'default' }}
+                                                onClick={() => { if (canEditLabour) { setEditingLabourRecord(rec); setIsLabourModalOpen(true); } }}>
                                                 <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 700 }}>{fmtDate(rec.date)}</td>
                                                 <td style={{ padding: '12px 14px', fontSize: 12 }}>
                                                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1378,10 +1415,12 @@ const ProjectDetails = () => {
                                                     <span style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, backgroundColor: sc.bg, color: sc.color }}>{status}</span>
                                                 </td>
                                                 <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                                                    <button onClick={e => { e.stopPropagation(); setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}
-                                                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #E2E8F0', backgroundColor: 'white', cursor: 'pointer', fontSize: 12, color: '#3B82F6', fontWeight: 600 }}>
-                                                        Edit
-                                                    </button>
+                                                    {canEditLabour && (
+                                                        <button onClick={e => { e.stopPropagation(); setEditingLabourRecord(rec); setIsLabourModalOpen(true); }}
+                                                            style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #E2E8F0', backgroundColor: 'white', cursor: 'pointer', fontSize: 12, color: '#3B82F6', fontWeight: 600 }}>
+                                                            Edit
+                                                        </button>
+                                                    )}
                                                 </td>
                                             </tr>
                                             );

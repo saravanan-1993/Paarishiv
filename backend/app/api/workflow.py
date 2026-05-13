@@ -3,6 +3,7 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict
+from app.utils.rbac import RBACPermission
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -110,7 +111,7 @@ async def trigger_workflow_event(project_id: str, auto_trigger: str, user: dict,
         "updated_status": "Completed"
     })
 
-@router.get("/{project_id}/timeline")
+@router.get("/{project_id}/timeline", dependencies=[Depends(RBACPermission("Projects", "view"))])
 async def get_project_timeline(project_id: str, db = Depends(get_database)):
     transactions = await db.project_workflow_transaction.find({"project_id": project_id}).sort("order", 1).to_list(100)
     
@@ -137,14 +138,14 @@ async def get_project_timeline(project_id: str, db = Depends(get_database)):
                 
     return transactions
 
-@router.get("/{project_id}/activity-log")
+@router.get("/{project_id}/activity-log", dependencies=[Depends(RBACPermission("Projects", "view"))])
 async def get_activity_log(project_id: str, db = Depends(get_database)):
     logs = await db.activity_log.find({"project_id": project_id}).sort("timestamp", -1).to_list(100)
     for l in logs:
         l["_id"] = str(l["_id"])
     return logs
 
-@router.get("/dashboard-overview")
+@router.get("/dashboard-overview", dependencies=[Depends(RBACPermission("Projects", "view"))])
 async def get_workflow_overview(db = Depends(get_database)):
     # Find the current stage of every project
     projects = await db.projects.find({}).to_list(1000)

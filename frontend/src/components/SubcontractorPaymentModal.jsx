@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard, Calendar, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { subcontractorBillingAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const PAYMENT_MODES = ['Cash', 'NEFT/RTGS', 'UPI', 'Cheque', 'Bank Transfer'];
 
 const SubcontractorPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
+    const { user } = useAuth();
+    const canRecordPayment = hasPermission(user, 'Subcontractor Billing', 'edit') || hasPermission(user, 'Accounts', 'edit');
     const [paymentType, setPaymentType] = useState('full');
     const [amount, setAmount] = useState('');
     const [paymentMode, setPaymentMode] = useState('');
@@ -387,9 +391,10 @@ const SubcontractorPaymentModal = ({ isOpen, onClose, bill, onSuccess }) => {
                             <button
                                 style={styles.submitBtn}
                                 onClick={handleSubmit}
-                                disabled={loading}
-                                onMouseEnter={(e) => { if (!loading) e.currentTarget.style.backgroundColor = '#162d4a'; }}
-                                onMouseLeave={(e) => { if (!loading) e.currentTarget.style.backgroundColor = '#1e3a5f'; }}
+                                disabled={!canRecordPayment || loading}
+                                title={!canRecordPayment ? 'You do not have permission to record payments' : ''}
+                                onMouseEnter={(e) => { if (!loading && canRecordPayment) e.currentTarget.style.backgroundColor = '#162d4a'; }}
+                                onMouseLeave={(e) => { if (!loading && canRecordPayment) e.currentTarget.style.backgroundColor = '#1e3a5f'; }}
                             >
                                 {loading ? (
                                     <>

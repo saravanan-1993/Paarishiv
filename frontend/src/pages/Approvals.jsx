@@ -28,8 +28,38 @@ const Approvals = () => {
     // No role-name strings are hardcoded — the admin grants access via
     // Settings → Roles → Approvals → (sub-tab checkboxes + edit checkbox).
     const canEditApprovals = hasPermission(user, 'Approvals', 'edit');
+    const canApproveLeave = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Leaves');
     const canApprovePO = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Purchase Orders');
+    const canApproveMaterial = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Materials');
+    const canApproveExpense = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Expenses');
+    const canApproveManpower = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Manpower');
+    const canApproveDPR = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'DPR');
+    const canApproveSCBill = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'SC Bills');
+    const canApproveSCAdvance = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'SC Advances');
+    const canApproveLabourPay = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Labour Pay');
+    const canApproveStockReturn = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Stock Returns');
+    const canApproveTransfer = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Transfers');
+    const canApproveVendorPayment = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Vendor Payments');
     const canApproveTripRequest = canEditApprovals && hasSubTabAccess(user, 'Approvals', 'Trip Requests');
+    // Map active tab → permission flag for bulk-approve gating
+    const canEditCurrentTab = (() => {
+        switch (activeTab) {
+            case 'leaves': return canApproveLeave;
+            case 'purchase_orders': return canApprovePO;
+            case 'materials': return canApproveMaterial;
+            case 'expenses': return canApproveExpense;
+            case 'manpower': return canApproveManpower;
+            case 'dprs': return canApproveDPR;
+            case 'subcontractor_bills': return canApproveSCBill;
+            case 'subcontractor_advances': return canApproveSCAdvance;
+            case 'labour_payments': return canApproveLabourPay;
+            case 'stock_returns': return canApproveStockReturn;
+            case 'material_transfers': return canApproveTransfer;
+            case 'payment_requests': return canApproveVendorPayment;
+            case 'trip_requests': return canApproveTripRequest;
+            default: return canEditApprovals;
+        }
+    })();
     const [viewPayment, setViewPayment] = useState(null);
     const [viewDetail, setViewDetail] = useState(null);
 
@@ -125,6 +155,9 @@ const Approvals = () => {
             });
         } catch (error) {
             console.error('Error fetching pending approvals:', error);
+            if (error?.response?.status === 403) {
+                toast.error(error.response?.data?.detail || "You don't have permission to view this data.");
+            }
         } finally {
             setLoading(false);
         }
@@ -203,6 +236,10 @@ const Approvals = () => {
     };
 
     const performAction = async (type, id, action, payload) => {
+        if (!canEditApprovals) {
+            toast.error("You don't have permission to perform this action.");
+            return;
+        }
         setActionLoading(`${id}-${action}`);
         try {
             await approvalsAPI.action(type, id, action, payload);
@@ -374,7 +411,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Leave', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveLeave && (
                     <>
                         <button
                             onClick={() => handleAction('leaves', item._id, 'reject')}
@@ -560,7 +597,7 @@ const Approvals = () => {
                 >
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveMaterial && (
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button
                             onClick={() => handleAction('materials', item._id, 'reject')}
@@ -637,7 +674,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Manpower Request', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveManpower && (
                     <>
                         <button
                             onClick={() => handleAction('manpower', item._id, 'reject')}
@@ -734,7 +771,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Expense', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {(!item.status || item.status === 'Pending') && (
+                {(!item.status || item.status === 'Pending') && canApproveExpense && (
                     <>
                         <button
                             onClick={() => handleAction('expenses', item._id, 'reject')}
@@ -815,7 +852,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Subcontractor Bill', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending Approval' && (
+                {item.status === 'Pending Approval' && canApproveSCBill && (
                     <>
                         <button
                             className="btn btn-primary btn-sm"
@@ -881,7 +918,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Subcontractor Advance', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.approval_status === 'Pending Approval' && (
+                {item.approval_status === 'Pending Approval' && canApproveSCAdvance && (
                     <>
                         <button
                             className="btn btn-primary btn-sm"
@@ -933,7 +970,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Material Transfer', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveTransfer && (
                     <>
                         <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
                             onClick={() => handleAction('material_transfers', item._id || item.id, 'approve')}
@@ -998,7 +1035,7 @@ const Approvals = () => {
                     style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Eye size={14} /> View
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveVendorPayment && (
                     <>
                         <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
                             onClick={() => handleAction('payment_requests', item._id || item.id, 'approve')}
@@ -1149,7 +1186,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Stock Return', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.status === 'Pending' && (
+                {item.status === 'Pending' && canApproveStockReturn && (
                     <>
                         <button className="btn btn-primary btn-sm" disabled={!!actionLoading}
                             onClick={() => handleAction('stock_returns', item._id || item.id, 'approve')}
@@ -1209,7 +1246,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'Labour Payment', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {item.payment_status === 'Payment Requested' && (
+                {item.payment_status === 'Payment Requested' && canApproveLabourPay && (
                     <>
                         <button
                             className="btn btn-primary btn-sm"
@@ -1297,7 +1334,7 @@ const Approvals = () => {
                 <button onClick={() => setViewDetail({ type: 'DPR', item })} style={{ padding: '10px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', background: 'white', color: '#475569', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Eye size={18} /> View Details
                 </button>
-                {!finalised && (
+                {!finalised && canApproveDPR && (
                     <>
                         <button
                             onClick={() => handleDprAction(item, 'reject')}
@@ -1340,7 +1377,7 @@ const Approvals = () => {
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        {activeStatusTab === 'Pending' && selectedIds.length > 0 && activeTab !== 'dprs' && (
+                        {activeStatusTab === 'Pending' && selectedIds.length > 0 && activeTab !== 'dprs' && canEditCurrentTab && (
                             <button
                                 onClick={handleBulkApprove}
                                 disabled={bulkLoading}
@@ -1366,16 +1403,18 @@ const Approvals = () => {
                                 {selectedIds.length === filteredData.filter(i => i.status === 'Pending' || !i.status).length ? 'Deselect All' : 'Select All'}
                             </button>
                         )}
-                        <button
-                            onClick={handleExportPDF}
-                            style={{
-                                background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
-                                borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                                fontWeight: '600', color: '#475569'
-                            }}
-                        >
-                            <Download size={16} /> Export
-                        </button>
+                        {hasPermission(user, 'Approvals', 'view') && (
+                            <button
+                                onClick={handleExportPDF}
+                                style={{
+                                    background: 'white', border: '1px solid #e2e8f0', padding: '10px 16px',
+                                    borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                                    fontWeight: '600', color: '#475569'
+                                }}
+                            >
+                                <Download size={16} /> Export
+                            </button>
+                        )}
                         <button
                             onClick={fetchData}
                             style={{

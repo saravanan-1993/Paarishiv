@@ -3,11 +3,13 @@ import { X, Plus, Trash2, Camera, Save, HardHat, Package, Truck, ClipboardList, 
 import { projectAPI, vendorAPI, materialAPI, fleetAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { hasPermission } from '../utils/rbac';
 import CustomSelect from './CustomSelect';
 
 const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     const { user } = useAuth();
     const toast = useToast();
+    const canSubmitDPR = hasPermission(user, 'Projects', 'add');
     const [activeTab, setActiveTab] = useState('work');
 
     // Checklist data from 6 PDFs — all optional
@@ -349,6 +351,10 @@ const DPRModal = ({ isOpen, onClose, project, onDprAdded }) => {
     };
 
     const handleSubmit = async () => {
+        if (!canSubmitDPR) {
+            toast.error("You don't have permission to submit DPRs.");
+            return;
+        }
         const projectId = project?._id || project?.id;
         if (!projectId) {
             toast.error('Project not found. Please close and try again.');

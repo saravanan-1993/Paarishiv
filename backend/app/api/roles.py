@@ -39,6 +39,15 @@ SYSTEM_FEATURES = [
 ]
 
 SUB_TABS = {
+    # Dashboard sub-tabs control WHICH dashboard layout the user lands on after
+    # login. The frontend Dashboard.jsx renders the FIRST view in this priority
+    # order that the user has access to. This replaces the old hardcoded-cascade
+    # so admins can switch a role's dashboard from Roles & Permissions UI.
+    'Dashboard': [
+        'Admin Overview', 'General Manager View', 'Accounts View',
+        'Purchase Officer View', 'Inventory Manager View',
+        'Project Coordinator View', 'HR View', 'Workspace View'
+    ],
     'Projects': ['Overview', 'Tasks', 'DPR', 'Financials', 'Documents', 'Workflow Tracking'],
     'HRMS': ['Dashboard', 'Employee Master', 'Attendance', 'Leave Management', 'Payroll', 'Surprise Visits', 'Workforce', 'Authorized Users', 'Roles & Permissions'],
     'Budget & Finance': ['Overview', 'Sales', 'PurchaseBills', 'Purchase', 'Payments', 'Ledger'],
@@ -58,7 +67,7 @@ DEFAULT_ROLES = [
         "description": 'Full system access',
         "tags": ['admin', 'System'],
         "permissions": [
-            { "name": 'Dashboard', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
+            { "name": 'Dashboard', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Dashboard'] },
             { "name": 'Projects', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Projects'] },
             { "name": 'Tasks', "actions": { "view": True, "add": True, "edit": True, "delete": True } },
             { "name": 'Accounts', "actions": { "view": True, "add": True, "edit": True, "delete": True }, "subTabs": SUB_TABS['Accounts'] },

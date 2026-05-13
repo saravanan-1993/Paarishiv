@@ -246,8 +246,11 @@ const Projects = () => {
                                 <div
                                     key={projectId}
                                     className="card project-card"
-                                    style={{ padding: '0', overflow: 'hidden', cursor: 'pointer' }}
-                                    onClick={() => navigate(`/projects/${projectId}`)}
+                                    style={{ padding: '0', overflow: 'hidden', cursor: hasPermission(user, 'Projects', 'view') ? 'pointer' : 'default' }}
+                                    onClick={() => {
+                                        if (!hasPermission(user, 'Projects', 'view')) return;
+                                        navigate(`/projects/${projectId}`);
+                                    }}
                                 >
                                     {/* Top colour bar */}
                                     <div style={{ height: '4px', backgroundColor: style.color }} />
@@ -309,12 +312,14 @@ const Projects = () => {
                                                     </div>
                                                 </div>
                                             )}
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); if (projectId) navigate(`/projects/${projectId}`); }}
-                                                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '13px' }}
-                                            >
-                                                Details <ArrowRight size={15} />
-                                            </button>
+                                            {hasPermission(user, 'Projects', 'view') && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); if (projectId) navigate(`/projects/${projectId}`); }}
+                                                    style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '13px' }}
+                                                >
+                                                    Details <ArrowRight size={15} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

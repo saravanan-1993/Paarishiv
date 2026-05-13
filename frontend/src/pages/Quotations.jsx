@@ -44,6 +44,8 @@ const Quotations = () => {
     const [detailRow, setDetailRow] = useState(null);
     const [sendingId, setSendingId] = useState(null);
 
+    const canAdd = hasPermission(user, 'Accounts', 'add');
+    const canView = hasPermission(user, 'Accounts', 'view');
     const canEdit = hasPermission(user, 'Accounts', 'edit');
     const canDelete = hasPermission(user, 'Accounts', 'delete');
 
@@ -457,7 +459,7 @@ const Quotations = () => {
                         Detailed construction quotation & BOQ — create, share & track.
                     </p>
                 </div>
-                {canEdit && (
+                {canAdd && (
                     <button
                         onClick={handleCreate}
                         className="btn btn-primary"
@@ -561,16 +563,16 @@ const Quotations = () => {
                                         <td style={tdStyle}><StatusBadge status={q.status || 'Draft'} /></td>
                                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                                             <div style={{ display: 'inline-flex', gap: 6 }}>
-                                                <IconBtn icon={Eye} title="View" onClick={() => handleView(q)} color="#3B82F6" />
-                                                <IconBtn icon={Download} title="Download PDF" onClick={() => handleDownloadPDF(q)} color="#0EA5E9" />
-                                                <IconBtn
+                                                {canView && <IconBtn icon={Eye} title="View" onClick={() => handleView(q)} color="#3B82F6" />}
+                                                {canView && <IconBtn icon={Download} title="Download PDF" onClick={() => handleDownloadPDF(q)} color="#0EA5E9" />}
+                                                {canView && <IconBtn
                                                     icon={sendingId === q.id ? Loader2 : Mail}
                                                     title="Send Email"
                                                     onClick={() => handleSendEmail(q)}
                                                     color="#6366F1"
                                                     disabled={sendingId === q.id}
-                                                />
-                                                <IconBtn icon={WhatsAppIcon} title="Share on WhatsApp" onClick={() => handleWhatsApp(q)} color="#25D366" />
+                                                />}
+                                                {canView && <IconBtn icon={WhatsAppIcon} title="Share on WhatsApp" onClick={() => handleWhatsApp(q)} color="#25D366" />}
                                                 {canEdit && <IconBtn icon={Edit3} title="Edit" onClick={() => handleEdit(q)} color="#F59E0B" />}
                                                 {canDelete && <IconBtn icon={Trash2} title="Delete" onClick={() => handleDelete(q)} color="#EF4444" />}
                                             </div>

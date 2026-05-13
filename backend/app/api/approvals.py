@@ -75,7 +75,23 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
                 m[k] = str(v)
     results["materials"] = mats
     
-    exps = await db.expenses.find(query).sort("_id", -1).to_list(100)
+    # Approvals → Expenses tab shows GENERIC expenses only (manually recorded
+    # cash/bank/UPI expenses without a GRN link). Vendor-payment expenses (those
+    # backed by a GRN) belong in the "Vendor Payments" tab and must be excluded
+    # here, otherwise the same liability shows up in two approval queues.
+    expense_query = dict(query)
+    expense_query["$and"] = [
+        {"$or": [
+            {"grn_id": {"$exists": False}},
+            {"grn_id": None},
+            {"grn_id": ""},
+        ]},
+        {"$or": [
+            {"category": {"$exists": False}},
+            {"category": {"$ne": "Material Purchase"}},
+        ]},
+    ]
+    exps = await db.expenses.find(expense_query).sort("_id", -1).to_list(100)
     for ex in exps:
         ex["_id"] = str(ex["_id"])
         resolve_names(ex)
@@ -230,7 +246,7 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
 
     return results
 
-@router.get("/pending", response_model=Dict[str, List[Any]])
+@router.get("/pending", response_model=Dict[str, List[Any]], dependencies=[Depends(RBACPermission("Approvals", "view"))])
 async def get_pending_approvals(current_user=Depends(get_current_user), db=Depends(get_database)):
     # Legacy wrapper for older clients
     return await get_all_approvals("Pending", current_user, db)
@@ -586,13 +602,21 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "approved_at": datetime.now(),
                 }})
 
-                # Auto-cancel all other pending payment requests for the same GRN
+                # Auto-cancel other pending payment requests for the same
+                # GRN+vendor only. Multi-vendor GRNs have one PR per vendor,
+                # so approving Madurai's PR must NOT cancel Sri Balaji's.
                 if grn_id:
+                    cancel_filter = {
+                        "grn_id": grn_id,
+                        "status": "Pending",
+                        "_id": {"$ne": oid},
+                        "payee": (pr_doc.get("payee") or "").strip(),
+                    }
                     await db.payment_requests.update_many(
-                        {"grn_id": grn_id, "status": "Pending", "_id": {"$ne": oid}},
+                        cancel_filter,
                         {"$set": {
                             "status": "Cancelled",
-                            "rejection_reason": "Auto-cancelled: GRN payment already processed.",
+                            "rejection_reason": "Auto-cancelled: vendor payment already processed.",
                             "rejected_at": datetime.now(),
                         }}
                     )
@@ -823,6 +847,10 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             pass  # Don't fail approval action if notification fails
 
         return {"message": "Success", "status": status}
+    except HTTPException:
+        # Preserve intentional HTTP errors (400/403/404 etc.) — don't downgrade
+        # them to a 500 with a stack trace.
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

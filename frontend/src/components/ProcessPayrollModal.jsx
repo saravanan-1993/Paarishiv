@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, Clock, DollarSign, CheckCircle, Loader2, Coffee } from 'lucide-react';
 import { hrmsAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canProcessPayroll = hasPermission(user, 'HRMS', 'edit', 'Payroll') || hasPermission(user, 'HRMS', 'edit');
     const [isProcessing, setIsProcessing] = useState(false);
     const [loadingAtt, setLoadingAtt] = useState(false);
 
@@ -230,7 +234,7 @@ const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
 
                 <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '20px 24px', gap: '12px', justifyContent: 'flex-end', display: 'flex' }}>
                     <button type="button" className="btn btn-outline" onClick={onClose} disabled={isProcessing}>Cancel</button>
-                    <button type="button" className="btn btn-primary" onClick={handleConfirm} disabled={isProcessing} style={{ fontWeight: '800', minWidth: '150px' }}>
+                    <button type="button" className="btn btn-primary" onClick={handleConfirm} disabled={isProcessing || !canProcessPayroll} title={!canProcessPayroll ? "You don't have permission to process payroll" : undefined} style={{ fontWeight: '800', minWidth: '150px' }}>
                         {isProcessing ? 'PROCESSING...' : 'CONFIRM GENERATION'}
                     </button>
                 </div>
