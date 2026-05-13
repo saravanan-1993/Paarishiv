@@ -12,7 +12,7 @@ from app.utils.rbac import role_in
 from app.utils.email import send_email
 from app.api.workflow import initialize_project_workflow, trigger_workflow_event
 from app.utils.logging import log_activity
-from app.utils.rbac import RBACPermission, _resolve_v2, require_sub_tab, has_sub_tab_access, get_users_with_permission
+from app.utils.rbac import RBACPermission, _resolve_v2, require_sub_tab, has_sub_tab_access, fetch_role_doc, get_users_with_permission
 from app.utils.sanitize import sanitize_string, sanitize_list
 from app.utils.notifications import notify, EVENT_PROJECT, EVENT_TASK, EVENT_WORKFLOW
 
@@ -117,15 +117,19 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
 
     return project_dict
 
-@router.get("/", response_model=List[ProjectModel])
+@router.get("/", response_model=List[ProjectModel], dependencies=[Depends(RBACPermission("Projects", "view"))])
 async def get_projects(all: bool = False, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    # Dynamic scoping — admin-class sees all. Anyone else with project assignments
-    # (engineer or coordinator) sees only those projects, unless ?all=true.
-    from app.utils.rbac import is_admin_role as _is_admin_role
+    # Dynamic scoping — admin-class + cross-project specialists (Purchase
+    # Officer, Inventory Manager, Accountant who manage data across all
+    # projects) see all. Only users who ARE assigned as engineer/coordinator
+    # on specific projects are filtered to those projects (Site Engineer /
+    # Project Coordinator).
+    from app.utils.rbac import is_admin_role as _is_admin_role, is_assignment_scoped as _is_assignment_scoped
     if not all and not _is_admin_role(current_user.get("role", "")):
-        from app.utils.rbac import _build_assignment_or_clauses
-        query["$or"] = await _build_assignment_or_clauses(db, current_user)
+        if await _is_assignment_scoped(db, current_user):
+            from app.utils.rbac import _build_assignment_or_clauses
+            query["$or"] = await _build_assignment_or_clauses(db, current_user)
 
     projects = await db.projects.find(query).to_list(100)
 
@@ -154,8 +158,15 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
 
 @router.get("/all-dprs")
 async def get_all_dprs(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Fetch all DPRs from all projects — requires Approvals → DPR access."""
-    await require_sub_tab(db, current_user, "Approvals", "DPR")
+    """Fetch all DPRs from all projects — visible to anyone with either
+    Approvals → DPR (admin/approver workflow) OR Site Reports → Site Reports
+    (DPR) (Project Coordinator's site-reports view)."""
+    from app.utils.rbac import has_sub_tab_access as _has_sub_tab, is_admin_role as _is_admin
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_approvals_dpr = await _has_sub_tab(db, current_user, "Approvals", "DPR", role_doc=role_doc)
+    can_site_reports_dpr = await _has_sub_tab(db, current_user, "Site Reports", "Site Reports (DPR)", role_doc=role_doc)
+    if not (_is_admin(current_user.get("role", "")) or can_approvals_dpr or can_site_reports_dpr):
+        raise HTTPException(status_code=403, detail="You need Approvals → DPR or Site Reports → Site Reports (DPR) access to view DPR list.")
 
     # Pre-fetch employees to resolve IDs/usernames to names
     employees = await db.employees.find({}, {"fullName": 1, "_id": 1, "username": 1, "employeeCode": 1}).to_list(1000)
@@ -363,12 +374,13 @@ async def update_task(
     project_id: str, task_id: str, task_update: TaskUpdate,
     db = Depends(get_database), current_user: dict = Depends(get_current_user)
 ):
-    # Anyone with Projects → Tasks edit access can change task to any status;
-    # users without it can only mark as Completed.
+    # Permission model:
+    #   - Users with Projects → Tasks edit access (admin/PM/etc.) can move a task
+    #     to any status.
+    #   - The task's ASSIGNEE can also move their own task to any status
+    #     (Pending → In Progress → Completed).
+    #   - Everyone else can only mark it Completed.
     can_manage_tasks = await has_sub_tab_access(db, current_user, "Projects", "Tasks")
-
-    if not can_manage_tasks and task_update.status != "Completed":
-        raise HTTPException(status_code=403, detail="You can only mark tasks as Completed.")
 
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -377,6 +389,21 @@ async def update_task(
     task = next((t for t in project.get("tasks", []) if t.get("id") == task_id), None)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    # Identify whether the current user is the task's assignee. The assignedTo
+    # field historically stored username, employeeCode, full_name, or _id — so
+    # we accept any of these.
+    assignee = (task.get("assignedTo") or "").strip()
+    user_keys = {
+        (current_user.get("username") or "").strip(),
+        (current_user.get("full_name") or "").strip(),
+        str(current_user.get("_id") or "").strip(),
+    }
+    user_keys.discard("")
+    is_assignee = bool(assignee) and assignee in user_keys
+
+    if not can_manage_tasks and not is_assignee and task_update.status != "Completed":
+        raise HTTPException(status_code=403, detail="You can only mark tasks as Completed.")
 
     # Update the specific task in the tasks array
     update_data = {"tasks.$.status": task_update.status}
@@ -574,7 +601,7 @@ class DPRCreate(BaseModel):
     checklist: Optional[dict] = None
 
 
-@router.post("/{project_id}/dprs")
+@router.post("/{project_id}/dprs", dependencies=[Depends(RBACPermission("Projects", "add"))])
 async def add_dpr(project_id: str, dpr: DPRCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     project = await db.projects.find_one({"_id": ObjectId(project_id)})
     if not project:
@@ -684,9 +711,17 @@ async def update_dpr_status(project_id: str, dpr_id: str, data: dict, db = Depen
 
     user_name = current_user.get("full_name") or current_user.get("username", "Unknown")
 
-    # Dynamic permission: anyone with Approvals → DPR sub-tab + edit on Approvals
-    # module can move a DPR through its status. No role-name string matching.
-    await require_sub_tab(db, current_user, "Approvals", "DPR")
+    # Dynamic permission — DPR status change accessible from two workflows:
+    #   • Approvals page (Approvals → DPR sub-tab) used by Administrator
+    #   • Coordinator Control Hub (Site Reports → Site Reports (DPR) sub-tab)
+    #     used by Project Coordinator
+    # Accept either, plus admin-class bypass. No role-name string matching.
+    from app.utils.rbac import is_admin_role as _is_admin
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_via_approvals = await has_sub_tab_access(db, current_user, "Approvals", "DPR", role_doc=role_doc)
+    can_via_site_reports = await has_sub_tab_access(db, current_user, "Site Reports", "Site Reports (DPR)", role_doc=role_doc)
+    if not (_is_admin(current_user.get("role", "")) or can_via_approvals or can_via_site_reports):
+        raise HTTPException(status_code=403, detail="You need Approvals → DPR or Site Reports → Site Reports (DPR) access to update DPR status.")
 
     # Get current DPR
     project = await db.projects.find_one(

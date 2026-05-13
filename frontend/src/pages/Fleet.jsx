@@ -23,9 +23,12 @@ const Fleet = () => {
     const { user } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
+    const canViewFleet = hasPermission(user, 'Fleet Management', 'view');
+    const canAddFleet = hasPermission(user, 'Fleet Management', 'add');
     const canEditFleet = hasPermission(user, 'Fleet Management', 'edit');
     const canDeleteFleet = hasPermission(user, 'Fleet Management', 'delete');
-    const canRequestTrip = hasFeature(user, 'request_trip') || hasPermission(user, 'Fleet Management', 'view');
+    // Requesting a trip creates a new record — gate on 'add' (feature flag retained for legacy override).
+    const canRequestTrip = hasFeature(user, 'request_trip') || hasPermission(user, 'Fleet Management', 'add');
     const canAssignTrip = hasFeature(user, 'assign_trip_vehicle') || canEditFleet;
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -400,6 +403,7 @@ const Fleet = () => {
                                                 <CheckCircle size={16} />
                                             </button>
                                         )}
+                                        {/* Add Expenses opens TripExpenseModal which edits an existing trip — gate on edit. */}
                                         {canEditFleet && <button className="icon-btn" aria-label="Add expenses" onClick={() => { setSelectedTrip(trip); setIsExpenseModalOpen(true); }} title="Add Expenses"><IndianRupee size={16} /></button>}
                                         {canEditFleet && <button className="icon-btn" aria-label="Edit trip" onClick={() => { setSelectedTrip(trip); setIsTripModalOpen(true); }} title="Edit Trip"><Edit2 size={16} /></button>}
                                         {canDeleteFleet && <button className="icon-btn" aria-label="Delete trip" style={{ color: '#EF4444' }} onClick={() => handleDeleteTrip(trip.id || trip._id)} title="Delete Trip"><Trash2 size={16} /></button>}
@@ -451,7 +455,7 @@ const Fleet = () => {
                             </div>
                         </div>
                         <div style={{ padding: '12px 20px', background: '#F8FAFC', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
-                            <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }} onClick={() => { setSelectedTrip(v); setActiveTab('Trips'); }}>History</button>
+                            {canViewFleet && <button className="btn btn-outline btn-sm" style={{ padding: '4px 12px' }} onClick={() => { setSelectedTrip(v); setActiveTab('Trips'); }}>History</button>}
                             <div style={{ display: 'flex', gap: '8px' }}>
                                 {canEditFleet && <button className="icon-btn" aria-label="Edit vehicle" style={{ padding: '4px' }} onClick={() => { setSelectedTrip(v); setIsVehicleModalOpen(true); }} title="Edit Vehicle"><Edit2 size={14} /></button>}
                                 {canDeleteFleet && <button className="icon-btn" aria-label="Delete vehicle" style={{ padding: '4px', color: '#EF4444' }} onClick={() => handleDeleteVehicle(v.id)} title="Delete Vehicle"><Trash2 size={14} /></button>}
@@ -459,6 +463,7 @@ const Fleet = () => {
                         </div>
                     </div>
                 ))}
+                {canAddFleet && (
                 <div
                     onClick={() => { setSelectedTrip(null); setIsVehicleModalOpen(true); }}
                     style={{
@@ -470,6 +475,7 @@ const Fleet = () => {
                     <Plus size={48} style={{ marginBottom: '16px', opacity: 0.3 }} />
                     <span style={{ fontWeight: '700' }}>Register New Vehicle</span>
                 </div>
+                )}
             </div>
         </div>
     );
@@ -484,9 +490,9 @@ const Fleet = () => {
                             <input type="text" placeholder="Search drivers by name or phone..." style={{ width: '100%', padding: '10px 12px 10px 40px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                         </div>
                     </div>
-                    <button className="btn btn-primary" onClick={() => { setSelectedDriver(null); setIsDriverModalOpen(true); }} style={{ marginLeft: '16px' }}>
+                    {canAddFleet && <button className="btn btn-primary" onClick={() => { setSelectedDriver(null); setIsDriverModalOpen(true); }} style={{ marginLeft: '16px' }}>
                         <Plus size={18} /> ADD NEW DRIVER
-                    </button>
+                    </button>}
                 </div>
             </div>
 
@@ -786,7 +792,7 @@ const Fleet = () => {
                     <div style={{ display: 'flex', gap: '12px' }}>
                         <button className="btn btn-outline" onClick={fetchData}><Clock size={18} /> Refresh Data</button>
                         {canRequestTrip && <button className="btn btn-outline" onClick={() => setIsTripRequestModalOpen(true)}><Plus size={18} /> Request Trip</button>}
-                        {canEditFleet && <button className="btn btn-primary" onClick={() => setIsTripModalOpen(true)}><Plus size={18} /> NEW TRIP</button>}
+                        {canAddFleet && <button className="btn btn-primary" onClick={() => setIsTripModalOpen(true)}><Plus size={18} /> NEW TRIP</button>}
                     </div>
                 </div>
 

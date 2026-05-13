@@ -717,7 +717,7 @@ const Workflow = () => {
                                                                 APPROVE
                                                             </button>
                                                         )}
-                                                        {req.status === 'Approved' && (
+                                                        {req.status === 'Approved' && hasPermission(user, 'Procurement', 'edit') && (
                                                             <button
                                                                 className="btn btn-primary btn-sm" style={{ fontSize: '11px', padding: '4px 8px' }}
                                                                 onClick={() => { setSearchParams({ tab: 'Requests', request_id: req.id }); setIsPOModalOpen(true); }}
@@ -753,7 +753,7 @@ const Workflow = () => {
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    {con.status !== 'PO Created' && (
+                                                    {con.status !== 'PO Created' && hasPermission(user, 'Procurement', 'edit') && (
                                                         <button
                                                             className="btn btn-primary btn-sm" style={{ fontSize: '11px', padding: '4px 8px', backgroundColor: '#7c3aed' }}
                                                             onClick={() => { setSearchParams({ tab: 'Requests', request_id: con.id }); setIsPOModalOpen(true); }}
@@ -837,7 +837,14 @@ const Workflow = () => {
             <POModal
                 isOpen={isPOModalOpen}
                 onClose={() => { setIsPOModalOpen(false); if (requestIdFromUrl) setSearchParams({ tab: 'POs' }); }}
-                onSuccess={() => { fetchPOs(); if (requestIdFromUrl) setSearchParams({ tab: 'POs' }); }}
+                onSuccess={() => {
+                    // Refresh BOTH POs and Requests so the source request's
+                    // status flips from "Approved" to "PO Created" immediately
+                    // (hides the CREATE PO button without needing a manual reload).
+                    fetchPOs();
+                    fetchRequests();
+                    if (requestIdFromUrl) setSearchParams({ tab: 'POs' });
+                }}
                 requestId={requestIdFromUrl}
             />
             <GRNModal

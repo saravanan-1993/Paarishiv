@@ -33,20 +33,45 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
     today = datetime.now().strftime("%Y-%m-%d")
     username = current_user.get("username")
     print(f"Clock-in attempt for: {username} at {today}")
-    
+
     try:
         # Check if already clocked in today
         existing = await db.attendance.find_one({"username": username, "date": today})
         if existing:
-            print(f"User {username} already clocked in today.")
-            existing["id"] = str(existing.pop("_id"))
-            for k, v in existing.items():
-                if isinstance(v, datetime): existing[k] = v.isoformat(timespec='seconds')
-                if k == "breaks":
-                    for bk in v:
-                        if bk.get("start") and isinstance(bk["start"], datetime): bk["start"] = bk["start"].isoformat(timespec='seconds')
-                        if bk.get("end") and isinstance(bk["end"], datetime): bk["end"] = bk["end"].isoformat(timespec='seconds')
-            return {"message": "Already clocked in", **existing}
+            # Case A — existing record was ALREADY closed (check_out set). Treat
+            # this clock-in as a fresh new session: reset check_in to now, clear
+            # check_out so the dashboard timer restarts from the new check_in.
+            # The previous session's work_hours are kept (last clock-out total)
+            # and breaks history is cleared for the new session.
+            if existing.get("check_out"):
+                now = datetime.now()
+                await db.attendance.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "check_in": now,
+                        "check_out": None,
+                        "on_break": False,
+                        "breaks": [],
+                        "location": req.location or existing.get("location", "Site Office"),
+                        "latitude": req.latitude if req.latitude is not None else existing.get("latitude"),
+                        "longitude": req.longitude if req.longitude is not None else existing.get("longitude"),
+                        "status": "Present",
+                    }}
+                )
+                fresh = await db.attendance.find_one({"_id": existing["_id"]})
+                fresh["id"] = str(fresh.pop("_id"))
+                for k, v in fresh.items():
+                    if isinstance(v, datetime): fresh[k] = v.isoformat(timespec='seconds')
+                return {"message": "Clocked in (new session)", **fresh}
+
+            # Case B — open session still running. Block with a clear 409 so the
+            # frontend can show a meaningful toast instead of silently no-op'ing.
+            existing_ci = existing.get("check_in")
+            ci_str = existing_ci.strftime("%I:%M %p") if isinstance(existing_ci, datetime) else "earlier today"
+            raise HTTPException(
+                status_code=409,
+                detail=f"You're already clocked in since {ci_str}. Clock out first to start a new session."
+            )
         
         # Geofencing check — admin-class users and HR Manager bypass site fencing.
         # Uses dynamic helper for whitespace/case tolerance.
@@ -81,9 +106,7 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
             "location": req.location or "Site Office",
             "latitude": req.latitude,
             "longitude": req.longitude,
-            "on_break": False,
-            "breaks": [],
-            "created_at": datetime.now()
+            "created_at": datetime.now(),
         }
         
         result = await db.attendance.insert_one(record)
@@ -117,40 +140,16 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
         print(f"CRITICAL ERROR in clock_in: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+# Break / Official Duty / Permission tracking has been retired — the attendance
+# model now only tracks check-in / check-out time. The old endpoints are kept
+# as no-ops to avoid breaking any cached frontend that still calls them.
 @router.post("/start-break")
 async def start_break(req: BreakRequest = None, current_user = Depends(get_current_user), db = Depends(get_database)):
-    today = datetime.now().strftime("%Y-%m-%d")
-    b_type = req.type if req else "Break"
-    username = current_user["username"]
-    existing = await db.attendance.find_one({"username": username, "date": today})
-    if not existing:
-        raise HTTPException(status_code=400, detail="Must clock in first")
-    if existing.get("on_break"): return {"message": "Already on break"}
-    
-    await db.attendance.update_one(
-        {"_id": existing["_id"]},
-        {"$set": {"on_break": True}, "$push": {"breaks": {"start": datetime.now(), "end": None, "type": b_type}}}
-    )
-    return {"message": "Break started"}
+    return {"message": "Break tracking is disabled"}
 
 @router.post("/end-break")
 async def end_break(current_user = Depends(get_current_user), db = Depends(get_database)):
-    today = datetime.now().strftime("%Y-%m-%d")
-    username = current_user["username"]
-    existing = await db.attendance.find_one({"username": username, "date": today})
-    if not existing or not existing.get("on_break"):
-        raise HTTPException(status_code=400, detail="Not on break")
-    
-    breaks = existing.get("breaks", [])
-    last_break = breaks[-1]
-    end_time = datetime.now()
-    duration = (end_time - last_break["start"]).total_seconds() / 3600
-    
-    await db.attendance.update_one(
-        {"_id": existing["_id"], "breaks.start": last_break["start"]},
-        {"$set": {"on_break": False, "breaks.$.end": end_time, "breaks.$.duration": duration}}
-    )
-    return {"message": "Break ended"}
+    return {"message": "Break tracking is disabled"}
 
 @router.post("/clock-out")
 async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends(get_current_user), db = Depends(get_database)):
@@ -176,26 +175,17 @@ async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends
     
     check_out_time = datetime.now()
     check_in_time = existing["check_in"]
-    
-    # End break if still on break
-    on_bk = existing.get("on_break", False)
-    breaks = existing.get("breaks", [])
-    if on_bk:
-        last_bk = breaks[-1]
-        last_bk["end"] = check_out_time
-        last_bk["duration"] = (check_out_time - last_bk["start"]).total_seconds() / 3600
-        breaks[-1] = last_bk
-    
-    total_break_hours = sum(b.get("duration", 0) for b in breaks if b.get("type", "Break") != "Official Duty")
+
+    # Simplified work-hours: pure (check_out − check_in). Break / official-duty
+    # subtraction has been removed.
     duration = check_out_time - check_in_time
-    gross_hours = duration.total_seconds() / 3600
-    work_hours = round(max(0, gross_hours - total_break_hours), 2)
-    
+    work_hours = round(max(0, duration.total_seconds() / 3600), 2)
+
     await db.attendance.update_one(
         {"_id": existing["_id"]},
-        {"$set": {"check_out": check_out_time, "work_hours": work_hours, "breaks": breaks, "on_break": False}}
+        {"$set": {"check_out": check_out_time, "work_hours": work_hours}}
     )
-    
+
     return {"message": "Clocked out successfully", "work_hours": work_hours}
 
 @router.get("/me/summary")
@@ -238,14 +228,6 @@ async def get_my_summary(current_user = Depends(get_current_user), db = Depends(
             "current_session": {
                 "check_in": session["check_in"].isoformat(timespec='seconds') if session and session.get("check_in") else None,
                 "check_out": session["check_out"].isoformat(timespec='seconds') if session and session.get("check_out") else None,
-                "on_break": session.get("on_break", False),
-                "breaks": [
-                    {
-                        **b,
-                        "start": b["start"].isoformat(timespec='seconds') if b.get("start") else None,
-                        "end": b["end"].isoformat(timespec='seconds') if b.get("end") else None
-                    } for b in session.get("breaks", [])
-                ] if session else []
             } if session else None
         }
     except Exception as e:

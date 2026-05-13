@@ -31,7 +31,10 @@ const Materials = () => {
     const isAdmin = hasPermission(user, 'Inventory Management', 'edit');
     const isSiteEngineer = isEngineerRole(user?.role);
     const isCoordinator = hasPermission(user, 'Inventory Management', 'edit', 'Coordination');
+    const canViewInventory = hasPermission(user, 'Inventory Management', 'view');
+    const canAddInventory = hasPermission(user, 'Inventory Management', 'add');
     const canEditInventory = hasPermission(user, 'Inventory Management', 'edit');
+    const canDeleteInventory = hasPermission(user, 'Inventory Management', 'delete');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
     const [mainTab, setMainTab] = useState('Materials');
@@ -374,7 +377,7 @@ const Materials = () => {
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Project-wise inventory tracking and consumption monitoring.</p>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', justifyContent: 'flex-end' }}>
-                                {canEditInventory && (
+                                {canAddInventory && (
                                 <button
                                     className="btn btn-outline"
                                     onClick={() => setIsMaterialTransferOpen(true)}
@@ -469,7 +472,7 @@ const Materials = () => {
                                 <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} aria-hidden="true" />
                                 <h4 style={{ fontWeight: '700' }}>No materials at this site</h4>
                                 <p style={{ marginBottom: '20px' }}>Perform a GRN or Request Stock from warehouse to see items here.</p>
-                                {canEditInventory && (
+                                {canAddInventory && (
                                     <button
                                         className="btn btn-primary"
                                         onClick={() => setIsStockRequestOpen(true)}
@@ -540,7 +543,7 @@ const Materials = () => {
                                 <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Manage centralized stock, requests, and returns.</p>
                             </div>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '0 0 auto', justifyContent: 'flex-end' }}>
-                                {canEditInventory && <>
+                                {canAddInventory && <>
                                     <button className="btn btn-outline" onClick={() => setIsCreateMaterialOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                         <Plus size={18} /> ADD MASTER MATERIAL
                                     </button>
@@ -668,7 +671,7 @@ const Materials = () => {
                                 {/* Material Transfers Table — moved from Coordination */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                                     <h3 style={{ fontSize: 16, fontWeight: 700 }}>Material Transfer Requests</h3>
-                                    {canEditInventory && <button className="btn btn-primary btn-sm" onClick={() => setIsMaterialTransferOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    {canAddInventory && <button className="btn btn-primary btn-sm" onClick={() => setIsMaterialTransferOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         <ArrowRightLeft size={16} /> New Transfer
                                     </button>}
                                 </div>
@@ -693,6 +696,8 @@ const Materials = () => {
                                                 </td>
                                                 <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
                                                 <td>
+                                                    {/* Permission-based gate: isAdmin/isCoordinator are derived from
+                                                        hasPermission('Inventory Management', 'edit') — NOT role-string checks. */}
                                                     {t.status === 'Pending' && (isAdmin || isCoordinator) && (
                                                         <div style={{display:'flex',gap:4}}>
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
@@ -701,6 +706,8 @@ const Materials = () => {
                                                                 onClick={() => setPromptModal({ title: 'Reject Transfer', message: 'Optionally provide a rejection reason.', confirmText: 'Reject', danger: true, onSubmit: async (r) => { await inventoryAPI.rejectTransfer(t.id, { reason: r || '' }); fetchMaterialTransfers(); } })}>Reject</button>
                                                         </div>
                                                     )}
+                                                    {/* Execute requires Accounts edit permission — Accountants execute transfers
+                                                        (move stock between projects). Admin allowed via Inventory edit. */}
                                                     {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || hasPermission(user, 'Accounts', 'edit')) && (
                                                         <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                             onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>Execute</button>
@@ -901,6 +908,8 @@ const Materials = () => {
                                                     </td>
                                                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
                                                     <td>
+                                                        {/* Permission-based gate: isAdmin/isCoordinator are derived from
+                                                            hasPermission('Inventory Management', 'edit') — NOT role-string checks. */}
                                                         {t.status === 'Pending' && (isAdmin || isCoordinator) && (
                                                             <div style={{display:'flex',gap:4}}>
                                                                 <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
@@ -913,6 +922,8 @@ const Materials = () => {
                                                                 </button>
                                                             </div>
                                                         )}
+                                                        {/* Execute requires Accounts edit permission — Accountants execute transfers
+                                                            (move stock between projects). Admin allowed via Inventory edit. */}
                                                         {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || hasPermission(user, 'Accounts', 'edit')) && (
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                                 onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
@@ -939,7 +950,7 @@ const Materials = () => {
                                 <h2 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--text-main)', marginBottom: '4px' }}>Plant & Machinery</h2>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '15px' }}>Equipment tracking, diesel consumption & site logistics</p>
                             </div>
-                            {canEditInventory && (
+                            {canAddInventory && (
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '0 0 auto', justifyContent: 'flex-end' }}>
                                 <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto', padding: '10px 20px', borderRadius: '8px', fontWeight: '700', height: '42px' }} onClick={() => setIsFuelModalOpen(true)}>
                                     <Fuel size={18} /> FUEL INVENTORY
@@ -998,7 +1009,7 @@ const Materials = () => {
                                                 <td>{item.site}</td>
                                                 <td>{item.hours}</td>
                                                 <td><span className="badge badge-success">{item.status}</span></td>
-                                                <td><button onClick={() => handleViewDetails(item)} className="btn btn-outline btn-sm">Details</button></td>
+                                                <td>{canViewInventory && (<button onClick={() => handleViewDetails(item)} className="btn btn-outline btn-sm">Details</button>)}</td>
                                             </tr>
                                         ))}
                                         {fleet.length === 0 && <tr><td colSpan="7" style={{ textAlign: 'center', padding: '60px' }}>No equipment found.</td></tr>}

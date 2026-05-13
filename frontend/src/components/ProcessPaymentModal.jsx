@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, CheckCircle2, Calendar, CreditCard, User, FileText, AlertCircle } from 'lucide-react';
 import { financeAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const IndianRupee = ({ size, className, style, color }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color || "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>
@@ -15,6 +17,8 @@ const IndianRupee = ({ size, className, style, color }) => (
 
 const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canProcessPayment = hasPermission(user, 'Accounts', 'edit');
     const [invoiceNo, setInvoiceNo] = useState('');
     const [baseAmount, setBaseAmount] = useState('');
     const [gstPercent, setGstPercent] = useState('18');
@@ -89,6 +93,10 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
     };
 
     const handleProcess = async () => {
+        if (!canProcessPayment) {
+            toast.error("You don't have permission to process payments.");
+            return;
+        }
         if (!baseAmount || isNaN(parseFloat(baseAmount))) {
             toast.warning('Please enter a valid invoice base amount.');
             return;
@@ -142,13 +150,24 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 items: items,
                 total_amount: totalAmount,
                 payment_type: paymentType,
-                status: isPending ? 'Pending' : 'Paid'
+                // Use 'Pending Payment' for invoice-only mode so the expense
+                // ledger marks it as awaiting payment WITHOUT showing up in
+                // the Approvals → Expenses queue (which filters exact 'Pending').
+                status: isPending ? 'Pending Payment' : 'Paid'
             };
 
-            await financeAPI.createPaymentRequest(payload);
-            toast.success(isPending
-                ? 'Invoice recorded and sent for admin approval.'
-                : 'Payment request submitted for admin approval. Payment will be processed after approval.');
+            if (isPending) {
+                // "Record Invoice Only" path — no admin approval needed.
+                // Persist the invoice straight to the expenses ledger with
+                // status=Pending so it shows up in the books immediately and
+                // can be paid later via Partial/Full flow.
+                await financeAPI.createExpense(payload);
+                toast.success('Invoice recorded successfully.');
+            } else {
+                // Actual payment — must go through admin approval queue.
+                await financeAPI.createPaymentRequest(payload);
+                toast.success('Payment request submitted for admin approval. Payment will be processed after approval.');
+            }
             onPaymentProcessed?.();
             onClose();
         } catch (err) {
@@ -387,8 +406,23 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 {/* Footer */}
                 <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
                     <button className="btn btn-outline" onClick={onClose} style={{ padding: '8px 20px' }}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleProcess} style={{ padding: '10px 32px' }} disabled={loading}>
-                        {loading ? 'Submitting...' : <><CheckCircle2 size={18} /> {paymentType === 'Pending' ? 'Submit for Approval' : 'Submit for Approval'}</>}
+                    <button
+                        className="btn btn-primary"
+                        onClick={handleProcess}
+                        style={{ padding: '10px 32px' }}
+                        disabled={!canProcessPayment || loading}
+                        title={!canProcessPayment ? 'You do not have permission to process payments' : ''}
+                    >
+                        {loading ? 'Submitting...' : (
+                            <>
+                                <CheckCircle2 size={18} />{' '}
+                                {paymentType === 'Pending'
+                                    ? 'Record Invoice'
+                                    : paymentType === 'Partial'
+                                    ? 'Submit Partial Payment for Approval'
+                                    : 'Submit Full Payment for Approval'}
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

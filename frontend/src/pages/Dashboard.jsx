@@ -72,31 +72,49 @@ const Dashboard = () => {
     const toast = useToast();
 
     // Role Resolution
-    // Dashboard view selection — driven purely by module permissions, not role
-    // names. View flags are MUTUALLY EXCLUSIVE: only one view ever renders, by
-    // priority order. Admin → GM → ProjectCoordinator → Accountant → Purchase
-    // Officer → Inventory Manager → HR → Workspace (default). Each subsequent
-    // check excludes the previous matches so we never double-render.
-    const isSuperAdmin = isAdminRole(user?.role);
-    // GM = multi-module super-user (without admin bypass): has Approvals edit
-    // plus broad view access to both Accounts and HRMS.
-    const isGM = !isSuperAdmin
-        && hasPermission(user, 'Approvals', 'edit')
-        && hasPermission(user, 'Accounts', 'view')
-        && hasPermission(user, 'HRMS', 'view');
-    const isProjectCoordinator = !isSuperAdmin && !isGM
-        && hasPermission(user, 'Projects', 'edit')
-        && hasPermission(user, 'Approvals', 'view');
-    const isAccountant = !isSuperAdmin && !isGM && !isProjectCoordinator
-        && hasPermission(user, 'Accounts', 'edit');
-    const isPurchaseOfficer = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant
-        && hasPermission(user, 'Procurement', 'edit');
-    const isInventoryManager = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer
-        && hasPermission(user, 'Inventory Management', 'edit');
-    const isHR = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer && !isInventoryManager
-        && hasPermission(user, 'HRMS', 'edit');
-    // Field Engineer / Workspace fallback — anyone who isn't in any specific role above.
-    const isESS = !isSuperAdmin && !isGM && !isProjectCoordinator && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR;
+    // Dashboard view selection. Two layers:
+    //   1) STRICT sub-tab match — admin grants a specific Dashboard sub-tab
+    //      via Roles & Permissions UI. Must be in the user's role's
+    //      permissions[Dashboard].subTabs list explicitly. This is the
+    //      authoritative configurable layer.
+    //   2) LEGACY module-permission cascade — fallback when no explicit
+    //      Dashboard sub-tab is granted (existing custom roles before
+    //      migration). Same priority order as before.
+    //
+    // Helper that ONLY matches when the sub-tab is explicitly listed
+    // (i.e. doesn't fall through to "view permission grants all" — that
+    // default would otherwise make every dashboard render for any user).
+    const hasExplicitDashboard = (subTab) => {
+        if (!user) return false;
+        if (isAdminRole(user.role)) return subTab === 'Admin Overview';
+        const perms = user?.permissions || user?.role_permissions || [];
+        const perm = Array.isArray(perms) ? perms.find(p => p?.name === 'Dashboard') : null;
+        return Array.isArray(perm?.subTabs) && perm.subTabs.includes(subTab);
+    };
+
+    const isSuperAdmin = isAdminRole(user?.role) || hasExplicitDashboard('Admin Overview');
+    const isGM = !isSuperAdmin && (
+        hasExplicitDashboard('General Manager View')
+        || (hasPermission(user, 'Approvals', 'edit') && hasPermission(user, 'Accounts', 'view') && hasPermission(user, 'HRMS', 'view'))
+    );
+    const isAccountant = !isSuperAdmin && !isGM && (
+        hasExplicitDashboard('Accounts View') || hasPermission(user, 'Accounts', 'edit')
+    );
+    const isPurchaseOfficer = !isSuperAdmin && !isGM && !isAccountant && (
+        hasExplicitDashboard('Purchase Officer View') || hasPermission(user, 'Procurement', 'edit')
+    );
+    const isInventoryManager = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && (
+        hasExplicitDashboard('Inventory Manager View') || hasPermission(user, 'Inventory Management', 'edit')
+    );
+    const isHR = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && (
+        hasExplicitDashboard('HR View') || hasPermission(user, 'HRMS', 'edit')
+    );
+    const isProjectCoordinator = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR && (
+        hasExplicitDashboard('Project Coordinator View')
+        || (hasPermission(user, 'Projects', 'edit') && hasPermission(user, 'Approvals', 'view'))
+    );
+    // Workspace View — Field Engineer / Site Engineer / anyone without a more specific role.
+    const isESS = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR && !isProjectCoordinator;
 
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -112,11 +130,10 @@ const Dashboard = () => {
     const [labourSummary, setLabourSummary] = useState({ todayCount: 0, monthCost: 0 });
     const [recentActivities, setRecentActivities] = useState([]);
 
-    // Attendance State
+    // Attendance State — simplified: only check-in / check-out time, no breaks.
     const [attendanceStatus, setAttendanceStatus] = useState(null);
     const [isClocking, setIsClocking] = useState(false);
-    const [timer, setTimer] = useState({ work: 0, break: 0, official: 0 });
-    const [isAwayMenuOpen, setIsAwayMenuOpen] = useState(false);
+    const [timer, setTimer] = useState({ work: 0 });
 
     const formatTimer = (seconds) => {
         const h = Math.floor(seconds / 3600);
@@ -126,41 +143,17 @@ const Dashboard = () => {
     };
 
     useEffect(() => {
-        const handleClickOutside = () => setIsAwayMenuOpen(false);
-        if (isAwayMenuOpen) {
-            window.addEventListener('mousedown', handleClickOutside);
-        }
-        return () => window.removeEventListener('mousedown', handleClickOutside);
-    }, [isAwayMenuOpen]);
-
-    useEffect(() => {
         let interval;
         if (attendanceStatus?.current_session && !attendanceStatus.current_session.check_out) {
             interval = setInterval(() => {
                 const now = new Date();
                 const checkIn = new Date(attendanceStatus.current_session.check_in);
                 if (isNaN(checkIn.getTime())) return;
-                let totalSecs = Math.floor((now - checkIn) / 1000);
-                let totalBreakSecs = 0;
-                let activeOfficialSecs = 0;
-                attendanceStatus.current_session.breaks.forEach(b => {
-                    const start = new Date(b.start);
-                    const end = b.end ? new Date(b.end) : now;
-                    let bDuration = Math.floor((end - start) / 1000);
-                    if (b.type === "Official Duty") {
-                        activeOfficialSecs += bDuration;
-                    } else {
-                        totalBreakSecs += bDuration;
-                    }
-                });
-                setTimer({
-                    work: Math.max(0, totalSecs - totalBreakSecs),
-                    break: totalBreakSecs,
-                    official: activeOfficialSecs
-                });
+                const totalSecs = Math.max(0, Math.floor((now - checkIn) / 1000));
+                setTimer({ work: totalSecs });
             }, 1000);
         } else {
-            setTimer({ work: 0, break: 0, official: 0 });
+            setTimer({ work: 0 });
         }
         return () => clearInterval(interval);
     }, [attendanceStatus]);
@@ -256,6 +249,9 @@ const Dashboard = () => {
 
         } catch (err) {
             console.error('Dashboard fetch error:', err);
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         } finally {
             setLoading(false);
         }
@@ -294,8 +290,6 @@ const Dashboard = () => {
                     longitude: position?.coords.longitude
                 });
             }
-            else if (action === 'break-start') res = await attendanceAPI.startBreak(metadata);
-            else if (action === 'break-end') res = await attendanceAPI.endBreak();
 
             if (res) fetchData();
         } catch (err) {
@@ -497,8 +491,6 @@ const Dashboard = () => {
                                 timer={timer}
                                 formatTimer={formatTimer}
                                 handleClockAction={handleClockAction}
-                                isAwayMenuOpen={isAwayMenuOpen}
-                                setIsAwayMenuOpen={setIsAwayMenuOpen}
                             />
                         )}
 

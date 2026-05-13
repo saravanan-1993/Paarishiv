@@ -102,6 +102,7 @@ const EditAssetModal = ({ isOpen, onClose, asset, onAssetUpdated, projects }) =>
 const Assets = () => {
     const { user } = useAuth();
     const toast = useToast();
+    const canAddAssets = hasPermission(user, 'Inventory Management', 'add');
     const canEditAssets = hasPermission(user, 'Inventory Management', 'edit');
     const [activeTab, setActiveTab] = useState('Fleet');
     const [searchTerm, setSearchTerm] = useState('');
@@ -247,12 +248,12 @@ const Assets = () => {
                         {canEditAssets && <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsFuelModalOpen(true)}>
                             <Fuel size={18} /> FUEL INVENTORY
                         </button>}
-                        {canEditAssets && (activeTab === 'Logs' || activeTab === 'Transfers') && (
+                        {canAddAssets && (activeTab === 'Logs' || activeTab === 'Transfers') && (
                             <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={handleActionClick}>
                                 <Plus size={18} /> {activeTab === 'Logs' ? 'NEW LOG ENTRY' : 'NEW TRANSFER'}
                             </button>
                         )}
-                        {canEditAssets && activeTab === 'Fleet' && (
+                        {canAddAssets && activeTab === 'Fleet' && (
                             <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsAddAssetModalOpen(true)}>
                                 <Plus size={18} /> ADD EQUIPMENT
                             </button>
@@ -463,7 +464,7 @@ const Assets = () => {
                                         </td>
                                         <td>{log.engineer}</td>
                                         <td>
-                                            <button onClick={() => { setSelectedAsset(fleet.find(f => f.name === log.asset) || null); setIsUsageModalOpen(true); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '700' }}>Edit</button>
+                                            {canEditAssets && <button onClick={() => { setSelectedAsset(fleet.find(f => f.name === log.asset) || null); setIsUsageModalOpen(true); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '700' }}>Edit</button>}
                                         </td>
                                     </tr>
                                 ))}

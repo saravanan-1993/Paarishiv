@@ -234,6 +234,8 @@ const Finance = () => {
     const confirm = useConfirm();
     const canEditAccounts = hasPermission(user, 'Accounts', 'edit');
     const canDeleteAccounts = hasPermission(user, 'Accounts', 'delete');
+    const canAddAccounts = hasPermission(user, 'Accounts', 'add');
+    const canViewAccounts = hasPermission(user, 'Accounts', 'view');
     const handleMarkBillPaid = async (bill) => {
         if (!(await confirm({ title: 'Mark as Paid', message: `Mark Bill ${bill.bill_no} as fully PAID?`, confirmText: 'Mark Paid' }))) return;
         try {
@@ -947,10 +949,27 @@ const Finance = () => {
         .filter(pb => ['Pending', 'Unpaid', 'Partially Paid'].includes(pb.status))
         .reduce((s, pb) => s + (pb.total_amount || 0), 0);
 
-    // Purchase outstanding = total balance unpaid across all GRN-based vendor payables
-    const purchaseOutstanding = filteredPayables
-        .filter(p => (p.balance || 0) > 0)
-        .reduce((s, p) => s + (p.balance || 0), 0);
+    // Purchase outstanding = total balance unpaid across all GRN-based vendor
+    // payables. Uses the same (total_amount − paid_amount) formula the table's
+    // Balance column renders, so the KPI card always matches the table totals.
+    // The legacy `p.balance` field did not exist on the API response, which is
+    // why the card previously under-reported (₹4,000 instead of the actual
+    // outstanding). GST treatment follows the source data: if the backend has
+    // already included GST in `total_amount` (e.g. via a stored purchase bill
+    // or payment_request with gst_amount), the value is used as-is; otherwise
+    // GST is applied on top of the base amount.
+    const purchaseOutstanding = filteredPayables.reduce((s, p) => {
+        const totAmt = p.total_amount || 0;
+        const pdAmt = p.paid_amount || 0;
+        const balanceBase = Math.max(0, totAmt - pdAmt);
+        // If the row carries a positive base_amount, total_amount is base-only
+        // and we need to add GST. Otherwise the total already includes tax.
+        const baseStored = p.base_amount || 0;
+        const gstPct = (p.gst_percent != null) ? p.gst_percent : 18;
+        const needsGstApplied = baseStored > 0 && Math.abs(baseStored - totAmt) < 1;
+        const balanceWithGst = needsGstApplied ? balanceBase * (1 + gstPct / 100) : balanceBase;
+        return s + balanceWithGst;
+    }, 0);
 
     // Calculate 5% retention on total billed if not specifically tracked
     const totalRetention = filteredBills.reduce((s, b) => s + (b.retention_amount || (b.total_amount * 0.05)), 0);
@@ -1223,12 +1242,16 @@ const Finance = () => {
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: '12px' }}>
-                        <button className="btn btn-outline" onClick={() => setIsExpenseModalOpen(true)}>
-                            <Plus size={18} /> New Payment
-                        </button>
-                        <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
-                            <Plus size={18} /> New Sales Bill
-                        </button>
+                        {canAddAccounts && (
+                            <button className="btn btn-outline" onClick={() => setIsExpenseModalOpen(true)}>
+                                <Plus size={18} /> New Payment
+                            </button>
+                        )}
+                        {canAddAccounts && (
+                            <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
+                                <Plus size={18} /> New Sales Bill
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -1531,9 +1554,11 @@ const Finance = () => {
                                 <FileText size={56} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>No Bills Raised Yet</h4>
                                 <p style={{ marginBottom: '24px' }}>Raise a client RA bill to start tracking receivables.</p>
-                                <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
-                                    <Plus size={16} /> Raise First Bill
-                                </button>
+                                {canAddAccounts && (
+                                    <button className="btn btn-primary" onClick={() => setIsBillModalOpen(true)}>
+                                        <Plus size={16} /> Raise First Bill
+                                    </button>
+                                )}
                             </div>
                         ) : (<>
                             <table className="data-table">
@@ -1611,6 +1636,7 @@ const Finance = () => {
                                                 </td>
                                                 <td style={{ width: '200px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} ref={shareDropdownId === (bill.id || i) ? shareDropdownRef : null}>
+                                                        {canViewAccounts && (
                                                         <button
                                                             className="btn btn-outline btn-sm"
                                                             onClick={() => { setSelectedBill(bill); setIsBillDetailsOpen(true); }}
@@ -1619,6 +1645,8 @@ const Finance = () => {
                                                         >
                                                             <Eye size={18} color="#3B82F6" />
                                                         </button>
+                                                        )}
+                                                        {canViewAccounts && (
                                                         <button
                                                             onClick={() => handleDownloadVoucher('Sales Invoice', { no: bill.bill_no, date: bill.date, party: bill.project, project: bill.project, amount: totalAmt, base_amount: parseFloat(bill.amount || 0), gst_amount: parseFloat(bill.gst_amount || 0), gst_rate: bill.gst_rate || 0, status: paymentStatus, description: bill.description, due_date: bill.due_date, bill_type: bill.bill_type, collection_amount: collected })}
                                                             style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }}
@@ -1626,7 +1654,9 @@ const Finance = () => {
                                                         >
                                                             <Download size={18} color="#10B981" />
                                                         </button>
-                                                        {/* Share dropdown */}
+                                                        )}
+                                                        {/* Share dropdown — exposes invoice data, gate on view permission */}
+                                                        {canViewAccounts && (
                                                         <div style={{ position: 'relative' }}>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); setShareDropdownId(shareDropdownId === (bill.id || i) ? null : (bill.id || i)); }}
@@ -1656,6 +1686,7 @@ const Finance = () => {
                                                                 </div>
                                                             )}
                                                         </div>
+                                                        )}
                                                         {canEditAccounts && bill.status !== 'Paid' && (
                                                             <button
                                                                 className="btn btn-primary"
@@ -1682,9 +1713,11 @@ const Finance = () => {
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                             <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Purchase Bills (Vendor Invoices)</h3>
-                            <button className="btn btn-outline btn-sm" onClick={() => setIsPurchaseBillModalOpen(true)}>
-                                <Plus size={16} /> Record Purchase Bill
-                            </button>
+                            {canAddAccounts && (
+                                <button className="btn btn-outline btn-sm" onClick={() => setIsPurchaseBillModalOpen(true)}>
+                                    <Plus size={16} /> Record Purchase Bill
+                                </button>
+                            )}
                         </div>
 
                         {/* Filter Bar */}
@@ -1744,9 +1777,11 @@ const Finance = () => {
                                 <ClipboardCheck size={56} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>No Purchase Bills</h4>
                                 <p>Record a purchase bill or adjust filters to see data.</p>
-                                <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={() => setIsPurchaseBillModalOpen(true)}>
-                                    <Plus size={16} /> Record Purchase Bill
-                                </button>
+                                {canAddAccounts && (
+                                    <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={() => setIsPurchaseBillModalOpen(true)}>
+                                        <Plus size={16} /> Record Purchase Bill
+                                    </button>
+                                )}
                             </div>
                         ) : (<>
                             <table className="data-table">
@@ -1778,12 +1813,16 @@ const Finance = () => {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '4px' }}>
+                                                    {canViewAccounts && (
                                                     <button onClick={() => setViewingPurchaseBill(pb)} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="View">
                                                         <Eye size={18} color="var(--primary)" />
                                                     </button>
+                                                    )}
+                                                    {canViewAccounts && (
                                                     <button onClick={() => handleDownloadVoucher('Purchase Bill', { no: pb.bill_no, date: pb.bill_date, party: pb.vendor_name, project: pb.project_name, amount: pb.total_amount, base_amount: pb.total_amount - (pb.tax_amount || 0), gst_amount: pb.tax_amount, items: pb.items, status: pb.status })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                         <Download size={18} color="var(--primary)" />
                                                     </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -1906,12 +1945,16 @@ const Finance = () => {
                                                 </td>
                                                 <td>
                                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                                        {canViewAccounts && (
                                                         <button className="btn btn-outline btn-sm" onClick={() => handleViewHistory(item)} style={{ border: 'none' }} title="View">
                                                             <Eye size={18} color="var(--primary)" />
                                                         </button>
+                                                        )}
+                                                        {canViewAccounts && (
                                                         <button onClick={() => handleDownloadVoucher('Purchase Voucher', { no: item.voucher_no, date: item.date, party: item.vendor, project: item.project, amount: totAmt, base_amount: item.base_amount, gst_amount: item.gst_amount, invoice_no: item.invoice_no, items: item.items, status: pStatus })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                             <Download size={18} color="#10B981" />
                                                         </button>
+                                                        )}
                                                         {canEditAccounts && pStatus !== 'Paid' && item.approval_status === 'Pending' && (
                                                             <span className="badge badge-warning" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>Waiting for Approval</span>
                                                         )}
@@ -2007,9 +2050,11 @@ const Finance = () => {
                                 <DollarSign size={56} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                                 <h4 style={{ fontWeight: '700', marginBottom: '8px' }}>No Payments found</h4>
                                 <p>Record vendor payments/expenses or adjust filters to view records.</p>
-                                <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={() => setIsExpenseModalOpen(true)}>
-                                    <Plus size={16} /> Record Payment
-                                </button>
+                                {canAddAccounts && (
+                                    <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={() => setIsExpenseModalOpen(true)}>
+                                        <Plus size={16} /> Record Payment
+                                    </button>
+                                )}
                             </div>
                         ) : (<>
                             <table className="data-table">
@@ -2043,12 +2088,16 @@ const Finance = () => {
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '4px' }}>
+                                                    {canViewAccounts && (
                                                     <button onClick={() => setViewingPayment(exp)} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="View">
                                                         <Eye size={18} color="var(--primary)" />
                                                     </button>
+                                                    )}
+                                                    {canViewAccounts && (
                                                     <button onClick={() => handleDownloadVoucher('Payment Voucher', { no: exp.voucher_no || exp.invoice_no, date: exp.date, party: exp.payee, project: exp.project, category: exp.category, description: exp.description, mode: exp.paymentMode, amount: exp.amount, base_amount: exp.base_amount, gst_amount: exp.gst_amount, invoice_no: exp.invoice_no, items: exp.items, status: 'Paid' })} style={{ border: 'none', padding: '6px', background: 'transparent', cursor: 'pointer' }} title="Download">
                                                         <Download size={18} color="var(--primary)" />
                                                     </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>

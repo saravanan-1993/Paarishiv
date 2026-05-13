@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, FileText, Calendar, Building2, Loader2, Download, Upload, Calculator, Wallet } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI, projectAPI, labourAttendanceAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import CustomSelect from './CustomSelect';
 
 const UNIT_OPTIONS = ['Cft', 'Sft', 'Rmt', 'Nos', 'Kg', 'Bag', 'Cum', 'Sqm'];
 
 const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canEditSCBilling = hasPermission(user, 'Subcontractor Billing', 'edit') || hasPermission(user, 'Subcontractor Billing', 'add');
     const [billType, setBillType] = useState('work_based');
     const [formData, setFormData] = useState({
         contractor_name: '', project_name: '', project_id: '',
@@ -1216,20 +1220,24 @@ const SubcontractorBillModal = ({ isOpen, onClose, onSuccess, editData }) => {
                     }}>
                         Cancel
                     </button>
-                    <button type="button" onClick={() => handleSubmit(false)} disabled={isSaving} style={{
+                    <button type="button" onClick={() => handleSubmit(false)} disabled={!canEditSCBilling || isSaving}
+                        title={!canEditSCBilling ? "You don't have permission to save subcontractor bills" : undefined}
+                        style={{
                         padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600',
                         border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)',
-                        color: 'var(--primary)', cursor: isSaving ? 'not-allowed' : 'pointer',
+                        color: 'var(--primary)', cursor: (!canEditSCBilling || isSaving) ? 'not-allowed' : 'pointer',
                         display: 'flex', alignItems: 'center', gap: '6px'
                     }}>
                         {isSaving && <Loader2 size={14} className="animate-spin" />}
                         Save as Draft
                     </button>
                     {!editData && (
-                        <button type="button" onClick={() => handleSubmit(true)} disabled={isSaving} style={{
+                        <button type="button" onClick={() => handleSubmit(true)} disabled={!canEditSCBilling || isSaving}
+                            title={!canEditSCBilling ? "You don't have permission to submit subcontractor bills" : undefined}
+                            style={{
                             padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600',
                             border: 'none', backgroundColor: 'var(--primary)', color: '#fff',
-                            cursor: isSaving ? 'not-allowed' : 'pointer',
+                            cursor: (!canEditSCBilling || isSaving) ? 'not-allowed' : 'pointer',
                             display: 'flex', alignItems: 'center', gap: '6px'
                         }}>
                             {isSaving && <Loader2 size={14} className="animate-spin" />}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, CheckCircle, Download, Printer, AlertCircle, Plus, Trash2, Save, Users, Building2 } from 'lucide-react';
 import { purchaseOrderAPI, projectAPI, vendorAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { hasPermission } from '../utils/rbac';
 
 const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
     const toast = useToast();
@@ -83,6 +84,10 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
     };
 
     const handleSave = async (shouldApprove = false) => {
+        if (!hasPermission(user, 'Procurement', 'edit')) {
+            toast.error("You don't have permission to edit POs.");
+            return;
+        }
         setIsSaving(true);
         try {
             const finalData = {
@@ -116,6 +121,10 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
     };
 
     const handleApprove = async () => {
+        if (!hasPermission(user, 'Approvals', 'edit', 'Purchase Orders') && !hasPermission(user, 'Approvals', 'edit')) {
+            toast.error("You don't have permission to approve POs");
+            return;
+        }
         setIsSaving(true);
         try {
             await purchaseOrderAPI.approve(po.id);
@@ -165,7 +174,7 @@ const PODetailModal = ({ isOpen, onClose, po, onSuccess, user }) => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                        {!isEditing && po.status === 'Pending' && (
+                        {!isEditing && po.status === 'Pending' && hasPermission(user, 'Procurement', 'edit') && (
                             <button className="btn btn-outline" onClick={() => setIsEditing(true)} style={{ padding: '8px 16px' }}>Edit Order</button>
                         )}
                         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', marginLeft: '8px' }}>

@@ -146,7 +146,7 @@ async def get_leaves(db = Depends(get_database)):
         del l["_id"]
     return leaves
 
-@router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+@router.post("/leaves", dependencies=[Depends(RBACPermission("HRMS", "add"))])
 async def apply_leave(leave: LeaveBase, db = Depends(get_database)):
     # Validate date range
     from_date = getattr(leave, 'fromDate', None) or getattr(leave, 'from_date', None)
@@ -397,7 +397,7 @@ async def get_designations(db=Depends(get_database), current_user: dict = Depend
     all_values = sorted(set(master_values + emp_values))
     return all_values
 
-@router.post("/designations", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+@router.post("/designations", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def add_designation(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
     value = data.get("value", "").strip()
     if not value:
@@ -417,7 +417,7 @@ async def get_departments(db=Depends(get_database), current_user: dict = Depends
     all_values = sorted(set(master_values + emp_values))
     return all_values
 
-@router.post("/departments", dependencies=[Depends(RBACPermission("HRMS", "view"))])
+@router.post("/departments", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def add_department(data: dict, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
     value = data.get("value", "").strip()
     if not value:

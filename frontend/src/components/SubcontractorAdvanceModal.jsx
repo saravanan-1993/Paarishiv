@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { X, IndianRupee, Loader2, Wallet } from 'lucide-react';
 import { subcontractorBillingAPI, vendorAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 import CustomSelect from './CustomSelect';
 
 const PAYMENT_MODES = ['Cash', 'NEFT/RTGS', 'UPI', 'Cheque', 'Bank Transfer'];
 
 const SubcontractorAdvanceModal = ({ isOpen, onClose, onSuccess, projects = [], editData = null, contractors = [] }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canManageAdvance = hasPermission(user, 'Subcontractor Billing', 'edit') || hasPermission(user, 'Subcontractor Billing', 'add');
     const isEdit = !!editData;
     const [saving, setSaving] = useState(false);
     const [vendors, setVendors] = useState([]);
@@ -239,7 +243,7 @@ const SubcontractorAdvanceModal = ({ isOpen, onClose, onSuccess, projects = [], 
                 {/* Footer */}
                 <div style={{ borderTop: '1px solid var(--border)', padding: '14px 24px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button className="btn btn-outline" onClick={onClose} disabled={saving}>Cancel</button>
-                    <button className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+                    <button className="btn btn-primary" onClick={handleSubmit} disabled={!canManageAdvance || saving} title={!canManageAdvance ? 'You do not have permission to manage advances' : ''}>
                         {saving ? <><Loader2 size={16} className="spin" /> Saving...</> : (isEdit ? 'Update Advance' : 'Record Advance')}
                     </button>
                 </div>

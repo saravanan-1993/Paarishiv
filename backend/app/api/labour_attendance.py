@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.utils.auth import get_current_user, validate_object_id
-from app.utils.rbac import require_sub_tab, get_users_with_permission
+from app.utils.rbac import RBACPermission, require_sub_tab, has_sub_tab_access, has_module_action, fetch_role_doc, is_admin_role, get_users_with_permission
 from app.utils.logging import log_activity
 from app.utils.notifications import notify, EVENT_APPROVAL, EVENT_WORKFLOW
 
@@ -114,6 +114,19 @@ async def list_labour_attendance(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
 ):
+    # Permission: anyone with HRMS view, Projects view (per-project Labour
+    # Attendance sub-tab), or Approvals → Labour Pay can list records.
+    # Without ANY of those, return 403 — protects salary data.
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    allowed = (
+        is_admin_role(current_user.get("role", ""))
+        or await has_module_action(db, current_user, "HRMS", "view", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Projects", "view", role_doc=role_doc)
+        or await has_sub_tab_access(db, current_user, "Approvals", "Labour Pay", role_doc=role_doc)
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="You don't have permission to view labour attendance records.")
+
     query = {}
     if project_id:
         query["project_id"] = project_id
@@ -133,7 +146,7 @@ async def list_labour_attendance(
     return [_helper(r) for r in rows]
 
 
-@router.get("/project-summary")
+@router.get("/project-summary", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def project_labour_summary(
     project_name: str = Query(...),
     db=Depends(get_database),
@@ -179,7 +192,7 @@ async def project_labour_summary(
     }
 
 
-@router.get("/wages-summary")
+@router.get("/wages-summary", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def wages_summary(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
@@ -239,7 +252,7 @@ async def wages_summary(
     return result
 
 
-@router.get("/salary-payments")
+@router.get("/salary-payments", dependencies=[Depends(RBACPermission("Accounts", "view"))])
 async def get_salary_payments(
     project_name: Optional[str] = Query(None),
     db=Depends(get_database),
@@ -255,7 +268,7 @@ async def get_salary_payments(
     return rows
 
 
-@router.get("/{id}")
+@router.get("/{id}", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_labour_attendance(id: str, db=Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(id, "Labour Attendance ID")
     doc = await db.labour_attendance.find_one({"_id": oid})
@@ -264,7 +277,7 @@ async def get_labour_attendance(id: str, db=Depends(get_database), current_user:
     return _helper(doc)
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, dependencies=[Depends(RBACPermission("HRMS", "add"))])
 async def create_labour_attendance(
     payload: LabourAttendanceCreate,
     db=Depends(get_database),
@@ -300,7 +313,7 @@ async def create_labour_attendance(
     return _helper(doc)
 
 
-@router.put("/{id}")
+@router.put("/{id}", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def update_labour_attendance(
     id: str,
     payload: LabourAttendanceCreate,
@@ -357,7 +370,7 @@ async def submit_for_approval(
     return {"success": True, "message": "Attendance submitted for approval"}
 
 
-@router.put("/{id}/approve")
+@router.put("/{id}/approve", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def approve_attendance(
     id: str,
     db=Depends(get_database),
@@ -403,7 +416,7 @@ async def approve_attendance(
     return {"success": True, "message": "Attendance approved"}
 
 
-@router.put("/{id}/reject")
+@router.put("/{id}/reject", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def reject_attendance(
     id: str,
     body: dict = Body(default={}),
@@ -443,7 +456,7 @@ async def reject_attendance(
     return {"success": True, "message": "Attendance rejected"}
 
 
-@router.put("/{id}/request-payment")
+@router.put("/{id}/request-payment", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def request_payment_approval(
     id: str,
     db=Depends(get_database),
@@ -485,7 +498,7 @@ async def request_payment_approval(
     return {"success": True, "message": "Payment approval requested"}
 
 
-@router.put("/{id}/approve-payment")
+@router.put("/{id}/approve-payment", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def approve_payment(
     id: str,
     db=Depends(get_database),
@@ -528,7 +541,7 @@ async def approve_payment(
     return {"success": True, "message": "Payment approved — Accountant can now process it"}
 
 
-@router.put("/{id}/reject-payment")
+@router.put("/{id}/reject-payment", dependencies=[Depends(RBACPermission("HRMS", "edit"))])
 async def reject_payment(
     id: str,
     body: dict = Body(default={}),
@@ -567,7 +580,7 @@ async def reject_payment(
     return {"success": True, "message": "Payment request rejected"}
 
 
-@router.delete("/{id}")
+@router.delete("/{id}", dependencies=[Depends(RBACPermission("HRMS", "delete"))])
 async def delete_labour_attendance(
     id: str,
     db=Depends(get_database),
@@ -581,7 +594,7 @@ async def delete_labour_attendance(
     return {"success": True}
 
 
-@router.post("/process-salary")
+@router.post("/process-salary", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def process_salary(
     payload: SalaryProcessPayload,
     db=Depends(get_database),

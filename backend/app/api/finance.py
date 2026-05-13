@@ -65,19 +65,31 @@ async def get_payables(db = Depends(get_database)):
     # Fetch all material purchase expenses to check what's already paid
     expenses = await db.expenses.find({"category": "Material Purchase"}).to_list(1000)
 
-    # Fetch pending/rejected payment requests to track approval status per GRN
+    # Fetch pending/rejected payment requests to track approval status per GRN.
+    # For multi-vendor GRNs we MUST match by (grn_id, vendor) — otherwise paying
+    # one vendor's items would mark every vendor row of the same GRN as
+    # "Waiting for Approval" because they share grn_id.
     pending_prs = await db.payment_requests.find(
         {"status": {"$in": ["Pending", "Rejected"]}}
     ).to_list(1000)
-    # Map: grn_id -> latest payment request status
-    pr_status_map = {}
+    pr_status_map = {}            # grn_id -> latest pr  (single-vendor fallback)
+    pr_status_by_vendor = {}      # (grn_id, vendor_payee) -> latest pr  (multi-vendor)
     for pr in pending_prs:
         gid = pr.get("grn_id")
-        if gid:
-            existing = pr_status_map.get(gid)
-            # Keep the most recent entry (by created_at)
-            if not existing or (pr.get("created_at") or "") > (existing.get("created_at") or ""):
-                pr_status_map[gid] = pr
+        if not gid:
+            continue
+        created = pr.get("created_at") or ""
+        # By-grn map (used for single-vendor rows)
+        existing = pr_status_map.get(gid)
+        if not existing or created > (existing.get("created_at") or ""):
+            pr_status_map[gid] = pr
+        # By-(grn, vendor) map (used for multi-vendor split rows)
+        payee = (pr.get("payee") or "").strip()
+        if payee:
+            key = (gid, payee)
+            existing_v = pr_status_by_vendor.get(key)
+            if not existing_v or created > (existing_v.get("created_at") or ""):
+                pr_status_by_vendor[key] = pr
 
     # Fetch purchase bills to get correct totals when GRN/PO don't have prices
     purchase_bills_list = await db.purchase_bills.find().to_list(1000)
@@ -166,7 +178,11 @@ async def get_payables(db = Depends(get_database)):
             else:
                 status = "Pending"
 
-        # Build a rate lookup: ONLY from linked PO rates + purchase bill for this GRN
+        # Build a rate lookup from (in priority order): PO rates,
+        # purchase bill rates for this GRN, and payment_request items for this
+        # GRN. The PR-items fallback covers the common flow where the buyer
+        # enters rates only at payment time — without this, the Payment
+        # History modal shows "—" for rate/amount on items.
         rate_lookup = {}
         if po:
             for pi in po.get("items", []):
@@ -179,6 +195,24 @@ async def get_payables(db = Depends(get_database)):
                 if pi.get("name") and pi.get("rate") is not None and float(pi.get("rate", 0)) > 0:
                     if pi["name"] not in rate_lookup:
                         rate_lookup[pi["name"]] = float(pi["rate"])
+        # Fallback: pending/rejected payment_request items for THIS GRN.
+        # These hold the rates the buyer entered when submitting payment.
+        for _pr in pending_prs:
+            if _pr.get("grn_id") != grn_id_str:
+                continue
+            for pi in _pr.get("items", []):
+                nm = pi.get("name")
+                if not nm or nm in rate_lookup:
+                    continue
+                raw = pi.get("price") if pi.get("price") not in (None, "") else pi.get("rate")
+                if raw in (None, ""):
+                    continue
+                try:
+                    val = float(raw)
+                    if val > 0:
+                        rate_lookup[nm] = val
+                except (TypeError, ValueError):
+                    pass
 
         # Prepare items with price auto-filled from rate lookup
         clean_items = []
@@ -218,8 +252,10 @@ async def get_payables(db = Depends(get_database)):
                 )
                 v_balance = max(0, v_total - (paid_amount * (v_total / total_value) if total_value > 0 else 0))
                 v_status = "Paid" if grn.get("status") == "Paid" else ("Paid" if v_balance <= 0 and v_total > 0 else status)
-                # Check for pending payment request
-                pr_entry = pr_status_map.get(grn_id_str)
+                # Vendor-specific approval status — match by (grn_id, vendor) so
+                # one vendor's payment request does not flag other vendor rows
+                # of the same multi-vendor GRN as "Waiting for Approval".
+                pr_entry = pr_status_by_vendor.get((grn_id_str, v_name.strip()))
                 v_approval = pr_entry.get("status") if pr_entry else None
                 payables.append({
                     "id": grn_id_str,
@@ -667,7 +703,7 @@ async def get_purchase_bills(db = Depends(get_database)):
         b["id"] = str(b.pop("_id"))
     return bills
 
-@router.post("/purchase-bills", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
+@router.post("/purchase-bills", dependencies=[Depends(RBACPermission("Accounts", "edit", "PurchaseBills"))])
 async def create_purchase_bill(bill: PurchaseBillCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # HIGH-4: Prevent duplicate purchase bills for same GRN
     if hasattr(bill, 'grn_id') and bill.grn_id:
@@ -881,17 +917,29 @@ async def create_payment_request(data: dict, db=Depends(get_database), current_u
     """Create a payment request that requires admin approval before processing."""
     grn_id = data.get("grn_id")
 
-    # Block duplicate pending requests for the same GRN + same vendor
+    # Block duplicate pending requests for the same GRN + same vendor + same
+    # payment_type. An invoice-only request (payment_type=Pending) is a
+    # different stage than an actual payment (Full/Partial) and should be
+    # allowed to coexist — they hit the approval queue independently.
     if grn_id:
         payee = (data.get("payee") or "").strip()
+        new_payment_type = data.get("payment_type", "Full")
         dup_query = {"grn_id": grn_id, "status": "Pending"}
         if payee:
             dup_query["payee"] = payee
+        # Split the dup-check: invoice-only requests only clash with other
+        # invoice-only requests; payment requests only clash with other
+        # payment requests.
+        if new_payment_type == "Pending":
+            dup_query["payment_type"] = "Pending"
+        else:
+            dup_query["payment_type"] = {"$ne": "Pending"}
         existing_pending = await db.payment_requests.find_one(dup_query)
         if existing_pending:
+            kind = "invoice-recording" if new_payment_type == "Pending" else "payment"
             raise HTTPException(
                 status_code=400,
-                detail="A payment request for this vendor/GRN is already pending admin approval. Please wait for it to be processed."
+                detail=f"A {kind} request for this vendor/GRN is already pending admin approval. Please wait for it to be processed."
             )
         # Also block if GRN is already fully paid (but allow for multi-vendor POs)
         try:
@@ -906,6 +954,35 @@ async def create_payment_request(data: dict, db=Depends(get_database), current_u
                     raise HTTPException(
                         status_code=400,
                         detail="This GRN is already fully paid. No further payment requests can be submitted."
+                    )
+
+            # Block paying for items that weren't physically received in this GRN.
+            # Multi-vendor POs commonly have items belonging to multiple vendors;
+            # only items that appear in GRN.items (with received_qty > 0) are
+            # eligible for payment. Without this guard, a buyer could submit a
+            # payment request for a vendor whose goods haven't arrived yet,
+            # which silently lands in the approval queue (BUG-…stale PR).
+            if existing_grn:
+                grn_item_names = {
+                    (it.get("name") or "").strip()
+                    for it in (existing_grn.get("items") or [])
+                    if (float(it.get("received_qty", 0) or 0) - float(it.get("rejected_qty", 0) or 0)) > 0
+                }
+                pr_items = data.get("items") or []
+                bad = [
+                    (it.get("name") or "").strip()
+                    for it in pr_items
+                    if (it.get("name") or "").strip()
+                       and (it.get("name") or "").strip() not in grn_item_names
+                ]
+                if bad:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Cannot create payment request for items not received in this GRN: "
+                            + ", ".join(sorted(set(bad)))
+                            + ". Create a separate GRN once these items are delivered."
+                        ),
                     )
         except HTTPException:
             raise

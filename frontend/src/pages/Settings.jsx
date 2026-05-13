@@ -698,7 +698,7 @@ const Settings = () => {
                                 >
                                     {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} SAVE API KEYS
                                 </button>}
-                                <button className="btn btn-outline" onClick={handleTestCloudinary} type="button"><Cloud size={16} /> TEST CONNECTION</button>
+                                {canEditSettings && <button className="btn btn-outline" onClick={handleTestCloudinary} type="button"><Cloud size={16} /> TEST CONNECTION</button>}
                             </div>
                         </div>
                     </div>
@@ -827,10 +827,10 @@ const Settings = () => {
                                     onChange={e => { setTestEmail(e.target.value); setTestEmailMsg(''); }}
                                     style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '14px' }}
                                 />
-                                <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: '700', whiteSpace: 'nowrap' }} onClick={handleTestEmail} disabled={loading}>
+                                {canEditSettings && <button className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: '700', whiteSpace: 'nowrap' }} onClick={handleTestEmail} disabled={loading}>
                                     {loading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
                                     Send Test Email
-                                </button>
+                                </button>}
                                 {canEditSettings && <button
                                     className="btn btn-primary"
                                     disabled={loading}

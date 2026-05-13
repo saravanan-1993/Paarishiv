@@ -90,6 +90,11 @@ const SiteReports = () => {
             }
         } catch (err) {
             console.error('Failed to fetch data:', err);
+            // Surface permission errors so the user understands an empty list
+            // is not the same as "no data" — it might be 403.
+            if (err?.response?.status === 403) {
+                toast.error(err.response?.data?.detail || "You don't have permission to view this data.");
+            }
         } finally {
             setLoading(false);
         }
@@ -329,9 +334,11 @@ const SiteReports = () => {
                                 </button>
                             )}
                         </div>
-                        <button className="btn btn-primary" onClick={handleDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', flex: '1 1 auto', justifyContent: 'center' }}>
-                            <Download size={18} /> EXPORT PDF
-                        </button>
+                        {hasPermission(user, 'Site Reports', 'view') && (
+                            <button className="btn btn-primary" onClick={handleDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', flex: '1 1 auto', justifyContent: 'center' }}>
+                                <Download size={18} /> EXPORT PDF
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -379,11 +386,12 @@ const SiteReports = () => {
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
-                                                            {/* Single-stage DPR approval. Anyone with Approvals → DPR edit
-                                                                approves directly to "Approved". Legacy intermediate
-                                                                statuses (Reviewed / Coordinator Approved / Dept Approved)
-                                                                stay actionable so old records can still be finalised. */}
-                                                            {dpr.status !== 'Approved' && dpr.status !== 'Rejected' && hasPermission(user, 'Approvals', 'edit') && (
+                                                            {/* Single-stage DPR approval. User needs EITHER
+                                                                Approvals → edit (Approvals page workflow) OR
+                                                                Site Reports → edit (Coordinator Control Hub workflow).
+                                                                Legacy intermediate statuses (Reviewed / Coordinator
+                                                                Approved / Dept Approved) stay actionable. */}
+                                                            {dpr.status !== 'Approved' && dpr.status !== 'Rejected' && (hasPermission(user, 'Approvals', 'edit') || hasPermission(user, 'Site Reports', 'edit')) && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
@@ -430,14 +438,16 @@ const SiteReports = () => {
                                                     <td><span className={`badge ${req.status === 'Approved' ? 'badge-success' : req.status === 'Issued' ? 'badge-info' : req.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{req.status}</span></td>
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                                            <button
-                                                                className="btn btn-outline btn-sm"
-                                                                title="View Details"
-                                                                onClick={() => setViewingRequest(viewingRequest === (req.id || req._id) ? null : (req.id || req._id))}
-                                                                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                            >
-                                                                <Eye size={14} /> View
-                                                            </button>
+                                                            {hasPermission(user, 'Site Reports', 'view') && (
+                                                                <button
+                                                                    className="btn btn-outline btn-sm"
+                                                                    title="View Details"
+                                                                    onClick={() => setViewingRequest(viewingRequest === (req.id || req._id) ? null : (req.id || req._id))}
+                                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                                >
+                                                                    <Eye size={14} /> View
+                                                                </button>
+                                                            )}
                                                             {req.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button
@@ -458,7 +468,7 @@ const SiteReports = () => {
                                                                     </button>
                                                                 </>
                                                             )}
-                                                            {req.status === 'Approved' && (
+                                                            {req.status === 'Approved' && hasPermission(user, 'Procurement', 'edit') && (
                                                                 <button
                                                                     className="btn btn-primary btn-sm"
                                                                     onClick={() => navigate(`/workflow?tab=POs&request_id=${req.id || req._id}`)}
@@ -502,7 +512,9 @@ const SiteReports = () => {
                                                                 </span>
                                                             )}
                                                             <div style={{ display: 'flex', gap: '8px' }}>
-                                                                <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
+                                                                {hasPermission(user, 'Site Reports', 'view') && (
+                                                                    <button className="btn btn-outline btn-sm" onClick={() => setViewingTransfer(xf.id)} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Eye size={14} /> View</button>
+                                                                )}
                                                                 {xf.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                     <>
                                                                         <button className="btn btn-success btn-sm" onClick={() => handleApproveTransfer(xf.id)} disabled={processingId === xf.id}>{processingId === xf.id ? <Loader2 size={14} className="animate-spin" /> : 'Approve'}</button>
@@ -609,7 +621,7 @@ const SiteReports = () => {
                             )}
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
-                                {req.status === 'Pending' && (
+                                {req.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                     <>
                                         <button className="btn btn-success" onClick={() => { handleUpdateReqStatus(req, 'Approved'); setViewingRequest(null); }}
                                             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 20px' }}>
@@ -674,7 +686,7 @@ const SiteReports = () => {
                             </div>
                             {xf.notes && <div style={{ marginTop: '16px', padding: '12px 14px', backgroundColor: '#eff6ff', borderRadius: '10px', fontSize: '13px', color: '#1e40af', borderLeft: '4px solid #3b82f6' }}><strong>Notes:</strong> {xf.notes}</div>}
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' }}>
-                                {xf.status === 'Pending' && (
+                                {xf.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                     <>
                                         <button className="btn btn-success" onClick={() => { handleApproveTransfer(xf.id); setViewingTransfer(null); }} style={{ padding: '10px 20px' }}>Approve</button>
                                         <button className="btn btn-outline" onClick={() => { handleRejectTransfer(xf.id); setViewingTransfer(null); }} style={{ color: '#ef4444', padding: '10px 20px' }}>Reject</button>

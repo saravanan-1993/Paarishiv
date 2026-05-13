@@ -19,7 +19,7 @@ async def get_employees(db = Depends(get_database)):
     return employees
 
 # C4 Fix: Added auth dependency
-@router.get("/{emp_id}", response_model=EmployeeResponse, dependencies=[Depends(get_current_user)])
+@router.get("/{emp_id}", response_model=EmployeeResponse, dependencies=[Depends(get_current_user), Depends(RBACPermission("HRMS", "view"))])
 async def get_employee(emp_id: str, db = Depends(get_database)):
     # C9 Fix: Validate ObjectId
     try:
@@ -272,7 +272,7 @@ async def upload_employee_document(emp_id: str, file: UploadFile = File(...), do
     return {"success": True, "document": doc_entry}
 
 # C4 Fix: Added auth dependency
-@router.get("/{emp_id}/documents", dependencies=[Depends(get_current_user)])
+@router.get("/{emp_id}/documents", dependencies=[Depends(get_current_user), Depends(RBACPermission("HRMS", "view"))])
 async def get_employee_documents(emp_id: str, db = Depends(get_database)):
     emp = await db.employees.find_one({"_id": ObjectId(emp_id)}, {"documents": 1})
     if not emp:

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission, hasSubTabAccess } from '../utils/rbac';
@@ -164,6 +164,19 @@ const menuItems = [
 const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
     const [collapsed, setCollapsed] = useState(false);
     const [expandedMenus, setExpandedMenus] = useState({});
+
+    // Sync --sidebar-width CSS variable when collapsed state changes so that
+    // .main-content and .app-header (both use this var for margin-left) shift
+    // in step with the sidebar's actual visible width (80px collapsed, 260px
+    // expanded). Without this, a ~180px empty gap appears between the
+    // collapsed sidebar and the page content.
+    useEffect(() => {
+        document.documentElement.style.setProperty('--sidebar-width', collapsed ? '80px' : '260px');
+        return () => {
+            // Reset on unmount so login screen / other layouts get the default.
+            document.documentElement.style.setProperty('--sidebar-width', '260px');
+        };
+    }, [collapsed]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [notifUnreadCount, setNotifUnreadCount] = useState(0);
     const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);

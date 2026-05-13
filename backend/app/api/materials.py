@@ -5,25 +5,27 @@ from database import get_database
 from bson import ObjectId
 from datetime import datetime
 from app.utils.auth import get_current_user
-from app.utils.rbac import is_admin_role, get_assigned_project_names, get_users_with_permission
+from app.utils.rbac import is_admin_role, is_assignment_scoped, get_assigned_project_names, get_users_with_permission, RBACPermission
 from app.utils.notifications import notify, EVENT_WORKFLOW
 from app.utils.logging import log_activity
 
 router = APIRouter(prefix="/materials", tags=["materials"])
 
-@router.get("/", response_model=List[dict])
+@router.get("/", response_model=List[dict], dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_materials(db = Depends(get_database)):
     materials = await db.materials.find().to_list(100)
     return [{"id": str(m["_id"]), **{k: v for k, v in m.items() if k != "_id"}} for m in materials]
 
-@router.get("/project/{project_name}")
+@router.get("/project/{project_name}", dependencies=[Depends(RBACPermission("Projects", "view"))])
 async def get_project_inventory(project_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
-    # Dynamic scoping — admin-class sees any project; others scoped to assignments.
+    # Dynamic scoping — admin-class + cross-project specialists see any
+    # project's materials; only project-assignment-scoped users (Site
+    # Engineer / Project Coordinator) are limited to assigned projects.
     if is_admin_role(current_user.get("role", "")):
         if project_name != "all":
             query["project_name"] = project_name
-    else:
+    elif await is_assignment_scoped(db, current_user):
         assigned_names = await get_assigned_project_names(db, current_user)
         if project_name == "all":
             if not assigned_names:
@@ -33,6 +35,11 @@ async def get_project_inventory(project_name: str, db = Depends(get_database), c
             query["project_name"] = project_name
         else:
             return []
+    else:
+        # Cross-project specialist (Purchase Officer / Inventory Manager) —
+        # sees any project's materials.
+        if project_name != "all":
+            query["project_name"] = project_name
             
     inventory = await db.inventory.find(query).to_list(1000)
         
@@ -66,7 +73,7 @@ async def get_project_inventory(project_name: str, db = Depends(get_database), c
         for item in inventory
     ]
 
-@router.put("/inventory/{inventory_id}")
+@router.put("/inventory/{inventory_id}", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def update_inventory(inventory_id: str, data: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Allow updating min_stock limit
     if "min_stock" in data:
@@ -85,7 +92,7 @@ async def update_inventory(inventory_id: str, data: dict, db = Depends(get_datab
          )
     return {"success": True}
 
-@router.get("/sync-inventory")
+@router.get("/sync-inventory", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def sync_inventory(db = Depends(get_database)):
     # Clear current inventory to rebuild it correctly
     await db.inventory.delete_many({})
@@ -119,7 +126,7 @@ async def sync_inventory(db = Depends(get_database)):
             
     return {"message": f"Inventory synced from {len(grns)} GRNs. Total {count} item updates processed."}
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def create_material(material: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Accept flexible dict to avoid field mismatch with frontend
     material_data = {
@@ -158,7 +165,7 @@ async def create_material(material: dict, db = Depends(get_database), current_us
 
     return {"id": str(result.inserted_id), **{k: v for k, v in material_data.items() if k != "_id"}}
 
-@router.get("/inventory/ledger")
+@router.get("/inventory/ledger", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_material_ledger(project_name: str, material_name: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Fetch all POs to map them to project names
     pos = await db.purchase_orders.find().to_list(2000)

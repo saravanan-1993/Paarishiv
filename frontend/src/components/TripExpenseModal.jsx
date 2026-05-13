@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { fleetAPI, employeeAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canEditFleet = hasPermission(user, 'Fleet Management', 'edit');
     const [expenses, setExpenses] = useState([]);
     const [revenue, setRevenue] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -83,6 +87,10 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
     };
 
     const handleSubmit = async (shouldClose = false) => {
+        if (!canEditFleet) {
+            toast.error("You don't have permission to update trip expenses.");
+            return;
+        }
         setLoading(true);
         try {
             const totalExpense = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
@@ -191,7 +199,9 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                         id="paidStatus"
                         checked={isPaid}
                         onChange={(e) => setIsPaid(e.target.checked)}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        disabled={!canEditFleet}
+                        title={!canEditFleet ? "You don't have permission to update trips" : undefined}
+                        style={{ width: '18px', height: '18px', cursor: canEditFleet ? 'pointer' : 'not-allowed' }}
                     />
                     <label htmlFor="paidStatus" style={{ fontWeight: '700', fontSize: '14px', cursor: 'pointer', color: isPaid ? '#10B981' : 'var(--text-muted)' }}>
                         MARK AS PAYMENT RECEIVED
@@ -199,8 +209,20 @@ const TripExpenseModal = ({ isOpen, onClose, onSuccess, trip }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => handleSubmit(false)} disabled={loading}>Save Progress</button>
-                    <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => handleSubmit(true)} disabled={loading}>
+                    <button
+                        className="btn btn-outline"
+                        style={{ flex: 1 }}
+                        onClick={() => handleSubmit(false)}
+                        disabled={!canEditFleet || loading}
+                        title={!canEditFleet ? "You don't have permission to update trips" : undefined}
+                    >Save Progress</button>
+                    <button
+                        className="btn btn-primary"
+                        style={{ flex: 2 }}
+                        onClick={() => handleSubmit(true)}
+                        disabled={!canEditFleet || loading}
+                        title={!canEditFleet ? "You don't have permission to close trips" : undefined}
+                    >
                         {loading ? 'Processing...' : 'Close Trip & Finalize'}
                     </button>
                 </div>

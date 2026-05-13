@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Truck, Info, Loader2, CheckCircle, Clock } from 'lucide-react';
 import { purchaseOrderAPI, grnAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { hasPermission } from '../utils/rbac';
 
 const GRNModal = ({ isOpen, onClose, onSuccess }) => {
     const toast = useToast();
+    const { user } = useAuth();
+    const canCreateGRN = hasPermission(user, 'Procurement', 'add') || hasPermission(user, 'Procurement', 'edit');
     const [isSaving, setIsSaving] = useState(false);
     const [pos, setPOs] = useState([]);
     const [allGrns, setAllGrns] = useState([]);
@@ -68,6 +72,10 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!canCreateGRN) {
+            toast.error("You don't have permission to create GRN.");
+            return;
+        }
         if (!formData.po_id) {
             toast.warning('Please select a Purchase Order');
             return;
@@ -244,7 +252,7 @@ const GRNModal = ({ isOpen, onClose, onSuccess }) => {
                 {/* Footer */}
                 <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
                     <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
-                    <button type="submit" disabled={isSaving} className="btn btn-primary" style={{ padding: '10px 32px' }}>
+                    <button type="submit" disabled={!canCreateGRN || isSaving} title={!canCreateGRN ? 'You do not have permission to create GRNs' : ''} className="btn btn-primary" style={{ padding: '10px 32px' }}>
                         {isSaving ? <Loader2 size={16} className="animate-spin" /> : 'Confirm Stock Entry'}
                     </button>
                 </div>

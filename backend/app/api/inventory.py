@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from app.utils.auth import get_current_user, validate_object_id
 from app.api.workflow import trigger_workflow_event
-from app.utils.rbac import RBACPermission, role_in, require_sub_tab, has_sub_tab_access, is_admin_role, get_assigned_project_names, is_assignment_scoped, get_users_with_permission
+from app.utils.rbac import RBACPermission, role_in, require_sub_tab, has_sub_tab_access, has_module_action, fetch_role_doc, is_admin_role, get_assigned_project_names, is_assignment_scoped, get_users_with_permission
 from app.utils.notifications import notify, get_project_stakeholders, EVENT_MATERIAL, EVENT_WORKFLOW
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -36,7 +36,7 @@ class MaterialTransferRequest(BaseModel):
     items: List[dict] # [{"name": "Switch", "quantity": 50, "unit": "Nos"}]
     notes: Optional[str] = ""
 
-@router.get("/warehouse")
+@router.get("/warehouse", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_warehouse_inventory(db = Depends(get_database)):
     inventory = await db.warehouse_inventory.find().to_list(1000)
     wh_names = {item["material_name"] for item in inventory}
@@ -63,8 +63,23 @@ async def get_warehouse_inventory(db = Depends(get_database)):
             })
     return result
 
-@router.post("/requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+@router.post("/requests")
 async def create_material_request(request: MaterialRequestCreate, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Permission gate — submitting a material request is semantically an "add"
+    # action (creating a new request). Allow it for anyone with Projects add OR
+    # edit (site team), or Inventory Management add OR edit (warehouse staff
+    # creating on behalf). Admin-class always passes.
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_submit = (
+        is_admin_role(current_user.get("role"))
+        or await has_module_action(db, current_user, "Projects", "add", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Projects", "edit", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Inventory Management", "add", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Inventory Management", "edit", role_doc=role_doc)
+    )
+    if not can_submit:
+        raise HTTPException(status_code=403, detail="You need Projects or Inventory Management add/edit access to submit a material request.")
+
     # MEDIUM-3: Validate item quantities
     for item in request.requested_items:
         qty = float(item.get("quantity", 0))
@@ -99,7 +114,7 @@ async def create_material_request(request: MaterialRequestCreate, db = Depends(g
 
     return {"id": str(result.inserted_id), "success": True}
 
-@router.get("/requests")
+@router.get("/requests", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_material_requests(project_name: Optional[str] = None, status: Optional[str] = None, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
     
@@ -107,13 +122,14 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
         query["status"] = status
     
     # Dynamic scoping — no role-name strings.
-    # Admin-class users see everything (optionally filtered by ?project_name).
-    # Anyone with project assignments (engineer or coordinator) sees only those
-    # projects' requests. Anyone else gets no rows.
+    # Admin-class users + cross-project specialists (Purchase Officer, Inventory
+    # Manager who don't have project assignments) see everything.
+    # Only project-assignment-scoped users (Site Engineer / Project Coordinator)
+    # are restricted to their assigned projects.
     if is_admin_role(current_user.get("role", "")):
         if project_name and project_name != "all":
             query["project_name"] = project_name
-    else:
+    elif await is_assignment_scoped(db, current_user):
         assigned_names = await get_assigned_project_names(db, current_user)
         if not assigned_names:
             return []
@@ -123,6 +139,11 @@ async def get_material_requests(project_name: Optional[str] = None, status: Opti
             query["project_name"] = project_name
         else:
             query["project_name"] = {"$in": assigned_names}
+    else:
+        # Cross-project specialist (Purchase Officer, Inventory Manager, etc.)
+        # — sees all requests. Optionally filter by ?project_name.
+        if project_name and project_name != "all":
+            query["project_name"] = project_name
 
     requests = await db.material_requests.find(query).sort("created_at", -1).to_list(100)
     return [
@@ -137,7 +158,7 @@ class ConsolidateRequests(BaseModel):
     request_ids: List[str]
     notes: Optional[str] = ""
 
-@router.post("/requests/consolidate")
+@router.post("/requests/consolidate", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     # Dynamic gate — anyone with Inventory Management → Coordination access can consolidate
     await require_sub_tab(db, current_user, "Inventory Management", "Coordination")
@@ -219,7 +240,7 @@ async def consolidate_requests(payload: ConsolidateRequests, db = Depends(get_da
     
     return {"id": str(result.inserted_id), "success": True}
 
-@router.delete("/requests/{request_id}", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+@router.delete("/requests/{request_id}", dependencies=[Depends(RBACPermission("Inventory Management", "delete"))])
 async def delete_material_request(request_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Cancel/delete a material request. Only Pending requests can be deleted."""
     oid = validate_object_id(request_id, "request")
@@ -233,7 +254,7 @@ async def delete_material_request(request_id: str, db = Depends(get_database), c
     await log_activity(db, str(current_user.get("_id", current_user["username"])), current_user["username"], "Delete Material Request", f"Material request {request_id[-6:]} for {req.get('project_name', '')} deleted", "warning")
     return {"success": True, "message": "Material request deleted"}
 
-@router.get("/consolidated")
+@router.get("/consolidated", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_consolidated_requests(db = Depends(get_database)):
     records = await db.consolidated_requests.find().sort("created_at", -1).to_list(100)
     for r in records:
@@ -244,8 +265,20 @@ async def get_consolidated_requests(db = Depends(get_database)):
 @router.put("/requests/{request_id}/status")
 async def update_request_status(request_id: str, payload: dict, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(request_id, "request")
-    # Dynamic gate — anyone with Approvals → Materials access can approve material requests
-    await require_sub_tab(db, current_user, "Approvals", "Materials")
+    # Material-request status can be changed from three UI workflows:
+    #   • Approvals page (Approvals → Materials sub-tab) — admin/approver
+    #   • Site Reports → Material Requests sub-tab — Project Coordinator
+    #   • Workflow page (Procurement → edit) — Purchase Officer pushing
+    #     requests to PO creation
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    allowed = (
+        is_admin_role(current_user.get("role", ""))
+        or await has_sub_tab_access(db, current_user, "Approvals", "Materials", role_doc=role_doc)
+        or await has_sub_tab_access(db, current_user, "Site Reports", "Material Requests", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Procurement", "edit", role_doc=role_doc)
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="You need Approvals → Materials, Site Reports → Material Requests, or Procurement edit access.")
 
     status = payload.get("status")
     remarks = payload.get("remarks", "")
@@ -272,7 +305,7 @@ async def update_request_status(request_id: str, payload: dict, db = Depends(get
             
     return {"success": True}
 
-@router.post("/requests/{request_id}/issue")
+@router.post("/requests/{request_id}/issue", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def issue_stock(request_id: str, issue: StockIssue, db = Depends(get_database)):
     oid = validate_object_id(request_id, "request")
     # 1. Update Material Request
@@ -373,7 +406,7 @@ class StockReturn(BaseModel):
 
 # ── Return to Warehouse Request Flow ──────────────────────────────────────────
 
-@router.post("/return-requests")
+@router.post("/return-requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def create_return_request(body: dict = Body(...), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Site Engineer requests to return materials from site to warehouse."""
     items = body.get("items", [])
@@ -414,6 +447,19 @@ async def create_return_request(body: dict = Body(...), db = Depends(get_databas
 
 @router.get("/return-requests")
 async def get_return_requests(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Permission: approvers (Approvals → Stock Returns sub-tab) view the
+    # pending queue; site staff (Inventory Management edit or Projects edit)
+    # may also need to track their own submitted returns.
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    allowed = (
+        is_admin_role(current_user.get("role", ""))
+        or await has_sub_tab_access(db, current_user, "Approvals", "Stock Returns", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Inventory Management", "edit", role_doc=role_doc)
+        or await has_module_action(db, current_user, "Projects", "edit", role_doc=role_doc)
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="You don't have permission to view stock return requests.")
+
     requests = await db.stock_return_requests.find({}).sort("created_at", -1).to_list(200)
     return [{
         "id": str(r["_id"]),
@@ -421,7 +467,7 @@ async def get_return_requests(db = Depends(get_database), current_user: dict = D
     } for r in requests]
 
 
-@router.put("/return-requests/{req_id}/approve")
+@router.put("/return-requests/{req_id}/approve", dependencies=[Depends(RBACPermission("Approvals", "edit"))])
 async def approve_return_request(req_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Anyone with Approvals → Stock Returns access can approve — stock moves from site to warehouse."""
     await require_sub_tab(db, current_user, "Approvals", "Stock Returns")
@@ -484,7 +530,7 @@ async def approve_return_request(req_id: str, db = Depends(get_database), curren
     return {"success": True, "message": "Return approved — stock moved to warehouse"}
 
 
-@router.put("/return-requests/{req_id}/reject")
+@router.put("/return-requests/{req_id}/reject", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def reject_return_request(req_id: str, body: dict = Body(default={}), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     oid = validate_object_id(req_id, "return request")
     reason = body.get("reason", "")
@@ -495,7 +541,7 @@ async def reject_return_request(req_id: str, body: dict = Body(default={}), db =
     return {"success": True}
 
 
-@router.post("/return")
+@router.post("/return", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def return_stock(ret: StockReturn, db = Depends(get_database)):
     for item in ret.items:
         qty = float(item["quantity"])
@@ -540,7 +586,7 @@ async def return_stock(ret: StockReturn, db = Depends(get_database)):
         
     return {"success": True}
 
-@router.get("/ledger")
+@router.get("/ledger", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def get_stock_ledger(material_name: Optional[str] = None, project_name: Optional[str] = None, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     query = {}
     if material_name:
@@ -553,9 +599,10 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
             {"to_project": project_name}
         ]
 
-    # Dynamic scoping — admin-class users see everything; scoped users (assigned
-    # as engineer/coordinator on any project) see only those projects' ledger.
-    if not is_admin_role(current_user.get("role", "")):
+    # Dynamic scoping — admin-class + cross-project specialists see all;
+    # only project-assignment-scoped users (Site Engineer / Project Coordinator)
+    # are restricted to their assigned projects' ledger.
+    if not is_admin_role(current_user.get("role", "")) and await is_assignment_scoped(db, current_user):
         assigned_names = await get_assigned_project_names(db, current_user)
         if assigned_names:
             query["$or"] = [
@@ -605,7 +652,7 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
         for l in logs
     ]
 
-@router.post("/requests/{request_id}/settle")
+@router.post("/requests/{request_id}/settle", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def settle_stock(request_id: str, settlement: StockSettlementCreate, db = Depends(get_database)):
     oid = validate_object_id(request_id, "request")
     # 1. Update Material Request
@@ -695,7 +742,7 @@ def _transfer_helper(r):
     return d
 
 
-@router.get("/transfers/pending")
+@router.get("/transfers/pending", dependencies=[Depends(RBACPermission("Approvals", "view"))])
 async def get_pending_transfers(db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Get all transfer requests — filtered by assigned projects for coordinator-class approvers."""
     query = {}
@@ -760,8 +807,18 @@ async def get_lifo_rate(db, material_name, project_name):
 
 @router.put("/transfers/{transfer_id}/approve")
 async def approve_transfer(transfer_id: str, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
-    """Anyone with Approvals → Transfers access can approve transfer request."""
-    await require_sub_tab(db, current_user, "Approvals", "Transfers")
+    """Transfer approval is reachable from three UI workflows:
+      • Approvals page (Approvals → Transfers sub-tab) — admin/PO approver
+      • Materials Coordination tab (Inventory Management → Coordination) — coordinator
+      • Site Reports → Transfer Requests sub-tab — coordinator's site-reports view
+    Accept any of the matching sub-tabs; admin-class always passes.
+    """
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_approvals = await has_sub_tab_access(db, current_user, "Approvals", "Transfers", role_doc=role_doc)
+    can_inv_coord = await has_sub_tab_access(db, current_user, "Inventory Management", "Coordination", role_doc=role_doc)
+    can_site_reports = await has_sub_tab_access(db, current_user, "Site Reports", "Transfer Requests", role_doc=role_doc)
+    if not (is_admin_role(current_user.get("role", "")) or can_approvals or can_inv_coord or can_site_reports):
+        raise HTTPException(status_code=403, detail="You need Approvals → Transfers, Inventory Management → Coordination, or Site Reports → Transfer Requests access to approve transfers.")
 
     oid = validate_object_id(transfer_id, "transfer")
     request = await db.material_transfer_requests.find_one({"_id": oid})
@@ -798,7 +855,7 @@ async def approve_transfer(transfer_id: str, db = Depends(get_database), current
     return {"success": True, "message": "Transfer approved. Accountant can now execute."}
 
 
-@router.put("/transfers/{transfer_id}/execute")
+@router.put("/transfers/{transfer_id}/execute", dependencies=[Depends(RBACPermission("Accounts", "edit"))])
 async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Accountant executes the transfer with manual rate entry (M-Book based cost)."""
     oid = validate_object_id(transfer_id, "transfer")
@@ -954,6 +1011,15 @@ async def reconcile_transfers(db=Depends(get_database), current_user=Depends(get
 
 @router.put("/transfers/{transfer_id}/reject")
 async def reject_transfer(transfer_id: str, body: dict = Body(default={}), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
+    # Same multi-source flow as transfers/approve — accept Approvals → Transfers,
+    # Inventory Management → Coordination, or Site Reports → Transfer Requests.
+    role_doc = await fetch_role_doc(db, current_user.get("role"))
+    can_approvals = await has_sub_tab_access(db, current_user, "Approvals", "Transfers", role_doc=role_doc)
+    can_inv_coord = await has_sub_tab_access(db, current_user, "Inventory Management", "Coordination", role_doc=role_doc)
+    can_site_reports = await has_sub_tab_access(db, current_user, "Site Reports", "Transfer Requests", role_doc=role_doc)
+    if not (is_admin_role(current_user.get("role", "")) or can_approvals or can_inv_coord or can_site_reports):
+        raise HTTPException(status_code=403, detail="You need Approvals → Transfers, Inventory Management → Coordination, or Site Reports → Transfer Requests access to reject transfers.")
+
     oid = validate_object_id(transfer_id, "transfer")
     request = await db.material_transfer_requests.find_one({"_id": oid})
     if not request:
@@ -1038,7 +1104,7 @@ async def check_warehouse_availability(
     return result
 
 
-@router.post("/warehouse/bulk-issue")
+@router.post("/warehouse/bulk-issue", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def bulk_warehouse_issue(
     payload: WarehouseBulkIssue,
     db=Depends(get_database),
@@ -1120,7 +1186,7 @@ async def bulk_warehouse_issue(
     return {"success": True, "issued_count": len(issued), "issued_items": issued, "total_value": total_value}
 
 
-@router.get("/report/material-wise")
+@router.get("/report/material-wise", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
 async def material_wise_report(
     db=Depends(get_database),
     current_user: dict = Depends(get_current_user),
