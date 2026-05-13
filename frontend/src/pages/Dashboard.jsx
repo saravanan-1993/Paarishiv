@@ -703,7 +703,7 @@ const Dashboard = () => {
 
                         {/* ── Recent Projects Table ─────────────────────────────── */}
                         {(hasDashboardCard(user, 'active_projects_list') || isSuperAdmin) && (
-                            <div className="card" style={{ padding: '24px', overflowX: 'auto', marginBottom: '32px' }}>
+                            <div className="card" style={{ padding: '24px', overflowX: 'auto', marginBottom: '32px', marginTop:'10px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                                     <div>
                                         <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>Active Projects Overview</h3>
