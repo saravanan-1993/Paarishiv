@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, Clock, DollarSign, CheckCircle, Loader2, Coffee } from 'lucide-react';
 import { hrmsAPI } from '../utils/api';
+import { useToast } from '../context/ToastContext';
 
 const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
+    const toast = useToast();
     const [isProcessing, setIsProcessing] = useState(false);
     const [loadingAtt, setLoadingAtt] = useState(false);
 
@@ -63,27 +65,39 @@ const ProcessPayrollModal = ({ isOpen, onClose, employee, onConfirm }) => {
 
     if (!isOpen || !employee) return null;
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
         setIsProcessing(true);
-        setTimeout(() => {
-            onConfirm(employee.id, {
+        try {
+            const payrollData = {
+                employeeId: employee.id || employee._id,
+                employeeName: employee.name || employee.fullName,
+                employeeCode: employee.employeeCode || employee.code || '',
+                month: employee.payrollData?.month || new Date().toISOString().slice(0, 7),
                 totalDays,
                 presentDays,
                 casualLeave,
                 absentDays,
-                lopDeduction,
-                leaveDays: absentDays,
-                lopAmount,
-                advanceAmount,
+                lopDays: absentDays,
+                basicSalary: base,
+                hra: allow,
+                grossEarnings,
                 pfAmount,
                 ptAmount,
-                grossEarnings,
+                lopAmount: lopDeduction + lopAmount,
+                advanceAmount,
                 totalDeductions,
                 netSalary: net
-            });
-            setIsProcessing(false);
+            };
+            await hrmsAPI.processPayroll(payrollData);
+            toast.success(`Payroll processed for ${employee.name || employee.fullName}`);
+            if (onConfirm) onConfirm(employee.id, payrollData);
             onClose();
-        }, 1000);
+        } catch (err) {
+            console.error('Payroll processing failed:', err);
+            toast.error('Failed to process payroll');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (

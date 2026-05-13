@@ -7,7 +7,7 @@ import {
     Check, X, XCircle, AlertCircle, TrendingUp, BarChart2, Shield, ShieldCheck, Edit3, Loader2, Eye, Power, Trash2, UserCheck, UserX, Save,
     Mail, MoreVertical, Edit2, ListTodo, ShoppingCart, Package, UserCog, History, Settings as SettingsIcon2, DollarSign
 } from 'lucide-react';
-import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI } from '../utils/api';
+import { employeeAPI, hrmsAPI, projectAPI, approvalsAPI, settingsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -19,7 +19,9 @@ import SurpriseVisitModal from '../components/SurpriseVisitModal';
 import ProcessPayrollModal from '../components/ProcessPayrollModal';
 import CreateRoleModal from '../components/CreateRoleModal';
 import { surpriseVisitAPI, labourAttendanceAPI } from '../utils/api';
-import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star, LayoutDashboard } from 'lucide-react';
+import { MapPin, Camera, Settings as SettingsIcon, PartyPopper, Cake, Star, LayoutDashboard, Download } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import HrmsSettingsModal from '../components/HrmsSettingsModal';
 import CustomSelect from '../components/CustomSelect';
 import AttendanceCalendar from '../components/AttendanceCalendar';
@@ -94,6 +96,7 @@ const HRMS = () => {
     const [lateComers, setLateComers] = useState([]);
     const [celebrations, setCelebrations] = useState([]);
     const [projects, setProjects] = useState([]);
+    const [companyInfo, setCompanyInfo] = useState({});
     const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
     const [selectedAttendanceSite, setSelectedAttendanceSite] = useState('All');
     const [manpowerFilter, setManpowerFilter] = useState('Approved');
@@ -199,16 +202,18 @@ const HRMS = () => {
     const fetchInitialData = async () => {
         try {
             setLoading(true);
-            const [statsRes, empRes, settingsRes, projRes] = await Promise.all([
+            const [statsRes, empRes, settingsRes, projRes, companyRes] = await Promise.all([
                 hrmsAPI.getStats(),
                 employeeAPI.getAll(),
                 hrmsAPI.getSettings(),
-                projectAPI.getAll()
+                projectAPI.getAll(),
+                settingsAPI.getCompany()
             ]);
             setStats(statsRes.data);
             setEmployees(empRes.data);
             setHrmsSettings(settingsRes.data);
             setProjects(projRes.data || []);
+            setCompanyInfo(companyRes.data || {});
 
             // Pre-fetch leaves as They are needed for attendance mapping
             fetchLeaves();
@@ -456,7 +461,7 @@ const HRMS = () => {
         try {
             setLoading(true);
             const records = attendanceData.map(d => ({
-                employeeId: d.employeeId,
+                employeeId: d.employeeCode || d.employeeId,
                 employeeName: d.fullName,
                 date: selectedDate,
                 checkIn: d.checkIn,
@@ -478,7 +483,7 @@ const HRMS = () => {
     const handleSaveSingleAttendance = async (data) => {
         try {
             const record = {
-                employeeId: data.employeeId,
+                employeeId: data.employeeCode || data.employeeId,
                 employeeName: data.fullName,
                 date: selectedDate,
                 checkIn: data.checkIn,
@@ -530,6 +535,220 @@ const HRMS = () => {
         } catch (err) {
             toast.error('Failed to generate payroll');
         }
+    };
+
+    const downloadPaySlip = (emp, p) => {
+        try {
+        const doc = new jsPDF();
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const margin = 14;
+        const contentW = pageW - margin * 2;
+        const fmt = (n) => `Rs. ${(parseFloat(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+        const [yr, mn] = (p.month || selectedMonth).split('-');
+        const monthLabel = new Date(yr, mn - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+        const cName = companyInfo.companyName || 'Paari Shiv Homes';
+        const cAddr = companyInfo.address || '';
+        const cPhone = companyInfo.contactNumber || '';
+        const cEmail = companyInfo.email || '';
+        const cGstin = companyInfo.gstin || '';
+
+        // === DECORATIVE TOP LINE ===
+        doc.setFillColor(30, 64, 175);
+        doc.rect(0, 0, pageW, 4, 'F');
+
+        // === COMPANY HEADER ===
+        let y = 18;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.setTextColor(30, 64, 175);
+        doc.text(cName.toUpperCase(), pageW / 2, y, { align: 'center' });
+        y += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        if (cAddr) { doc.text(cAddr, pageW / 2, y, { align: 'center' }); y += 4; }
+        const contactParts = [cPhone, cEmail].filter(Boolean).join('  |  ');
+        if (contactParts) { doc.text(contactParts, pageW / 2, y, { align: 'center' }); y += 4; }
+        if (cGstin) { doc.text(`GSTIN: ${cGstin}`, pageW / 2, y, { align: 'center' }); y += 4; }
+
+        // === PAYSLIP TITLE BAR ===
+        y += 4;
+        doc.setFillColor(30, 64, 175);
+        doc.rect(margin, y, contentW, 10, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`PAYSLIP FOR ${monthLabel.toUpperCase()}`, pageW / 2, y + 7, { align: 'center' });
+        y += 18;
+
+        // === EMPLOYEE DETAILS TABLE ===
+        autoTable(doc, {
+            startY: y,
+            body: [
+                ['Employee Name', emp.fullName || '—', 'Employee ID', emp.employeeCode || '—'],
+                ['Designation', emp.designation || '—', 'Department', emp.department || '—'],
+                ['Date of Joining', emp.doj ? new Date(emp.doj).toLocaleDateString('en-IN') : '—', 'Pay Period', monthLabel],
+            ],
+            theme: 'plain',
+            styles: { fontSize: 9, cellPadding: { top: 3, bottom: 3, left: 6, right: 6 } },
+            columnStyles: {
+                0: { fontStyle: 'bold', textColor: [100, 116, 139], cellWidth: 38 },
+                1: { textColor: [15, 23, 42], cellWidth: 55 },
+                2: { fontStyle: 'bold', textColor: [100, 116, 139], cellWidth: 38 },
+                3: { textColor: [15, 23, 42] },
+            },
+            margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 2;
+
+        // Thin separator
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, pageW - margin, y);
+        y += 8;
+
+        // === ATTENDANCE SUMMARY ===
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(30, 64, 175);
+        doc.text('ATTENDANCE SUMMARY', margin, y);
+        y += 4;
+        autoTable(doc, {
+            startY: y,
+            head: [['Total Days', 'Present Days', 'Leave Days', 'LOP / Absent']],
+            body: [[p.totalDays || '—', p.presentDays ?? '—', p.leaveDays ?? 0, p.lopDays ?? 0]],
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 4, halign: 'center', lineColor: [226, 232, 240], lineWidth: 0.3 },
+            headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontStyle: 'bold' },
+            margin: { left: margin, right: margin },
+        });
+        y = doc.lastAutoTable.finalY + 8;
+
+        // === EARNINGS & DEDUCTIONS SIDE BY SIDE ===
+        const colW = (contentW - 8) / 2;
+
+        // Section headers
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(22, 163, 74);
+        doc.text('EARNINGS', margin, y);
+        doc.setTextColor(220, 38, 38);
+        doc.text('DEDUCTIONS', margin + colW + 8, y);
+        y += 4;
+
+        const basicSalary = parseFloat(p.basicSalary || emp.basicSalary || 0);
+        const hra = parseFloat(p.hra || emp.hra || 0);
+        const earningsRows = [['Basic Salary', fmt(basicSalary)]];
+        if (hra > 0) earningsRows.push(['HRA / Allowance', fmt(hra)]);
+
+        // Earnings table
+        autoTable(doc, {
+            startY: y,
+            head: [['Particulars', 'Amount (Rs.)']],
+            body: earningsRows,
+            foot: [['Gross Earnings', fmt(p.grossEarnings || basicSalary + hra)]],
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.3 },
+            headStyles: { fillColor: [220, 252, 231], textColor: [22, 101, 52], fontStyle: 'bold' },
+            footStyles: { fillColor: [187, 247, 208], textColor: [22, 101, 52], fontStyle: 'bold' },
+            columnStyles: { 1: { halign: 'right' } },
+            tableWidth: colW,
+            margin: { left: margin },
+        });
+        const earningsEndY = doc.lastAutoTable.finalY;
+
+        // Deductions table
+        const deductionRows = [];
+        if (p.pfAmount > 0) deductionRows.push(['Provident Fund (PF)', fmt(p.pfAmount)]);
+        if (p.ptAmount > 0) deductionRows.push(['Professional Tax', fmt(p.ptAmount)]);
+        if (p.lopAmount > 0) deductionRows.push([`LOP Deduction (${p.lopDays || 0} days)`, fmt(p.lopAmount)]);
+        if (p.advanceAmount > 0) deductionRows.push(['Advance Deduction', fmt(p.advanceAmount)]);
+        if (deductionRows.length === 0) deductionRows.push(['No Deductions', fmt(0)]);
+
+        autoTable(doc, {
+            startY: y,
+            head: [['Particulars', 'Amount (Rs.)']],
+            body: deductionRows,
+            foot: [['Total Deductions', fmt(p.totalDeductions || 0)]],
+            theme: 'grid',
+            styles: { fontSize: 9, cellPadding: 4, lineColor: [226, 232, 240], lineWidth: 0.3 },
+            headStyles: { fillColor: [254, 226, 226], textColor: [153, 27, 27], fontStyle: 'bold' },
+            footStyles: { fillColor: [254, 202, 202], textColor: [153, 27, 27], fontStyle: 'bold' },
+            columnStyles: { 1: { halign: 'right' } },
+            tableWidth: colW,
+            margin: { left: margin + colW + 8 },
+        });
+        const deductionsEndY = doc.lastAutoTable.finalY;
+
+        // === NET PAY BOX ===
+        let netY = Math.max(earningsEndY, deductionsEndY) + 10;
+        doc.setFillColor(30, 64, 175);
+        doc.roundedRect(margin, netY, contentW, 16, 2, 2, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.text('NET PAYABLE', margin + 8, netY + 11);
+        doc.setFontSize(15);
+        doc.text(fmt(p.netSalary || 0), pageW - margin - 8, netY + 11, { align: 'right' });
+
+        // === AMOUNT IN WORDS ===
+        netY += 24;
+        const netAmount = parseFloat(p.netSalary || 0);
+        const amountWords = numberToWords(Math.round(netAmount));
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Amount in words: ${amountWords} Rupees Only`, margin, netY);
+
+        // === FOOTER SEPARATOR ===
+        netY += 12;
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(margin, netY, pageW - margin, netY);
+
+        // === FOOTER ===
+        netY += 8;
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(148, 163, 184);
+        doc.text('This is a system-generated payslip and does not require a signature.', pageW / 2, netY, { align: 'center' });
+        netY += 5;
+        doc.text(`Generated on ${new Date().toLocaleDateString('en-IN')} | ${cName}`, pageW / 2, netY, { align: 'center' });
+
+        // === BOTTOM DECORATIVE LINE ===
+        doc.setFillColor(30, 64, 175);
+        doc.rect(0, pageH - 4, pageW, 4, 'F');
+
+        doc.save(`PaySlip_${emp.employeeCode || 'EMP'}_${p.month || selectedMonth}.pdf`);
+        toast.success('Pay slip downloaded');
+        } catch (err) {
+            console.error('Pay slip generation failed:', err);
+            toast.error('Failed to generate pay slip: ' + err.message);
+        }
+    };
+
+    const numberToWords = (num) => {
+        if (num === 0) return 'Zero';
+        const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+            'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+        const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+        const scales = ['', 'Thousand', 'Lakh', 'Crore'];
+        if (num < 0) return 'Minus ' + numberToWords(-num);
+        const convert2 = (n) => n < 20 ? ones[n] : tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+        const convert3 = (n) => n >= 100 ? ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' and ' + convert2(n % 100) : '') : convert2(n);
+        // Indian numbering: ones, thousands, lakhs, crores
+        const parts = [];
+        let rem = Math.floor(num);
+        const firstChunk = rem % 1000; rem = Math.floor(rem / 1000);
+        if (firstChunk) parts.push(convert3(firstChunk));
+        let scaleIdx = 1;
+        while (rem > 0) {
+            const chunk = rem % 100; rem = Math.floor(rem / 100);
+            if (chunk) parts.push(convert2(chunk) + ' ' + scales[scaleIdx]);
+            scaleIdx++;
+        }
+        return parts.reverse().join(' ') || 'Zero';
     };
 
     const handleToggleEmployeeStatus = async (emp) => {
@@ -805,7 +1024,7 @@ const HRMS = () => {
                             <th>Designation</th>
                             <th>Site/Project</th>
                             <th>Salary Type</th>
-                            <th>Basic/Wage</th>
+                            <th>Basic</th>
                             <th>Status</th>
                             <th>Action</th>
                         </tr>
@@ -1234,9 +1453,6 @@ const HRMS = () => {
                     />
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    {canEditHRMS && <button className="btn btn-primary" onClick={generatePayrollRecord} style={{ fontWeight: '800' }}>
-                        <DollarSign size={18} /> Process Monthly Payroll
-                    </button>}
                 </div>
             </div>
 
@@ -1244,6 +1460,7 @@ const HRMS = () => {
                 <table className="data-table">
                     <thead>
                         <tr>
+                            <th>Emp ID</th>
                             <th>Employee</th>
                             <th>Total/Present Days</th>
                             <th>LOP Days</th>
@@ -1258,37 +1475,59 @@ const HRMS = () => {
                             if ((emp.designation || '').toLowerCase() === 'driver') return false;
                             if (emp.salaryType && emp.salaryType !== 'monthly') return false;
                             return emp.status === 'Active';
-                        }).map((emp, i) => {
+                        }).sort((a, b) => (a.employeeCode || '').localeCompare(b.employeeCode || '')).map((emp, i) => {
                             const empId = emp.id || emp._id;
                             const p = payroll.find(pr => pr.employeeId === empId) || {};
                             return (
                             <tr key={i}>
+                                <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '12px' }}>{emp.employeeCode || '—'}</td>
                                 <td style={{ fontWeight: '600' }}>{emp.fullName}</td>
                                 <td>{p.totalDays || '—'} / <span style={{ color: '#10B981', fontWeight: '700' }}>{p.presentDays ?? '—'}</span></td>
                                 <td style={{ color: '#EF4444', fontWeight: '700' }}>{p.lopDays ?? 0}</td>
                                 <td style={{ fontSize: '12px' }}>Monthly Basic</td>
                                 <td style={{ fontWeight: '800', color: 'var(--primary)' }}>₹{(p.netSalary || parseFloat(emp.basicSalary) || 0).toLocaleString()}</td>
-                                <td><span className={`badge ${p.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'DRAFT'}</span></td>
+                                <td><span className={`badge ${p.status === 'Processed' || p.status === 'Paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'DRAFT'}</span></td>
                                 <td>
-                                    <button
-                                        className="icon-btn"
-                                        title="Adjust Payroll"
-                                        onClick={() => {
-                                            setPayrollEmployee({
-                                                ...emp,
-                                                id: empId,
-                                                name: emp.fullName,
-                                                payrollData: Object.keys(p).length > 0 ? p : { month: selectedMonth, totalDays: 0, presentDays: 0, lopDays: 0 }
-                                            });
-                                            setIsProcessPayrollOpen(true);
-                                        }}
-                                    >
-                                        <Edit3 size={16} />
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        {p.status !== 'Processed' && p.status !== 'Paid' ? (
+                                            <button
+                                                title="Process Payroll"
+                                                onClick={() => {
+                                                    setPayrollEmployee({
+                                                        ...emp,
+                                                        id: empId,
+                                                        name: emp.fullName,
+                                                        payrollData: Object.keys(p).length > 0 ? p : { month: selectedMonth, totalDays: 0, presentDays: 0, lopDays: 0 }
+                                                    });
+                                                    setIsProcessPayrollOpen(true);
+                                                }}
+                                                style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', color: 'var(--primary)', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
+                                                onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                                                onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = 'var(--primary)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                                            >
+                                                <Edit3 size={14} /> Process
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <span style={{ padding: '6px 14px', borderRadius: '8px', background: '#f0fdf4', color: '#16a34a', fontSize: '12px', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                    <CheckCircle size={14} /> Processed
+                                                </span>
+                                                <button
+                                                    title="Download Pay Slip"
+                                                    onClick={() => downloadPaySlip(emp, p)}
+                                                    style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s' }}
+                                                    onMouseEnter={e => { e.currentTarget.style.background = '#16a34a'; e.currentTarget.style.color = 'white'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.background = '#f0fdf4'; e.currentTarget.style.color = '#16a34a'; }}
+                                                >
+                                                    <Download size={14} /> Pay Slip
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ); })}
-                        {employees.filter(e => e.status === 'Active' && (e.designation || '').toLowerCase() !== 'driver' && (!e.salaryType || e.salaryType === 'monthly')).length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No monthly employees found.</td></tr>}
+                        {employees.filter(e => e.status === 'Active' && (e.designation || '').toLowerCase() !== 'driver' && (!e.salaryType || e.salaryType === 'monthly')).length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: '60px', color: 'var(--text-muted)' }}>No monthly employees found.</td></tr>}
                     </tbody>
                 </table>
             </div>
@@ -1889,15 +2128,8 @@ const HRMS = () => {
                 isOpen={isProcessPayrollOpen}
                 onClose={() => setIsProcessPayrollOpen(false)}
                 employee={payrollEmployee}
-                onConfirm={async (empId, data) => {
-                    // Logic to update local state or call API to mark as paid
-                    try {
-                        // After generating, fetch updated payroll
-                        fetchPayroll(selectedMonth);
-                        toast.success(`Payroll generated for ${payrollEmployee?.name}. Net Amount: ₹${data.netSalary.toLocaleString('en-IN')}`);
-                    } catch (err) {
-                        console.error('Failed to confirm individual payroll', err);
-                    }
+                onConfirm={() => {
+                    fetchPayroll(selectedMonth);
                 }}
             />
         </div>

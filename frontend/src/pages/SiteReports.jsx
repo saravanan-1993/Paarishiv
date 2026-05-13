@@ -376,18 +376,18 @@ const SiteReports = () => {
                                             paginatedDPRs.map((dpr, i) => (
                                                 <tr key={i}>
                                                     <td>{dpr.date}</td><td style={{ fontWeight: '700', color: 'var(--primary)' }}>{dpr.project_name}</td><td>{dpr.submitted_by}</td>
-                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Reviewed' ? 'badge-info' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{dpr.status}</span></td>
+                                                    <td><span className={`badge ${dpr.status === 'Approved' ? 'badge-success' : dpr.status === 'Reviewed' ? 'badge-info' : dpr.status === 'Coordinator Approved' || dpr.status === 'Dept Approved' ? 'badge-info' : dpr.status === 'Rejected' ? 'badge-danger' : 'badge-warning'}`}>{dpr.status}</span></td>
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                                                             <button className="btn btn-outline btn-sm" onClick={() => { setSelectedDPR(dpr); setIsViewModalOpen(true); }}><Eye size={16} /></button>
-                                                            {/* Bug 4.7 - Coordinator: Pending -> Reviewed, Admin: Reviewed -> Approved */}
+                                                            {/* Bug 26 - Multi-stage DPR workflow: Pending → Coordinator Approved → Dept Approved → Approved */}
                                                             {dpr.status === 'Pending' && hasPermission(user, 'Site Reports', 'edit') && (
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, !hasPermission(user, 'Approvals', 'edit') ? 'Reviewed' : 'Approved')}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, hasPermission(user, 'Approvals', 'edit') ? 'Coordinator Approved' : 'Reviewed')}
                                                                         disabled={processingId === dpr.id}
-                                                                        title={!hasPermission(user, 'Approvals', 'edit') ? 'Review DPR' : 'Approve DPR'}
+                                                                        title={hasPermission(user, 'Approvals', 'edit') ? 'Approve DPR' : 'Review DPR'}
                                                                     >
                                                                         {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                                                     </button>
@@ -406,9 +406,30 @@ const SiteReports = () => {
                                                                 <>
                                                                     <button
                                                                         className="btn btn-success btn-sm"
-                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Approved')}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Coordinator Approved')}
                                                                         disabled={processingId === dpr.id}
                                                                         title="Approve DPR"
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                                                                    </button>
+                                                                    <button
+                                                                        className="btn btn-outline btn-sm"
+                                                                        style={{ color: '#ef4444' }}
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Rejected')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title="Reject DPR"
+                                                                    >
+                                                                        {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                            {dpr.status === 'Coordinator Approved' && hasPermission(user, 'Approvals', 'edit') && (
+                                                                <>
+                                                                    <button
+                                                                        className="btn btn-success btn-sm"
+                                                                        onClick={() => handleUpdateDPRStatus(dpr, 'Dept Approved')}
+                                                                        disabled={processingId === dpr.id}
+                                                                        title="Dept Approve DPR"
                                                                     >
                                                                         {processingId === dpr.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
                                                                     </button>
