@@ -441,17 +441,6 @@ const Materials = () => {
                         {/* ── Search ────────────────────────────────────────────────────── */}
                         <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
                             <div style={{ display: 'flex', gap: '16px' }}>
-                                <div style={{ minWidth: '200px' }}>
-                                    <CustomSelect
-                                        value={filterProject}
-                                        onChange={(val) => setFilterProject(val)}
-                                        options={[
-                                            ...(isAdmin ? [{ value: '', label: 'All Projects' }] : []),
-                                            ...projects.map(p => ({ value: p.name, label: p.name }))
-                                        ]}
-                                        placeholder="Filter by project"
-                                    />
-                                </div>
                                 <div style={{ flex: 1, position: 'relative' }}>
                                     <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                                     <input
@@ -705,7 +694,7 @@ const Materials = () => {
                                                 </td>
                                                 <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
                                                 <td>
-                                                    {t.status === 'Pending' && isAdmin && (
+                                                    {t.status === 'Pending' && (isAdmin || isCoordinator) && (
                                                         <div style={{display:'flex',gap:4}}>
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
                                                                 onClick={async () => { if(await confirm({ title:'Approve Transfer', message:'Approve this transfer?', confirmText:'Approve' })){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>Approve</button>
@@ -717,7 +706,7 @@ const Materials = () => {
                                                         <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                             onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>Execute</button>
                                                     )}
-                                                    {t.status === 'Pending' && !isAdmin && <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Approval</span>}
+                                                    {t.status === 'Pending' && !isAdmin && !isCoordinator && <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Approval</span>}
                                                 </td>
                                             </tr>
                                         ))}
@@ -913,7 +902,7 @@ const Materials = () => {
                                                     </td>
                                                     <td style={{fontSize:12,color:'var(--text-muted)'}}>{t.requested_by || t.engineer_id}</td>
                                                     <td>
-                                                        {t.status === 'Pending' && isAdmin && (
+                                                        {t.status === 'Pending' && (isAdmin || isCoordinator) && (
                                                             <div style={{display:'flex',gap:4}}>
                                                                 <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11}}
                                                                     onClick={async () => { if(await confirm({ title:'Approve Transfer', message:'Approve this transfer?', confirmText:'Approve' })){ await inventoryAPI.approveTransfer(t.id); fetchMaterialTransfers(); } }}>
@@ -931,7 +920,7 @@ const Materials = () => {
                                                                 Execute
                                                             </button>
                                                         )}
-                                                        {t.status === 'Pending' && !isAdmin && (
+                                                        {t.status === 'Pending' && !isAdmin && !isCoordinator && (
                                                             <span style={{fontSize:11,color:'var(--text-muted)'}}>Awaiting Admin</span>
                                                         )}
                                                     </td>

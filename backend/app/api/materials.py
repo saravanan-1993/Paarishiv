@@ -208,54 +208,60 @@ async def get_material_ledger(project_name: str, material_name: str, db = Depend
                     "remarks": f"Project: {current_grn_project}"
                 })
     
-    # Fetch Stock Ledger (Transfers)
-    stock_entries = await db.stock_ledger.find({"material_name": material_name}).to_list(2000)
+    # Fetch Stock Ledger (Transfers) - only "Transfer Out" entries to avoid duplicates
+    # Each transfer creates two entries (Out + In) with same project_name "from -> to"
+    stock_entries = await db.stock_ledger.find({
+        "material_name": material_name,
+        "type": "Transfer Out"
+    }).to_list(2000)
     for entry in stock_entries:
         entry_project_string = entry.get("project_name", "") # e.g. "Site A -> Site B"
         is_all_sites = project_name in ["All Sites", "all"]
-        
-        # Determine if it's a transfer OUT of or INTO the requested project
-        parts = entry_project_string.split(" -> ")
-        from_proj = parts[0] if len(parts) > 0 else ""
-        to_proj = parts[1] if len(parts) > 1 else ""
-        
+
+        # Determine source and destination projects
+        from_proj = entry.get("from_project", "")
+        to_proj = entry.get("to_project", "")
+        # Fallback to parsing project_name for older entries
+        if not from_proj and not to_proj:
+            parts = entry_project_string.split(" -> ")
+            from_proj = parts[0] if len(parts) > 0 else ""
+            to_proj = parts[1] if len(parts) > 1 else ""
+
+        qty = float(entry.get("out_qty", 0))
+
         # Scoped users: ensure they have access to either from_proj or to_proj
         if allowed_projects is not None:
             if from_proj not in allowed_projects and to_proj not in allowed_projects:
                 continue
-                
+
         # If looking at a specific project
         if not is_all_sites:
             if from_proj == project_name:
                 # It's a Transfer OUT
-                qty_out = float(entry.get("out_qty", 0))
-                balance -= qty_out
+                balance -= qty
                 ledger.append({
                     "date": entry.get("created_at") or datetime.now().isoformat(),
                     "type": "Transfer (Outward)",
                     "ref": entry.get("ref", "XFER"),
                     "in_qty": 0,
-                    "out_qty": qty_out,
+                    "out_qty": qty,
                     "balance": balance,
                     "remarks": f"To: {to_proj}"
                 })
             elif to_proj == project_name:
                 # It's a Transfer IN
-                qty_in = float(entry.get("in_qty", 0))
-                balance += qty_in
+                balance += qty
                 ledger.append({
                     "date": entry.get("created_at") or datetime.now().isoformat(),
                     "type": "Transfer (Inward)",
                     "ref": entry.get("ref", "XFER"),
-                    "in_qty": qty_in,
+                    "in_qty": qty,
                     "out_qty": 0,
                     "balance": balance,
                     "remarks": f"From: {from_proj}"
                 })
         else:
-            # For 'All Sites', we might show both or just one to keep total balance correct.
-            # Showing both would result in a net 0 change to the 'All Sites' combined balance.
-            qty = float(entry.get("in_qty", 0))
+            # For 'All Sites', show as net-zero inter-site transfer
             ledger.append({
                 "date": entry.get("created_at") or datetime.now().isoformat(),
                 "type": "Inter-Site Transfer",

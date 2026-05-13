@@ -18,14 +18,15 @@ const AttendanceCalendar = ({ employeeId, employeeName, employeeCode }) => {
             const lastDay = new Date(year, month + 1, 0).toISOString().split('T')[0];
             
             const res = await hrmsAPI.getAttendanceRange(firstDay, lastDay);
-            // Filter for specific employee
-            const empRecords = (res.data || []).filter(r => 
-                r.employeeId === employeeId || 
-                r.user_id === employeeId || 
+            // Filter for specific employee - match by ID, code, username, or name
+            const empRecords = (res.data || []).filter(r =>
+                r.employeeId === employeeId ||
+                r.user_id === employeeId ||
                 r.username === employeeId ||
-                r.employeeCode === employeeCode ||
+                (employeeCode && (r.employeeCode === employeeCode ||
                 r.employeeId === employeeCode ||
-                r.username === employeeCode
+                r.username === employeeCode)) ||
+                (employeeName && r.employeeName === employeeName)
             );
             
             const mapped = {};

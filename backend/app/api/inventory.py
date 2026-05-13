@@ -546,14 +546,23 @@ async def get_stock_ledger(material_name: Optional[str] = None, project_name: Op
     if material_name:
         query["material_name"] = material_name
     if project_name:
-        query["project_name"] = project_name
-        
+        # Match direct project_name OR transfer entries involving this project
+        query["$or"] = [
+            {"project_name": project_name},
+            {"from_project": project_name},
+            {"to_project": project_name}
+        ]
+
     # Dynamic scoping — admin-class users see everything; scoped users (assigned
     # as engineer/coordinator on any project) see only those projects' ledger.
     if not is_admin_role(current_user.get("role", "")):
         assigned_names = await get_assigned_project_names(db, current_user)
         if assigned_names:
-            query["project_name"] = {"$in": assigned_names}
+            query["$or"] = [
+                {"project_name": {"$in": assigned_names}},
+                {"from_project": {"$in": assigned_names}},
+                {"to_project": {"$in": assigned_names}}
+            ]
         else:
             # No assignments and not admin — no rows.
             return []
@@ -651,6 +660,8 @@ class MaterialTransfer(BaseModel):
 @router.post("/transfers/request", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
 async def request_material_transfer(transfer: MaterialTransferRequest, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     request_dict = transfer.dict()
+    request_dict["from_project"] = request_dict.get("from_project", "").strip()
+    request_dict["to_project"] = request_dict.get("to_project", "").strip()
     request_dict["status"] = "Pending"
     request_dict["created_at"] = datetime.now()
     request_dict["engineer_id"] = current_user.get("username")
@@ -791,8 +802,8 @@ async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depend
     if not request.get("status", "").endswith("Approved"):
         raise HTTPException(status_code=400, detail="Transfer must be approved before execution")
 
-    from_proj = request["from_project"]
-    to_proj = request["to_project"]
+    from_proj = request["from_project"].strip()
+    to_proj = request["to_project"].strip()
     # Accountant provides items with rates
     accountant_items = body.get("items", request.get("items", []))
     total_transfer_value = 0
@@ -818,21 +829,39 @@ async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depend
         calculated_items.append({**item, "rate": rate, "value": item_val, "quantity": qty})
 
         # Add to destination
-        await db.inventory.update_one(
+        dest_result = await db.inventory.update_one(
             {"project_name": to_proj, "material_name": item["name"]},
             {"$inc": {"stock": qty}, "$set": {"unit": item.get("unit", "Nos")}},
             upsert=True
         )
+        # Verify destination was updated
+        if dest_result.modified_count == 0 and dest_result.upserted_id is None:
+            # Upsert failed silently — force insert the inventory record
+            print(f"[TRANSFER WARNING] Upsert failed for {to_proj}/{item['name']}. Forcing insert.")
+            existing = await db.inventory.find_one({"project_name": to_proj, "material_name": item["name"]})
+            if existing:
+                await db.inventory.update_one({"_id": existing["_id"]}, {"$inc": {"stock": qty}})
+            else:
+                await db.inventory.insert_one({
+                    "project_name": to_proj,
+                    "material_name": item["name"],
+                    "stock": qty,
+                    "unit": item.get("unit", "Nos"),
+                    "min_stock": 10
+                })
 
         # Stock ledger entries
         ref_code = f"XFER-{transfer_id[-6:].upper()}"
         now = datetime.now()
+        transfer_project_name = f"{from_proj} -> {to_proj}"
         await db.stock_ledger.insert_one({
-            "date": now, "material_name": item["name"], "project_name": from_proj,
+            "date": now, "material_name": item["name"], "project_name": transfer_project_name,
+            "from_project": from_proj, "to_project": to_proj,
             "type": "Transfer Out", "ref": ref_code, "in_qty": 0, "out_qty": qty, "created_at": now
         })
         await db.stock_ledger.insert_one({
-            "date": now, "material_name": item["name"], "project_name": to_proj,
+            "date": now, "material_name": item["name"], "project_name": transfer_project_name,
+            "from_project": from_proj, "to_project": to_proj,
             "type": "Transfer In", "ref": ref_code, "in_qty": qty, "out_qty": 0, "created_at": now
         })
 
@@ -885,6 +914,36 @@ async def execute_transfer(transfer_id: str, body: dict = Body(...), db = Depend
         pass
 
     return {"success": True, "value": total_transfer_value}
+
+
+@router.post("/transfers/reconcile", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+async def reconcile_transfers(db=Depends(get_database), current_user=Depends(get_current_user)):
+    """Fix inventory for completed transfers where destination stock was never added."""
+    completed = await db.material_transfer_requests.find({"status": "Completed"}).to_list(500)
+    fixed = []
+
+    for transfer in completed:
+        to_proj = transfer.get("to_project", "")
+        for item in transfer.get("items", []):
+            name = item.get("name", "")
+            qty = float(item.get("quantity", 0))
+            if not name or qty <= 0 or not to_proj:
+                continue
+
+            # Check if destination has this material in inventory
+            dest_inv = await db.inventory.find_one({"project_name": to_proj, "material_name": name})
+            if not dest_inv:
+                # Stock was never added — insert it
+                await db.inventory.insert_one({
+                    "project_name": to_proj,
+                    "material_name": name,
+                    "stock": qty,
+                    "unit": item.get("unit", "Nos"),
+                    "min_stock": 10
+                })
+                fixed.append({"project": to_proj, "material": name, "qty": qty, "action": "created"})
+
+    return {"success": True, "fixed_count": len(fixed), "details": fixed}
 
 
 @router.put("/transfers/{transfer_id}/reject")
