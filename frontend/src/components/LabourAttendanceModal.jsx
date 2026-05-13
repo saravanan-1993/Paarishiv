@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Plus, Trash2, Users, Loader2, Save, Send } from 'lucide-react';
 import { labourAttendanceAPI, vendorAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
+import { isAdminRole } from '../utils/rbac';
 
 const emptyRow = () => ({
     id: Date.now() + Math.random(),
@@ -12,8 +13,6 @@ const emptyRow = () => ({
     shift: '1',
     ot: '0',
 });
-
-const WAGE_VISIBLE_ROLES = ['administrator', 'super admin', 'admin', 'accountant', 'general manager', 'managing director', 'manager'];
 
 const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRecord, userRole }) => {
     const toast = useToast();
@@ -26,8 +25,10 @@ const LabourAttendanceModal = ({ isOpen, onClose, onSuccess, project, existingRe
     const [allVendors, setAllVendors] = useState([]);
     const [prevRecords, setPrevRecords] = useState([]);
 
-    // Determine if wage columns should be shown
-    const showWages = WAGE_VISIBLE_ROLES.includes((userRole || '').toLowerCase());
+    // Wage visibility: admin-class users OR Accountant role.
+    // (Modal receives only the userRole string as a prop, not the full user object,
+    // so we cannot call hasPermission(user, 'Accounts', 'edit') here.)
+    const showWages = isAdminRole(userRole) || (userRole || '').toLowerCase() === 'accountant';
 
     useEffect(() => {
         if (!isOpen) return;

@@ -47,6 +47,8 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
     const fetchDrivers = async () => {
         try {
             const res = await employeeAPI.getAll();
+            // 'Driver' is a canonical employment role (employee category), not an RBAC
+            // permission. Vehicles need an assigned driver-class employee.
             setDrivers(res.data.filter(e => e.roles?.includes('Driver') || e.role === 'Driver'));
         } catch (err) {
             console.error('Failed to fetch drivers', err);

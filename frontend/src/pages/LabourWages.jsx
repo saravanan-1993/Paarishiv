@@ -7,7 +7,7 @@ import { labourAttendanceAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
-import { hasPermission } from '../utils/rbac';
+import { hasPermission, isAdminRole } from '../utils/rbac';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Pagination from '../components/Pagination';
@@ -21,8 +21,6 @@ const fmtDate = (d) => {
     if (isNaN(dt.getTime())) return '-';
     return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
-
-const ADMIN_ROLES = ['administrator', 'super admin', 'admin', 'general manager', 'managing director', 'manager'];
 
 const LabourWages = () => {
     const { user } = useAuth();
@@ -44,7 +42,8 @@ const LabourWages = () => {
     const [paymentsPage, setPaymentsPage] = useState(1);
     useEffect(() => { setPendingPage(1); setPaymentsPage(1); }, [search, projectFilter, dateFrom, dateTo, activeTab]);
 
-    const isAdmin = ADMIN_ROLES.includes((user?.role || '').toLowerCase());
+    // Admin-class OR users with Accounts edit permission can approve labour payments.
+    const isAdmin = isAdminRole(user?.role) || hasPermission(user, 'Accounts', 'edit');
 
     const loadData = async () => {
         setLoading(true);

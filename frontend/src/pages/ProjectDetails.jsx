@@ -40,7 +40,7 @@ import { projectAPI, chatAPI, employeeAPI, financeAPI, labourAttendanceAPI, mate
 import LabourAttendanceModal from '../components/LabourAttendanceModal';
 import UrgentMaterialRequestModal from '../components/UrgentMaterialRequestModal';
 import DPRViewModal from '../components/DPRViewModal';
-import { hasPermission, hasSubTabAccess } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, isAdminRole } from '../utils/rbac';
 import { Loader2 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 
@@ -1293,8 +1293,8 @@ const ProjectDetails = () => {
 
                 {/* Labour Attendance Tab */}
                 {activeTab === 'Labour Attendance' && (() => {
-                    const wageRoles = ['administrator', 'super admin', 'admin', 'accountant', 'general manager', 'managing director', 'manager'];
-                    const canSeeWages = wageRoles.includes((user?.role || '').toLowerCase());
+                    // Wage visibility: admin-class users OR anyone with Accounts edit permission.
+                    const canSeeWages = isAdminRole(user?.role) || hasPermission(user, 'Accounts', 'edit');
                     return (
                     <div className="card animate-fade-in">
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24, alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>

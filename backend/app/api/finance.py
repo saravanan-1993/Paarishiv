@@ -941,7 +941,8 @@ async def create_payment_request(data: dict, db=Depends(get_database), current_u
     # Notify admins about the new payment request
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
-        await notify(db, sender, ["Administrator"], EVENT_APPROVAL,
+        recipients = await get_users_with_permission(db, "Accounts", "edit")
+        await notify(db, sender, recipients, EVENT_APPROVAL,
             "Payment Request",
             f"Payment request of ₹{request_doc['amount']:,.0f} for {request_doc['payee']} ({request_doc['voucher_no']}) requires approval.",
             entity_type="payment_request", entity_id=str(result.inserted_id),

@@ -16,7 +16,7 @@ import StockReturnModal from '../components/StockReturnModal';
 import DirectIssueModal from '../components/DirectIssueModal';
 import MaterialTransferModal from '../components/MaterialTransferModal';
 import AccountantTransferModal from '../components/AccountantTransferModal';
-import { hasPermission, hasSubTabAccess } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess, isEngineerRole } from '../utils/rbac';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
@@ -28,10 +28,9 @@ const Materials = () => {
     const toast = useToast();
     const confirm = useConfirm();
     const [promptModal, setPromptModal] = useState(null);
-    const userRoleNorm = (user?.role || '').toLowerCase().replace(/\s+/g, '');
-    const isAdmin = ['administrator', 'superadmin', 'generalmanager', 'managingdirector', 'purchaseofficer'].includes(userRoleNorm);
-    const isSiteEngineer = userRoleNorm === 'siteengineer';
-    const isCoordinator = ['projectcoordinator', 'superadmin', 'administrator'].includes(userRoleNorm);
+    const isAdmin = hasPermission(user, 'Inventory Management', 'edit');
+    const isSiteEngineer = isEngineerRole(user?.role);
+    const isCoordinator = hasPermission(user, 'Inventory Management', 'edit', 'Coordination');
     const canEditInventory = hasPermission(user, 'Inventory Management', 'edit');
     const [searchParams, setSearchParams] = useSearchParams();
     const urlTab = searchParams.get('tab');
@@ -702,7 +701,7 @@ const Materials = () => {
                                                                 onClick={() => setPromptModal({ title: 'Reject Transfer', message: 'Optionally provide a rejection reason.', confirmText: 'Reject', danger: true, onSubmit: async (r) => { await inventoryAPI.rejectTransfer(t.id, { reason: r || '' }); fetchMaterialTransfers(); } })}>Reject</button>
                                                         </div>
                                                     )}
-                                                    {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
+                                                    {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || hasPermission(user, 'Accounts', 'edit')) && (
                                                         <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                             onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>Execute</button>
                                                     )}
@@ -914,7 +913,7 @@ const Materials = () => {
                                                                 </button>
                                                             </div>
                                                         )}
-                                                        {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || (user?.role||'').toLowerCase() === 'accountant') && (
+                                                        {t.status?.includes('Approved') && t.status !== 'Pending' && (isAdmin || hasPermission(user, 'Accounts', 'edit')) && (
                                                             <button className="btn btn-primary btn-sm" style={{padding:'4px 10px',fontSize:11,backgroundColor:'#059669'}}
                                                                 onClick={() => { setSelectedTransfer(t); setShowTransferExecuteModal(true); }}>
                                                                 Execute

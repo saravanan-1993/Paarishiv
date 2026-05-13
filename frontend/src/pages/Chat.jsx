@@ -308,12 +308,6 @@ const Chat = () => {
         }).join(', ');
     };
 
-    const isOfficeRole = (role) => {
-        if (!role) return false;
-        const excluded = ['driver', 'labourer', 'laborer', 'labour', 'contractor'];
-        return !excluded.some(ex => role.toLowerCase().includes(ex));
-    };
-
     const filteredUsers = users.filter(u =>
         u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.role.toLowerCase().includes(searchQuery.toLowerCase())
@@ -869,7 +863,7 @@ const Chat = () => {
                                 borderRadius: 'var(--radius-lg)',
                                 backgroundColor: '#f8fafc'
                             }}>
-                                {users.filter(u => isOfficeRole(u.role)).map(u => {
+                                {users.map(u => {
                                     const isSelected = selectedMembers.includes(u.username);
                                     return (
                                         <div
@@ -1066,7 +1060,7 @@ const Chat = () => {
                                 {showAddMembers && (
                                     <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f2f5', backgroundColor: '#f8fafc' }}>
                                         <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '8px' }}>
-                                            {users.filter(u => isOfficeRole(u.role) && !selectedUser.members.includes(u.username)).map(u => {
+                                            {users.filter(u => !selectedUser.members.includes(u.username)).map(u => {
                                                 const isSelected = newGroupMembers.includes(u.username);
                                                 return (
                                                     <div
@@ -1098,7 +1092,7 @@ const Chat = () => {
                                                     </div>
                                                 );
                                             })}
-                                            {users.filter(u => isOfficeRole(u.role) && !selectedUser.members.includes(u.username)).length === 0 && (
+                                            {users.filter(u => !selectedUser.members.includes(u.username)).length === 0 && (
                                                 <p style={{ fontSize: '13px', color: '#667781', textAlign: 'center', padding: '12px' }}>All users are already in this group</p>
                                             )}
                                         </div>

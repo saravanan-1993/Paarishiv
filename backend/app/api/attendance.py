@@ -161,8 +161,10 @@ async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends
     if not existing:
         raise HTTPException(status_code=404, detail="No clock-in record found for today")
 
-    # Geofencing check for check-out
-    is_admin = current_user.get("role") in ["Super Admin", "Administrator", "HR Manager"]
+    # Geofencing check for check-out — admin-class users and HR Manager bypass.
+    # Uses dynamic helper (consistent with clock-in line ~53). HR Manager kept
+    # as explicit fallback to preserve existing behavior.
+    is_admin = is_admin_role(current_user.get("role")) or role_in(current_user.get("role"), ["HR Manager"])
     if not is_admin and req and req.latitude and req.longitude:
         employee = await db.employees.find_one({"username": username})
         if employee and employee.get("siteId"):

@@ -194,7 +194,7 @@ async def get_all_approvals(status: str = "Pending", current_user=Depends(get_cu
 
     # Material transfer requests
     if can_transfers:
-        mt_statuses = ["Pending", "Admin Approved"] if not show_all else ["Pending", "Admin Approved", "Completed", "Rejected"]
+        mt_statuses = ["Pending", "Approved", "Admin Approved"] if not show_all else ["Pending", "Approved", "Admin Approved", "Completed", "Rejected"]
         mt_records = await db.material_transfer_requests.find({"status": {"$in": mt_statuses}}).sort("created_at", -1).to_list(100)
         for mt in mt_records:
             mt["_id"] = str(mt["_id"])
@@ -411,7 +411,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 }
                 await db.expenses.insert_one(expense_doc)
                 try:
-                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                    sc_adv_recipients = await get_users_with_permission(db, "Accounts", "edit")
+                    await notify(db, approver_name, sc_adv_recipients, EVENT_APPROVAL,
                         "SC Advance Approved",
                         f"Advance {sc_adv.get('advance_no')} for {sc_adv.get('contractor_name')} (Rs.{sc_adv.get('amount', 0):,.0f}) approved by {approver_name}.",
                         entity_type="subcontractor_advance", entity_id=obj_id,
@@ -426,7 +427,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     "rejection_reason": reason,
                 }})
                 try:
-                    await notify(db, approver_name, ["Accountant"], EVENT_APPROVAL,
+                    sc_adv_recipients = await get_users_with_permission(db, "Accounts", "edit")
+                    await notify(db, approver_name, sc_adv_recipients, EVENT_APPROVAL,
                         "SC Advance Rejected",
                         f"Advance {sc_adv.get('advance_no')} for {sc_adv.get('contractor_name')} rejected by {approver_name}." + (f" Reason: {reason}" if reason else ""),
                         entity_type="subcontractor_advance", entity_id=obj_id,
@@ -488,14 +490,16 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 if mt and mt.get("status") == "Pending":
                     approver_name = update_fields["approvedBy"]
                     await db.material_transfer_requests.update_one({"_id": mt_oid}, {"$set": {
-                        "status": "Admin Approved",
+                        "status": "Approved",
                         "admin_approved_by": approver_name,
                         "admin_approved_by_role": actor_role,
                         "admin_approved_at": datetime.now(),
                     }})
                     try:
                         engineer = mt.get("requested_by") or mt.get("engineer_id", "")
-                        await notify(db, approver_name, ["Accountant", engineer], EVENT_APPROVAL,
+                        accountants = await get_users_with_permission(db, "Accounts", "edit")
+                        recipients = accountants + ([engineer] if engineer else [])
+                        await notify(db, approver_name, recipients, EVENT_APPROVAL,
                             "Transfer Approved — Ready for Execution",
                             f"Transfer {mt['from_project']} -> {mt['to_project']} approved. Accountant can execute with cost entry.",
                             entity_type="material_transfer", entity_id=obj_id, project_name=mt.get("from_project"), priority="high")
@@ -596,7 +600,9 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 # Notify requester
                 try:
                     requester = pr_doc.get("requested_by", "")
-                    await notify(db, approver_name, [requester, "Accountant"], EVENT_APPROVAL,
+                    accountants = await get_users_with_permission(db, "Accounts", "edit")
+                    recipients = ([requester] if requester else []) + accountants
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
                         "Payment Approved & Processed",
                         f"Payment of ₹{pr_doc.get('amount', 0):,.0f} for {pr_doc.get('payee', '')} ({pr_doc.get('voucher_no', '')}) approved by {approver_name}. Payment has been recorded.",
                         entity_type="payment_request", entity_id=obj_id,
@@ -638,7 +644,9 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                 }})
                 try:
                     requester = tr_doc.get("requested_by", "")
-                    await notify(db, approver_name, [requester, "Administrator"], EVENT_APPROVAL,
+                    admins = await get_users_with_permission(db, "Approvals", "edit")
+                    recipients = list({*( [requester] if requester else [] ), *admins})
+                    await notify(db, approver_name, recipients, EVENT_APPROVAL,
                         "Trip Request Approved",
                         f"Trip request for {tr_doc.get('load_type', '')} — {tr_doc.get('project_name', '')} ({tr_doc.get('from_location', '')} → {tr_doc.get('to_location', '')}) approved by {approver_name}.",
                         entity_type="trip_request", entity_id=obj_id,
@@ -773,7 +781,10 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
             elif type == "expenses":
                 exp = await db.expenses.find_one({"_id": oid})
                 if exp:
-                    await notify(db, approver_name, ["Accountant", "Administrator"], EVENT_APPROVAL,
+                    accountants = await get_users_with_permission(db, "Accounts", "edit")
+                    admins = await get_users_with_permission(db, "Approvals", "edit")
+                    exp_recipients = list({*accountants, *admins})
+                    await notify(db, approver_name, exp_recipients, EVENT_APPROVAL,
                         f"Expense {status}",
                         f"Expense of Rs.{exp.get('amount', 0):,.0f} ({exp.get('category', '')}) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
                         entity_type="expense", entity_id=obj_id, project_name=exp.get("project"), priority="high")

@@ -9,6 +9,7 @@ from app.models.chat import MessageCreate, MessageResponse, ChatUser, MessageBas
 from bson import ObjectId
 from app.utils.cloudinary import upload_file
 from app.utils.sanitize import sanitize_string
+from app.utils.rbac import get_users_with_permission
 from jose import JWTError, jwt
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -46,13 +47,6 @@ class ConnectionManager:
             await connection.send_text(message)
 
 manager = ConnectionManager()
-
-def is_office_role(role: str) -> bool:
-    """Check if the role is allowed to join group chats (office employees)"""
-    if not role: return False
-    role_lower = role.lower()
-    excluded_roles = ["driver", "labourer", "laborer", "labour", "contractor"]
-    return not any(excluded in role_lower for excluded in excluded_roles)
 
 
 async def send_system_message(sender: str, receiver: str, content: str, msg_type: str = "system", attachments: list = None):
@@ -337,6 +331,11 @@ async def get_group_history(group_id: str, db = Depends(get_database)):
 
 @router.get("/users", response_model=List[ChatUser], dependencies=[Depends(get_current_user)])
 async def get_chat_users(db = Depends(get_database)):
+    # Office-staff filter: only users whose role grants Team Chat view access.
+    # Permission-based (not role-name based) so field-staff exclusion stays
+    # dynamic as new roles are created.
+    allowed_usernames = set(await get_users_with_permission(db, "Team Chat", "view"))
+
     # Bug 10.1 - Fetch ALL active employees (increased limit)
     employees = await db.employees.find({"status": "Active"}).to_list(length=5000)
 
@@ -357,15 +356,19 @@ async def get_chat_users(db = Depends(get_database)):
 
     for emp in employees:
         username = emp.get("employeeCode") or emp.get("username")
-        if username and username not in seen_usernames:
-            chat_users.append(ChatUser(
-                username=username,
-                full_name=emp.get("fullName") or emp.get("name") or username,
-                role=emp.get("roles", ["Staff"])[0] if emp.get("roles") else "Staff",
-                is_online=username in manager.active_connections,
-                unread_count=0
-            ))
-            seen_usernames.add(username)
+        if not username or username in seen_usernames:
+            continue
+        # Skip employees whose role lacks Team Chat view permission
+        if allowed_usernames and username not in allowed_usernames:
+            continue
+        chat_users.append(ChatUser(
+            username=username,
+            full_name=emp.get("fullName") or emp.get("name") or username,
+            role=emp.get("roles", ["Staff"])[0] if emp.get("roles") else "Staff",
+            is_online=username in manager.active_connections,
+            unread_count=0
+        ))
+        seen_usernames.add(username)
 
     return chat_users
 

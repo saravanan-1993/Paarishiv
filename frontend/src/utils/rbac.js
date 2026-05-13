@@ -208,6 +208,15 @@ export const isAdminRole = (role) => {
     return ADMIN_CLASS_ROLES.some(a => normRole(a) === n);
 };
 
+/**
+ * Returns true if the given role string represents an Engineer-class role
+ * (Site Engineer / Field Engineer / etc.). Case- and whitespace-tolerant.
+ */
+export const isEngineerRole = (role) => {
+    if (!role || typeof role !== 'string') return false;
+    return role.toLowerCase().includes('engineer');
+};
+
 export const hasPermission = (user, moduleName, action = 'view') => {
     if (!user) return false;
 
