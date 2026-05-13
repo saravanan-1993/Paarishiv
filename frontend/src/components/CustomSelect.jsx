@@ -322,6 +322,10 @@ const CustomSelect = ({
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    // Close the dropdown first so PromptModal isn't visually
+                                    // layered on top of the open option list.
+                                    setIsOpen(false);
+                                    setSearchQuery('');
                                     setAddPromptOpen(true);
                                 }}
                                 style={{
