@@ -3,7 +3,7 @@ import { IndianRupee, CreditCard, Activity, CalendarDays, TrendingDown, Clock, A
 import { useNavigate } from 'react-router-dom';
 import { fmt } from '../../utils/format';
 
-const AccountsView = ({ hrmsStats, onRefresh }) => {
+const AccountsView = ({ hrmsStats, onRefresh, roleLabel }) => {
     const navigate = useNavigate();
 
     // Default placeholder
@@ -16,7 +16,7 @@ const AccountsView = ({ hrmsStats, onRefresh }) => {
             <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                     <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                        Accounts & Finance Dashboard
+                        {roleLabel ? `${roleLabel} Dashboard` : 'Accounts & Finance Dashboard'}
                     </h2>
                     <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500' }}>
                         Real-time overview of cash outflows, vendor dues, and payroll.

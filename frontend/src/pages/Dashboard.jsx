@@ -92,28 +92,35 @@ const Dashboard = () => {
         return Array.isArray(perm?.subTabs) && perm.subTabs.includes(subTab);
     };
 
+    // Single source of truth: the role's configured Dashboard sub-tabs.
+    // Admin assigns these via the Roles & Permissions UI (a role's
+    // permissions[Dashboard].subTabs list). When a role has an explicit
+    // sub-tab grant, that view is shown — no name matching, no permission
+    // guessing.
+    //
+    // For roles WITHOUT any explicit Dashboard sub-tab grant, we fall back
+    // to the Workspace View (the safe, role-agnostic field view) instead of
+    // trying to infer a specialized dashboard from module permissions. The
+    // previous permission-cascade fallback caused false promotions — e.g. a
+    // Site Engineer with Procurement.edit (needed to raise material
+    // requests) was routed to the Purchase Officer dashboard.
+    const hasAnyExplicitDashboard = (() => {
+        if (!user) return false;
+        if (isAdminRole(user.role)) return true; // admin gets all
+        const perms = user?.permissions || user?.role_permissions || [];
+        const perm = Array.isArray(perms) ? perms.find(p => p?.name === 'Dashboard') : null;
+        return Array.isArray(perm?.subTabs) && perm.subTabs.length > 0;
+    })();
+
     const isSuperAdmin = isAdminRole(user?.role) || hasExplicitDashboard('Admin Overview');
-    const isGM = !isSuperAdmin && (
-        hasExplicitDashboard('General Manager View')
-        || (hasPermission(user, 'Approvals', 'edit') && hasPermission(user, 'Accounts', 'view') && hasPermission(user, 'HRMS', 'view'))
-    );
-    const isAccountant = !isSuperAdmin && !isGM && (
-        hasExplicitDashboard('Accounts View') || hasPermission(user, 'Accounts', 'edit')
-    );
-    const isPurchaseOfficer = !isSuperAdmin && !isGM && !isAccountant && (
-        hasExplicitDashboard('Purchase Officer View') || hasPermission(user, 'Procurement', 'edit')
-    );
-    const isInventoryManager = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && (
-        hasExplicitDashboard('Inventory Manager View') || hasPermission(user, 'Inventory Management', 'edit')
-    );
-    const isHR = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && (
-        hasExplicitDashboard('HR View') || hasPermission(user, 'HRMS', 'edit')
-    );
-    const isProjectCoordinator = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR && (
-        hasExplicitDashboard('Project Coordinator View')
-        || (hasPermission(user, 'Projects', 'edit') && hasPermission(user, 'Approvals', 'view'))
-    );
-    // Workspace View — Field Engineer / Site Engineer / anyone without a more specific role.
+    const isGM = !isSuperAdmin && hasExplicitDashboard('General Manager View');
+    const isAccountant = !isSuperAdmin && !isGM && hasExplicitDashboard('Accounts View');
+    const isPurchaseOfficer = !isSuperAdmin && !isGM && !isAccountant && hasExplicitDashboard('Purchase Officer View');
+    const isInventoryManager = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && hasExplicitDashboard('Inventory Manager View');
+    const isHR = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && hasExplicitDashboard('HR View');
+    const isProjectCoordinator = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR && hasExplicitDashboard('Project Coordinator View');
+    // Workspace View — default for roles with no explicit specialized
+    // Dashboard sub-tab grant. Always reachable as the safe fallback.
     const isESS = !isSuperAdmin && !isGM && !isAccountant && !isPurchaseOfficer && !isInventoryManager && !isHR && !isProjectCoordinator;
 
     const [projects, setProjects] = useState([]);
@@ -412,7 +419,7 @@ const Dashboard = () => {
                 <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(isESS || isHR || isAccountant || isGM || isPurchaseOfficer || isInventoryManager || isProjectCoordinator ? { display: 'none' } : {}) }}>
                     <div>
                         <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                            Executive Dashboard
+                            {user?.role ? `${user.role} Dashboard` : 'Executive Dashboard'}
                         </h2>
                         <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500' }}>
                             {lastSync ? `Live financial overview · Synced at ${lastSync.toLocaleTimeString('en-IN')}` : 'Loading live data...'}
@@ -660,36 +667,37 @@ const Dashboard = () => {
                             <WorkspaceView
                                 user={user}
                                 projects={projects}
+                                roleLabel={user?.role}
                             />
                         )}
 
                         {/* 1. Projects (Coordinator View) */}
                         {(isProjectCoordinator || isSuperAdmin) && (
-                            <ProjectCoordinatorView projects={projects} />
+                            <ProjectCoordinatorView projects={projects} roleLabel={user?.role} />
                         )}
 
                         {/* 2. Finance (Accounts View) */}
                         {(isAccountant || isSuperAdmin) && (
-                            <AccountsView hrmsStats={hrmsStats} />
+                            <AccountsView hrmsStats={hrmsStats} roleLabel={user?.role} />
                         )}
 
                         {/* 2b. Finance (Manager View) */}
                         {(isGM || isSuperAdmin) && (
-                            <GeneralManagerView projects={projects} pendingApprovalsAmount={pendingApprovalsAmount} />
+                            <GeneralManagerView projects={projects} pendingApprovalsAmount={pendingApprovalsAmount} roleLabel={user?.role} />
                         )}
 
                         {/* 3. Procurement (Purchase & Inventory) */}
                         {(isPurchaseOfficer || isSuperAdmin) && (
-                            <PurchaseOfficerView />
+                            <PurchaseOfficerView roleLabel={user?.role} />
                         )}
 
                         {(isInventoryManager || isSuperAdmin) && (
-                            <InventoryManagerView />
+                            <InventoryManagerView roleLabel={user?.role} />
                         )}
 
                         {/* 4. HR (HR View) */}
                         {(isHR || isSuperAdmin) && (
-                            <HRView stats={hrmsStats} />
+                            <HRView stats={hrmsStats} roleLabel={user?.role} />
                         )}
 
 

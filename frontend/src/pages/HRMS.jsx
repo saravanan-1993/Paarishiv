@@ -69,6 +69,10 @@ const HRMS = () => {
     }, [user, navigate]);
 
     const [payroll, setPayroll] = useState([]);
+    // Attendance records for the selected payroll month — used to derive
+    // Total/Present days when a payroll record hasn't been processed yet
+    // (i.e. DRAFT rows that would otherwise show "—/—").
+    const [payrollMonthAttendance, setPayrollMonthAttendance] = useState([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [empPage, setEmpPage] = useState(1);
@@ -310,6 +314,43 @@ const HRMS = () => {
         }
     };
 
+    // Pull the full month of attendance records so the Payroll table can
+    // surface a live Total/Present-days figure for DRAFT rows.
+    const fetchPayrollMonthAttendance = async (month) => {
+        try {
+            const [year, mn] = month.split('-').map(Number);
+            if (!year || !mn) return;
+            const numDays = new Date(year, mn, 0).getDate();
+            const pad = (n) => String(n).padStart(2, '0');
+            const firstDay = `${year}-${pad(mn)}-01`;
+            const lastDay = `${year}-${pad(mn)}-${pad(numDays)}`;
+            const res = await hrmsAPI.getAttendanceRange(firstDay, lastDay);
+            setPayrollMonthAttendance(res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch payroll-month attendance', err);
+        }
+    };
+
+    // Compute total/present days for one employee from the loaded
+    // attendance records. Half Day counts as 0.5 of a present day.
+    const getMonthAttendanceStats = (emp) => {
+        const [year, mn] = (selectedMonth || '').split('-').map(Number);
+        if (!year || !mn) return { totalDays: '—', presentDays: '—' };
+        const totalDays = new Date(year, mn, 0).getDate();
+        const empId = emp.id || emp._id;
+        const empCode = emp.employeeCode;
+        const records = (payrollMonthAttendance || []).filter(r =>
+            r.employeeId === empId || r.employeeId === empCode ||
+            r.username === empCode || r.user_id === empId
+        );
+        let presentDays = 0;
+        for (const r of records) {
+            if (r.status === 'Present') presentDays += 1;
+            else if (r.status === 'Half Day') presentDays += 0.5;
+        }
+        return { totalDays, presentDays };
+    };
+
     const [labourByProjectDate, setLabourByProjectDate] = useState({});
 
     const fetchSurpriseVisits = async () => {
@@ -357,7 +398,10 @@ const HRMS = () => {
             fetchLeaves(); // Also refresh leaves for accurate mapping
         }
         if (activeTab === 'Leave Management') fetchLeaves();
-        if (activeTab === 'Payroll') fetchPayroll(selectedMonth);
+        if (activeTab === 'Payroll') {
+            fetchPayroll(selectedMonth);
+            fetchPayrollMonthAttendance(selectedMonth);
+        }
         if (activeTab === 'Surprise Visits') fetchSurpriseVisits();
         if (activeTab === 'Workforce') fetchManpowerRequests();
         if (activeTab === 'Authorized Users') fetchUmUsers();
@@ -1528,11 +1572,16 @@ const HRMS = () => {
                         }).sort((a, b) => (a.employeeCode || '').localeCompare(b.employeeCode || '')).map((emp, i) => {
                             const empId = emp.id || emp._id;
                             const p = payroll.find(pr => pr.employeeId === empId) || {};
+                            // Live fallback from monthly attendance for DRAFT rows
+                            // (payroll not yet processed → p.totalDays / p.presentDays empty).
+                            const attStats = getMonthAttendanceStats(emp);
+                            const displayTotalDays = (p.totalDays && p.totalDays > 0) ? p.totalDays : attStats.totalDays;
+                            const displayPresentDays = (p.presentDays !== undefined && p.presentDays !== null) ? p.presentDays : attStats.presentDays;
                             return (
                             <tr key={i}>
                                 <td style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '12px' }}>{emp.employeeCode || '—'}</td>
                                 <td style={{ fontWeight: '600' }}>{emp.fullName}</td>
-                                <td>{p.totalDays || '—'} / <span style={{ color: '#10B981', fontWeight: '700' }}>{p.presentDays ?? '—'}</span></td>
+                                <td>{displayTotalDays} / <span style={{ color: '#10B981', fontWeight: '700' }}>{displayPresentDays}</span></td>
                                 <td style={{ color: '#EF4444', fontWeight: '700' }}>{p.lopDays ?? 0}</td>
                                 <td style={{ fontSize: '12px' }}>Monthly Basic</td>
                                 <td style={{ fontWeight: '800', color: 'var(--primary)' }}>₹{(p.netSalary || parseFloat(emp.basicSalary) || 0).toLocaleString()}</td>
@@ -1548,7 +1597,16 @@ const HRMS = () => {
                                                         ...emp,
                                                         id: empId,
                                                         name: emp.fullName,
-                                                        payrollData: Object.keys(p).length > 0 ? p : { month: selectedMonth, totalDays: 0, presentDays: 0, lopDays: 0 }
+                                                        // Pre-populate from live attendance when no payroll
+                                                        // record exists yet so the modal opens with real days.
+                                                        payrollData: Object.keys(p).length > 0 ? p : {
+                                                            month: selectedMonth,
+                                                            totalDays: typeof displayTotalDays === 'number' ? displayTotalDays : 0,
+                                                            presentDays: typeof displayPresentDays === 'number' ? displayPresentDays : 0,
+                                                            lopDays: (typeof displayTotalDays === 'number' && typeof displayPresentDays === 'number')
+                                                                ? Math.max(0, displayTotalDays - displayPresentDays)
+                                                                : 0,
+                                                        }
                                                     });
                                                     setIsProcessPayrollOpen(true);
                                                 }}

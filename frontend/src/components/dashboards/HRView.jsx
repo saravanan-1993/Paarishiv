@@ -2,7 +2,7 @@ import React from 'react';
 import { Users, Clock, AlertTriangle, UserCheck, Calendar, Cake } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const HRView = ({ stats }) => {
+const HRView = ({ stats, roleLabel }) => {
     const navigate = useNavigate();
 
     // Default stats if backend doesn't provide them yet
@@ -16,7 +16,7 @@ const HRView = ({ stats }) => {
     return (
         <div className="hr-view animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                HR Dashboard
+                {roleLabel ? `${roleLabel} Dashboard` : 'HR Dashboard'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Overview of Employee Attendance, Leaves, and Workforce metrics.

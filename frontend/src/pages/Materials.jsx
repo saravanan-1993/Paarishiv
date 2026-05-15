@@ -101,6 +101,11 @@ const Materials = () => {
     const [isStockIssueOpen, setIsStockIssueOpen] = useState(false);
     const [isStockReturnOpen, setIsStockReturnOpen] = useState(false);
     const [isDirectIssueOpen, setIsDirectIssueOpen] = useState(false);
+    // PO line items where the warehouse was supposed to fulfill a project's
+    // demand but hasn't shipped the full quantity yet. The SEND TO SITE
+    // button shows a red badge when any of these are "actionable" (warehouse
+    // currently has stock to fulfill them).
+    const [pendingDeployments, setPendingDeployments] = useState([]);
     const MAT_PAGE_SIZE = 20;
     const [invPage, setInvPage] = useState(1);
     const [whPage, setWhPage] = useState(1);
@@ -195,6 +200,21 @@ const Materials = () => {
         } finally { setIsWarehouseLoading(false); }
     };
 
+    // Pull the live list of PO lines awaiting warehouse deployment so the
+    // Send-to-Site badge + auto-fill stay in sync with current warehouse stock.
+    const fetchPendingDeployments = async () => {
+        try {
+            const res = await inventoryAPI.getPendingWarehouseDeployments();
+            setPendingDeployments(res.data || []);
+        } catch (err) {
+            // Non-inventory roles legitimately 403 — silently ignore.
+            if (err?.response?.status !== 403) {
+                console.error('Failed to fetch pending deployments:', err);
+            }
+            setPendingDeployments([]);
+        }
+    };
+
     const fetchStockRequests = async () => {
         setIsWarehouseLoading(true);
         try {
@@ -256,7 +276,12 @@ const Materials = () => {
 
     useEffect(() => {
         if (mainTab === 'Warehouse') {
-            if (warehouseSubTab === 'Stock') fetchWarehouseStock();
+            if (warehouseSubTab === 'Stock') {
+                fetchWarehouseStock();
+                // Refresh the pending-deployment list whenever the Stock tab
+                // is shown so the SEND TO SITE badge stays current.
+                fetchPendingDeployments();
+            }
             else if (warehouseSubTab === 'Requests') fetchStockRequests();
             else if (warehouseSubTab === 'Transfers') fetchMaterialTransfers();
             else if (warehouseSubTab === 'Ledger') fetchStockLedger();
@@ -490,7 +515,7 @@ const Materials = () => {
                                             <th>Material Description</th>
                                             {selectedProject === 'all' && <th>Project</th>}
                                             <th>Current Stock</th>
-                                            <th>Min Level</th>
+                                            {/* <th>Min Level</th> */}
                                             <th>Unit</th>
                                             <th>Status</th>
                                             <th>Action</th>
@@ -504,7 +529,7 @@ const Materials = () => {
                                                 <td style={{ fontWeight: '800', fontSize: '16px', color: item.stock < (item.min_stock || 10) ? '#ef4444' : 'inherit' }}>
                                                     {item.stock}
                                                 </td>
-                                                <td>
+                                                {/* <td>
                                                     {canEditInventory ? (
                                                         <input
                                                             type="number"
@@ -515,7 +540,7 @@ const Materials = () => {
                                                     ) : (
                                                         <span style={{ fontSize: '13px' }}>{item.min_stock || 10}</span>
                                                     )}
-                                                </td>
+                                                </td> */}
                                                 <td style={{ color: 'var(--text-muted)' }}>{item.unit}</td>
                                                 <td>
                                                     <span className={`badge ${item.stock < (item.min_stock || 10) ? 'badge-warning' : 'badge-success'}`}>
@@ -547,8 +572,35 @@ const Materials = () => {
                                     <button className="btn btn-outline" onClick={() => setIsCreateMaterialOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                         <Plus size={18} /> ADD MASTER MATERIAL
                                     </button>
-                                    <button className="btn btn-outline" onClick={() => setIsDirectIssueOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px', backgroundColor: '#EFF6FF', borderColor: '#3B82F6', color: '#1D4ED8' }}>
+                                    <button className="btn btn-outline" onClick={() => setIsDirectIssueOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px', backgroundColor: '#EFF6FF', borderColor: '#3B82F6', color: '#1D4ED8', position: 'relative' }}>
                                         <Truck size={18} /> SEND TO SITE
+                                        {(() => {
+                                            // Badge shows the number of unique projects with ANY
+                                            // outstanding pending warehouse deployment — even if
+                                            // the warehouse can't currently fulfill them. This
+                                            // way the admin stays aware of open project demand
+                                            // until it's fully closed out.
+                                            const allProjects = new Set(
+                                                pendingDeployments.map(d => d.project_name).filter(Boolean)
+                                            );
+                                            // Split into actionable / waiting so we can colour
+                                            // the badge differently.
+                                            const actionable = new Set(
+                                                pendingDeployments.filter(d => d.actionable).map(d => d.project_name).filter(Boolean)
+                                            );
+                                            const n = allProjects.size;
+                                            if (!n) return null;
+                                            const hasActionable = actionable.size > 0;
+                                            const bg = hasActionable ? '#EF4444' : '#94A3B8';
+                                            const tooltip = hasActionable
+                                                ? `${actionable.size} project${actionable.size > 1 ? 's' : ''} actionable now · ${n} total awaiting`
+                                                : `${n} project${n > 1 ? 's' : ''} awaiting — warehouse currently has no matching stock`;
+                                            return (
+                                                <span title={tooltip} style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, padding: '0 5px', borderRadius: 999, backgroundColor: bg, color: 'white', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.18)' }}>
+                                                    {n}
+                                                </span>
+                                            );
+                                        })()}
                                     </button>
                                     <button className="btn btn-outline" onClick={() => setIsStockReturnOpen(true)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: '700', flex: '0 0 auto', height: '42px' }}>
                                         <ArrowDownLeft size={18} /> RECORD RETURN
@@ -1129,7 +1181,12 @@ const Materials = () => {
             <StockRequestModal isOpen={isStockRequestOpen} onClose={() => setIsStockRequestOpen(false)} onSuccess={() => { fetchStockRequests(); setIsStockRequestOpen(false); }} />
             {selectedRequest && <StockIssueModal isOpen={isStockIssueOpen} onClose={() => setIsStockIssueOpen(false)} request={selectedRequest} onSuccess={() => { fetchStockRequests(); fetchWarehouseStock(); setIsStockIssueOpen(false); }} />}
             <StockReturnModal isOpen={isStockReturnOpen} onClose={() => setIsStockReturnOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsStockReturnOpen(false); }} />
-            <DirectIssueModal isOpen={isDirectIssueOpen} onClose={() => setIsDirectIssueOpen(false)} onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); setIsDirectIssueOpen(false); }} />
+            <DirectIssueModal
+                isOpen={isDirectIssueOpen}
+                onClose={() => setIsDirectIssueOpen(false)}
+                onSuccess={() => { fetchWarehouseStock(); fetchInventory(currentProjectName); fetchPendingDeployments(); setIsDirectIssueOpen(false); }}
+                pendingDeployments={pendingDeployments}
+            />
             <MaterialTransferModal isOpen={isMaterialTransferOpen} onClose={() => setIsMaterialTransferOpen(false)} onSuccess={() => { fetchInventory(currentProjectName); setIsMaterialTransferOpen(false); }} />
             {showTransferExecuteModal && (
                 <AccountantTransferModal

@@ -1696,7 +1696,9 @@ const Approvals = () => {
             )}
             {viewDetail && (() => {
                 const item = viewDetail.item;
-                const hiddenKeys = ['_id', '__v', 'id', 'project_id', 'requested_by_id', 'source_id', 'hashed_password'];
+                const hiddenKeys = ['_id', '__v', 'id', 'project_id', 'requested_by_id', 'source_id', 'hashed_password', 'receipt_url', 'attachment', 'attachment_url'];
+                const attachmentUrl = item.receipt_url || item.attachment || item.attachment_url || '';
+                const isImageUrl = (u) => (/\.(png|jpe?g|gif|webp|svg)(\?|$)/i).test(u || '');
                 const labelMap = {
                     employee_name: 'Employee', employeeName: 'Employee', fullName: 'Employee',
                     project_name: 'Project', project: 'Project', engineer_id: 'Engineer',
@@ -1710,6 +1712,7 @@ const Approvals = () => {
                     from_project: 'From Project', to_project: 'To Project',
                     net_amount: 'Net Amount', total_amount: 'Total Amount',
                     source: 'Source', priority: 'Priority', remarks: 'Remarks',
+                    used_qty: 'Used Qty', quantity: 'Return Qty',
                 };
                 const formatLabel = (key) => labelMap[key] || key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
                 const formatValue = (key, val) => {
@@ -1760,6 +1763,21 @@ const Approvals = () => {
                                     </div>
                                 ))}
                             </div>
+                            {attachmentUrl && (
+                                <div style={{ marginTop: '20px' }}>
+                                    <p style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>Receipt / Bill</p>
+                                    {isImageUrl(attachmentUrl) ? (
+                                        <a href={attachmentUrl} target="_blank" rel="noopener noreferrer">
+                                            <img src={attachmentUrl} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '320px', borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                                        </a>
+                                    ) : (
+                                        <a href={attachmentUrl} target="_blank" rel="noopener noreferrer"
+                                            style={{ display: 'inline-block', padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '13px', fontWeight: '600', color: '#3B82F6', textDecoration: 'none' }}>
+                                            View Attachment
+                                        </a>
+                                    )}
+                                </div>
+                            )}
                             {entries.filter(([k, v]) => Array.isArray(v) && v.length > 0).map(([key, value]) => (
                                 <div key={key} style={{ marginTop: '20px' }}>
                                     <p style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>{formatLabel(key)}</p>

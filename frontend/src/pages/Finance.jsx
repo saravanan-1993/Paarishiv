@@ -721,11 +721,18 @@ const Finance = () => {
             return;
         }
 
-        // Calculate summary values for CSV header
-        const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
-        const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
-        const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
-        const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+        // Calculate summary values for CSV header (Sales lives on credit side)
+        const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.credit, 0);
+        // Receipt + Payment rows are hidden from the ledger (to avoid the
+        // Sales↔Receipt / Purchase↔Payment double-count). Compute their
+        // totals directly from the raw collections so cards stay accurate.
+        const _matchProj = (p) => selectedProject === 'All Projects' || (p || '').trim() === selectedProject.trim();
+        const receiptsTotal = (receipts || []).filter(r => _matchProj(r.project)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+            + (bills || []).filter(b => _matchProj(b.project)).reduce((s, b) => s + (parseFloat(b.collection_amount) || 0), 0);
+        const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.debit, 0);
+        const paymentsTotal = expenses
+            .filter(e => e.grn_id && _matchProj(e.project))
+            .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
         const expTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
         const labourT = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
         const filtProj = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
@@ -739,7 +746,7 @@ const Finance = () => {
             '',
             `"Project Value",${projVal},"Total Received",${receiptsTotal},"Total Expenses",${paymentsTotal + expTotal},"Cash Balance",${receiptsTotal - paymentsTotal - expTotal}`,
             `"Sales (Billed)",${salesTotal},"Purchase",${purchaseTotal},"Project Balance",${Math.max(0, projVal - receiptsTotal)}`,
-            `"Total Debit",${totalDr},"Total Credit",${totalCr},"Net Balance",${totalDr - totalCr}`,
+            `"Total Debit",${totalDr},"Total Credit",${totalCr},"Net Balance",${totalCr - totalDr}`,
             '',
             headers.join(','),
             ...entries.map(e => [
@@ -750,7 +757,7 @@ const Finance = () => {
                 `"${(e.party || '').replace(/"/g, '""')}"`,
                 e.debit || 0,
                 e.credit || 0,
-                `${Math.abs(e.balance)} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
+                `${Math.abs(e.balance)} ${e.balance >= 0 ? 'Cr' : 'Dr'}`
             ].join(','))
         ].join('\n');
 
@@ -785,11 +792,16 @@ const Finance = () => {
             // Calculate all summary values (same as UI)
             const totalDebit = entries.reduce((s, e) => s + (e.debit || 0), 0);
             const totalCredit = entries.reduce((s, e) => s + (e.credit || 0), 0);
-            const netBalance = totalDebit - totalCredit;
-            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
-            const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
-            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
-            const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+            const netBalance = totalCredit - totalDebit;
+            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.credit, 0);
+            // Receipt + Payment hidden from ledger — derive from raw data.
+            const _matchProj = (p) => selectedProject === 'All Projects' || (p || '').trim() === selectedProject.trim();
+            const receiptsTotal = (receipts || []).filter(r => _matchProj(r.project)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+                + (bills || []).filter(b => _matchProj(b.project)).reduce((s, b) => s + (parseFloat(b.collection_amount) || 0), 0);
+            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.debit, 0);
+            const paymentsTotal = expenses
+                .filter(e => e.grn_id && _matchProj(e.project))
+                .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
             const expensesTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
             const labourTotal = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
             const filteredProjects = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
@@ -846,7 +858,7 @@ const Finance = () => {
             autoTable(doc, {
                 startY: sumY,
                 head: [['Total Debit (Dr)', 'Total Credit (Cr)', 'Net Balance']],
-                body: [[pdfFmt(totalDebit), pdfFmt(totalCredit), `${pdfFmt(Math.abs(netBalance))} ${netBalance >= 0 ? 'Dr' : 'Cr'}`]],
+                body: [[pdfFmt(totalDebit), pdfFmt(totalCredit), `${pdfFmt(Math.abs(netBalance))} ${netBalance >= 0 ? 'Cr' : 'Dr'}`]],
                 theme: 'grid',
                 headStyles: { fillColor: [241, 245, 249], textColor: [100, 116, 139], fontSize: 8, fontStyle: 'bold', halign: 'center' },
                 bodyStyles: { fontSize: 9, fontStyle: 'bold', halign: 'center' },
@@ -867,7 +879,7 @@ const Finance = () => {
                     e.party || '',
                     e.debit ? `Rs. ${e.debit.toLocaleString('en-IN')}` : '-',
                     e.credit ? `Rs. ${e.credit.toLocaleString('en-IN')}` : '-',
-                    `Rs. ${Math.abs(e.balance).toLocaleString('en-IN')} ${e.balance >= 0 ? 'Dr' : 'Cr'}`
+                    `Rs. ${Math.abs(e.balance).toLocaleString('en-IN')} ${e.balance >= 0 ? 'Cr' : 'Dr'}`
                 ]),
                 headStyles: { fillColor: [59, 130, 246], textColor: 255, fontSize: 7, fontStyle: 'bold' },
                 bodyStyles: { fontSize: 7, cellPadding: 3 },
@@ -988,8 +1000,12 @@ const Finance = () => {
     const fleetProfit = fleetRevenue - fleetExpense;
 
     const totalAllExpenses = totalExpensesPaid + totalPurchaseBillAmt + totalScBillAmt;
-    const totalIncome = totalBilled + fleetRevenue;
-    const totalCosts = totalAllExpenses + fleetExpense;
+    // Fleet is shown as a single NET line in the Income column (revenue −
+    // expense). The corresponding Fleet Expense line is therefore omitted
+    // from the Expenses column — counting both gross revenue and gross
+    // expense would double-account the same trip in the P&L breakdown.
+    const totalIncome = totalBilled + fleetProfit;
+    const totalCosts = totalAllExpenses;
     const profitLoss = totalIncome - totalCosts;
 
     const totalReceivables = Math.max(0, totalBilled - totalCollected);
@@ -1060,60 +1076,47 @@ const Finance = () => {
         // Track GRN IDs that have purchase bills to avoid duplicates
         const billedGrnIds = new Set(purchaseBills.map(pb => pb.grn_id).filter(Boolean));
 
-        // ── 1. SALES INVOICES (Client Bills) — Debit: amount billed to client ──
+        // ── 1. SALES INVOICES (Client Bills) — Credit: income earned ──
+        // Standard accounting: revenue/income increases the Credit side.
+        // (Previously placed under Debit using a Party-Ledger view; switched
+        // to Cash Book / P&L convention per requirement.)
         if (showClient) bills.filter(b => matchesProject(b.project)).forEach(b => {
             const party = b.project || 'Client';
             if (!matchesParty(party)) return;
             entries.push({
                 date: b.date || b.created_at || new Date().toISOString(),
+                created_at: b.created_at,
                 type: 'Sales',
                 particulars: `Sales Invoice - ${b.bill_no}`,
-                debit: parseFloat(b.total_amount) || 0,
-                credit: 0,
+                debit: 0,
+                credit: parseFloat(b.total_amount) || 0,
                 party,
                 project: b.project
             });
         });
 
-        // ── 2. RECEIPTS (Money received from clients) — Credit: cash in ──
-        // Source A: receipts collection
-        if (showClient) receipts.filter(r => matchesProject(r.project)).forEach(r => {
-            const party = r.received_from || r.project || 'Client';
-            if (!matchesParty(party) && !matchesParty(r.project)) return;
-            entries.push({
-                date: r.date || r.created_at || new Date().toISOString(),
-                type: 'Receipt',
-                particulars: `Receipt${r.bill_no ? ` (Bill: ${r.bill_no})` : ''} - ${r.payment_mode || 'Bank'}`,
-                debit: 0,
-                credit: parseFloat(r.amount) || 0,
-                party: r.project || party,
-                project: r.project
-            });
-        });
-        // Source B: bill collection_amount (most systems store received money here)
-        if (showClient) bills.filter(b => matchesProject(b.project) && parseFloat(b.collection_amount || 0) > 0).forEach(b => {
-            const party = b.project || 'Client';
-            if (!matchesParty(party)) return;
-            entries.push({
-                date: b.date || b.created_at || new Date().toISOString(),
-                type: 'Receipt',
-                particulars: `Payment Received - Bill ${b.bill_no}`,
-                debit: 0,
-                credit: parseFloat(b.collection_amount) || 0,
-                party,
-                project: b.project
-            });
-        });
+        // ── 2. RECEIPTS — intentionally NOT pushed to the ledger.
+        // The Sales Invoice already records income on the credit side.
+        // Including Receipts again duplicates the same money on credit.
+        // Receipts remain visible in the dedicated Sales/Receipt tab and
+        // are still aggregated into the receiptsTotal / Cash Balance cards
+        // (those read directly from the raw collections — see card code).
 
-        // ── 3. PURCHASE BILLS (Vendor invoices) — Credit: amount owed to vendor ──
+        // ── 3. PURCHASE BILLS (Vendor invoices) — Debit: cost / expense recognized ──
         if (showVendor) purchaseBills.filter(pb => matchesProject((pb.project_name || '').trim())).forEach(pb => {
             if (!matchesParty((pb.vendor_name || '').trim())) return;
+            // Skip ₹0-amount auto-generated placeholder bills (e.g. multi-vendor
+            // GRN where one vendor's items weren't received yet — system creates
+            // an empty bill that adds zero value but clutters the ledger).
+            const billAmt = parseFloat(pb.total_amount) || 0;
+            if (billAmt === 0) return;
             entries.push({
                 date: pb.bill_date || pb.created_at || new Date().toISOString(),
+                created_at: pb.created_at,
                 type: 'Purchase',
                 particulars: `Purchase Bill - ${pb.bill_no} (${pb.vendor_name})`,
-                debit: 0,
-                credit: parseFloat(pb.total_amount) || 0,
+                debit: billAmt,
+                credit: 0,
                 party: pb.vendor_name,
                 project: pb.project_name
             });
@@ -1125,25 +1128,27 @@ const Finance = () => {
             if (!matchesParty(p.vendor)) return;
             entries.push({
                 date: p.date || p.created_at || new Date().toISOString(),
+                created_at: p.created_at,
                 type: 'Purchase',
                 particulars: `Purchase (GRN) - ${p.voucher_no}`,
-                debit: 0,
-                credit: parseFloat(p.total_amount) || 0,
+                debit: parseFloat(p.total_amount) || 0,
+                credit: 0,
                 party: p.vendor,
                 project: p.project
             });
         });
 
-        // ── 5. SUBCONTRACTOR BILLS (Approved SC bills) — Credit: amount owed to subcontractor ──
+        // ── 5. SUBCONTRACTOR BILLS (Approved SC bills) — Debit: labour cost ──
         if (showVendor) scBills.filter(sb => ['Approved', 'Partially Paid', 'Paid'].includes(sb.status) && matchesProject(sb.project_name)).forEach(sb => {
             const party = (sb.contractor_name || '').trim();
             if (!matchesParty(party)) return;
             entries.push({
                 date: sb.bill_date || sb.created_at || new Date().toISOString(),
+                created_at: sb.created_at,
                 type: 'SC Bill',
                 particulars: `Subcontractor Bill - ${sb.bill_no} (${sb.bill_type === 'work_based' ? 'Work Based' : 'Day Based'})`,
-                debit: 0,
-                credit: parseFloat(sb.payable_amount) || 0,
+                debit: parseFloat(sb.payable_amount) || 0,
+                credit: 0,
                 party,
                 project: sb.project_name
             });
@@ -1168,13 +1173,27 @@ const Finance = () => {
                 ? `Payment to ${entryParty} - ${payables.find(p => p.id === e.grn_id)?.voucher_no || 'Purchase'}`
                 : `${e.category || 'Expense'}${e.description ? ': ' + e.description : (e.invoice_no ? ' (' + e.invoice_no + ')' : ': Payment')}`;
 
-            // Negative amount = credit (e.g., Material Transfer Out)
+            const entryType = e.source === 'labour_salary' ? 'Labour'
+                : (e.category?.includes('Transfer') ? 'Transfer'
+                : (isSCAdvance ? 'SC Advance'
+                : (e.grn_id ? 'Payment' : 'Expense')));
+
+            // Skip vendor Payment rows: the Purchase Bill (auto-created from
+            // GRN) already records this cost on the debit side. Including the
+            // Payment row again duplicates the same outflow, inflating Total
+            // Debit by the bill amount. Payments are still visible in the
+            // dedicated Payments tab; the Ledger shows accrual events only.
+            if (entryType === 'Payment') return;
+
+            // Money-flow Cash Book convention:
+            //   ANY money leaving the project's books (positive amount) → DR
+            //   ANY money returning (negative amount, e.g. transfer reversal) → CR
+            // This applies uniformly to Direct Expense, SC Advance,
+            // Labour and Transfer rows.
             entries.push({
                 date: e.date || e.created_at || new Date().toISOString(),
-                type: e.source === 'labour_salary' ? 'Labour'
-                    : (e.category?.includes('Transfer') ? 'Transfer'
-                    : (isSCAdvance ? 'SC Advance'
-                    : (e.grn_id ? 'Payment' : 'Expense'))),
+                created_at: e.created_at,
+                type: entryType,
                 particulars: desc,
                 debit: amount > 0 ? amount : 0,
                 credit: amount < 0 ? Math.abs(amount) : 0,
@@ -1194,34 +1213,42 @@ const Finance = () => {
 
             entries.push({
                 date: t.date || t.created_at || new Date().toISOString(),
+                created_at: t.created_at,
                 type: 'Fleet',
                 particulars: `Trip Revenue - ${t.vehicleNumber} (${t.tripId})`,
-                debit: revenue,
-                credit: 0,
+                debit: 0,
+                credit: revenue,
                 party: partyName,
                 project: t.projectName
             });
-            if (t.paymentStatus === 'Paid') {
-                entries.push({
-                    date: t.date || t.created_at || new Date().toISOString(),
-                    type: 'Fleet Receipt',
-                    particulars: `Trip Payment Received - ${t.tripId}`,
-                    debit: 0,
-                    credit: revenue,
-                    party: partyName,
-                    project: t.projectName
-                });
-            }
+            // Fleet Receipt (paymentStatus === 'Paid') intentionally NOT pushed
+            // — Fleet trip revenue already records the income on credit side;
+            // pushing the receipt again duplicates it. Same logic as
+            // Sales↔Receipt and Purchase↔Payment.
         });
 
-        // Sort by date (latest first)
-        entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Sort by date DESC. Within the same date use created_at as a stable
+        // tiebreaker so chronological order within a day matches the actual
+        // creation sequence — without this, entries are ordered by the
+        // push-source order in code (Sales → Purchases → Payments → …),
+        // which makes the running balance look like it jumps around when
+        // read top-to-bottom.
+        entries.sort((a, b) => {
+            const dDiff = new Date(b.date) - new Date(a.date);
+            if (dDiff !== 0) return dDiff;
+            const aT = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const bT = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return bT - aT;
+        });
 
-        // Running balance (oldest first for correct accumulation, then reverse)
+        // Running balance (oldest first for correct accumulation, then reverse).
+        // Convention: Credit (income, liability incurred) INCREASES the balance,
+        // Debit (expense, payment, cash out) DECREASES the balance. A positive
+        // closing balance represents a net Credit position (Cr); negative = Dr.
         entries.reverse();
         let runningBalance = 0;
         entries.forEach(e => {
-            runningBalance += (e.debit - e.credit);
+            runningBalance += (e.credit - e.debit);
             e.balance = runningBalance;
         });
         entries.reverse();
@@ -1414,7 +1441,7 @@ const Finance = () => {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             {[
                                                 { label: 'Project Billing', value: totalBilled },
-                                                { label: 'Fleet Revenue', value: fleetRevenue },
+                                                { label: 'Fleet Net Profit', value: fleetProfit },
                                             ].map((item, i) => (
                                                 <div key={i} style={{
                                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1447,7 +1474,7 @@ const Finance = () => {
                                                 { label: 'Material / Purchase', value: totalPurchaseBillAmt },
                                                 { label: 'Payments / Expenses', value: totalExpensesPaid },
                                                 { label: 'Subcontractor Cost', value: totalScBillAmt },
-                                                { label: 'Fleet Expense', value: fleetExpense },
+                                                // Fleet Expense merged into Fleet Net Profit in the Income column.
                                             ].map((item, i) => (
                                                 <div key={i} style={{
                                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -2066,11 +2093,24 @@ const Finance = () => {
                                         <th>Description</th>
                                         <th>Paid To</th>
                                         <th style={{ textAlign: 'right' }}>Amount</th>
+                                        <th style={{ textAlign: 'center' }}>Status</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredExpenses.slice((expensePage - 1) * FIN_PAGE_SIZE, expensePage * FIN_PAGE_SIZE).map((exp, i) => (
+                                    {filteredExpenses.slice((expensePage - 1) * FIN_PAGE_SIZE, expensePage * FIN_PAGE_SIZE).map((exp, i) => {
+                                        // Resolve a single approval/payment status badge.
+                                        // 'Pending Payment' = invoice recorded, awaiting payment.
+                                        // 'Pending' / 'Pending Approval' = awaiting admin sign-off.
+                                        // 'Approved' / 'Paid' = green. 'Rejected' = red.
+                                        const rawStatus = exp.status || (exp.mark_as_paid ? 'Paid' : 'Pending');
+                                        const sLower = String(rawStatus).toLowerCase();
+                                        const statusStyle = sLower.includes('reject')
+                                            ? { bg: '#FEE2E2', fg: '#991B1B' }
+                                            : sLower.includes('paid') || sLower === 'approved'
+                                                ? { bg: '#DCFCE7', fg: '#166534' }
+                                                : { bg: '#FEF3C7', fg: '#92400E' };
+                                        return (
                                         <tr key={exp.id || i}>
                                             <td style={{ fontSize: '13px' }}>
                                                 {exp.date ? new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
@@ -2085,6 +2125,11 @@ const Finance = () => {
                                             <td style={{ fontWeight: '600', color: 'var(--primary)' }}>{exp.payee || '—'}</td>
                                             <td style={{ textAlign: 'right', fontWeight: '800', color: '#EF4444' }}>
                                                 {fmt(exp.amount || 0)}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <span style={{ background: statusStyle.bg, color: statusStyle.fg, padding: '3px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>
+                                                    {rawStatus}
+                                                </span>
                                             </td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: '4px' }}>
@@ -2101,7 +2146,8 @@ const Finance = () => {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                             <Pagination currentPage={expensePage} totalItems={filteredExpenses.length} pageSize={FIN_PAGE_SIZE} onPageChange={setExpensePage} />
@@ -2231,27 +2277,45 @@ const Finance = () => {
                             const entries = getLedgerEntries();
                             const totalDebit = entries.reduce((s, e) => s + (e.debit || 0), 0);
                             const totalCredit = entries.reduce((s, e) => s + (e.credit || 0), 0);
-                            const netBalance = totalDebit - totalCredit;
+                            // Cash Book convention: Credit (income) - Debit (outflow).
+                            // Positive netBalance => Cr balance (revenue exceeds outflow).
+                            const netBalance = totalCredit - totalDebit;
 
                             // Project value from project data
                             const filteredProjects = selectedProject === 'All Projects' ? projects : projects.filter(p => p.name === selectedProject);
                             const projectValue = filteredProjects.reduce((s, p) => s + (parseFloat(p.budget || p.projectValue || p.value || 0)), 0);
                             const projectSpent = filteredProjects.reduce((s, p) => s + (parseFloat(p.spent || 0)), 0);
 
-                            // Category-wise breakdown
-                            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.debit, 0);
-                            const receiptsTotal = entries.filter(e => e.type === 'Receipt' || e.type === 'Fleet Receipt').reduce((s, e) => s + e.credit, 0);
-                            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.credit, 0);
-                            const paymentsTotal = entries.filter(e => e.type === 'Payment').reduce((s, e) => s + e.debit, 0);
+                            // Category-wise breakdown — aligned with new
+                            // Ledger shows accrual events only:
+                            //   Sales / Purchase / SC Bill / Direct Expense / SC Adv / Labour
+                            //   Receipt + Payment rows are hidden (would duplicate
+                            //   Sales/Purchase respectively).
+                            // Card totals for Receipt + Payment come from raw data.
+                            const _matchProj = (p) => selectedProject === 'All Projects' || (p || '').trim() === selectedProject.trim();
+                            const salesTotal = entries.filter(e => e.type === 'Sales').reduce((s, e) => s + e.credit, 0);
+                            const receiptsTotal = (receipts || []).filter(r => _matchProj(r.project)).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+                                + (bills || []).filter(b => _matchProj(b.project)).reduce((s, b) => s + (parseFloat(b.collection_amount) || 0), 0);
+                            const purchaseTotal = entries.filter(e => e.type === 'Purchase').reduce((s, e) => s + e.debit, 0);
+                            const paymentsTotal = expenses
+                                .filter(e => e.grn_id && _matchProj(e.project))
+                                .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
                             const expensesTotal = entries.filter(e => e.type === 'Expense' || e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
                             const labourTotal = entries.filter(e => e.type === 'Labour').reduce((s, e) => s + e.debit, 0);
+                            // SC Advances + Material Transfers are real cash outflows from
+                            // the project but weren't included in Total Expenses / Cash
+                            // Balance previously — they only had their own filter type.
+                            const scAdvanceTotal = entries.filter(e => e.type === 'SC Advance').reduce((s, e) => s + e.debit, 0);
+                            const transferOutTotal = entries.filter(e => e.type === 'Transfer').reduce((s, e) => s + e.debit, 0);
                             const pendingReceivable = salesTotal - receiptsTotal;
                             const pendingPayable = purchaseTotal - paymentsTotal;
 
                             return (
                                 <>
                                     {(() => {
-                                        const totalExpAll = paymentsTotal + expensesTotal;
+                                        // Include SC Advances + Transfers — both are real cash
+                                        // outflows that were silently missing from the totals.
+                                        const totalExpAll = paymentsTotal + expensesTotal + scAdvanceTotal + transferOutTotal;
                                         const projBal = projectValue - receiptsTotal;
                                         const cashBal = receiptsTotal - totalExpAll;
 
@@ -2314,7 +2378,7 @@ const Finance = () => {
                                             </div>
                                             <div style={{ textAlign: 'center' }}>
                                                 <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Net Balance</p>
-                                                <h4 style={{ fontSize: 20, fontWeight: 900, color: 'var(--primary)' }}>{fmt(Math.abs(netBalance))} {netBalance >= 0 ? 'Dr' : 'Cr'}</h4>
+                                                <h4 style={{ fontSize: 20, fontWeight: 900, color: 'var(--primary)' }}>{fmt(Math.abs(netBalance))} {netBalance >= 0 ? 'Cr' : 'Dr'}</h4>
                                             </div>
                                         </div>
                                     )}
@@ -2400,7 +2464,8 @@ const Finance = () => {
                                                     const v = isVendor ? rawParty : (rawParty || 'Unknown Vendor');
                                                     if (!vendorMap[v]) vendorMap[v] = { entries: [], purchased: 0, paid: 0 };
                                                     vendorMap[v].entries.push(e);
-                                                    if (e.type === 'Purchase') vendorMap[v].purchased += e.credit;
+                                                    // Money-flow view: Purchase + Payment both on DR side.
+                                                    if (e.type === 'Purchase') vendorMap[v].purchased += e.debit;
                                                     if (e.type === 'Payment' || e.type === 'Expense' || e.type === 'Labour') vendorMap[v].paid += e.debit;
                                                 });
                                                 const vendorList = Object.entries(vendorMap)
@@ -2497,7 +2562,7 @@ const Finance = () => {
                                                         <td style={{ fontSize: '12px' }}>{entry.party}</td>
                                                         <td style={{ textAlign: 'right', color: '#EF4444', fontWeight: '600' }}>{entry.debit > 0 ? fmt(entry.debit) : '—'}</td>
                                                         <td style={{ textAlign: 'right', color: '#10B981', fontWeight: '600' }}>{entry.credit > 0 ? fmt(entry.credit) : '—'}</td>
-                                                        <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(Math.abs(entry.balance))} {entry.balance >= 0 ? 'Dr' : 'Cr'}</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: '800' }}>{fmt(Math.abs(entry.balance))} {entry.balance >= 0 ? 'Cr' : 'Dr'}</td>
                                                     </tr>
                                                     );
                                                 })}
@@ -2616,7 +2681,40 @@ const Finance = () => {
                                     <p style={{ fontWeight: '600', fontSize: '13px' }}>{viewingPayment.voucher_no || viewingPayment.invoice_no}</p>
                                 </div>
                             )}
+                            {(() => {
+                                const rawStatus = viewingPayment.status || (viewingPayment.mark_as_paid ? 'Paid' : 'Pending');
+                                const sLower = String(rawStatus).toLowerCase();
+                                const sBg = sLower.includes('reject') ? '#FEE2E2'
+                                    : (sLower.includes('paid') || sLower === 'approved') ? '#DCFCE7'
+                                    : '#FEF3C7';
+                                const sFg = sLower.includes('reject') ? '#991B1B'
+                                    : (sLower.includes('paid') || sLower === 'approved') ? '#166534'
+                                    : '#92400E';
+                                return (
+                                    <div>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>Status</span>
+                                        <span style={{ background: sBg, color: sFg, padding: '3px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '700' }}>{rawStatus}</span>
+                                    </div>
+                                );
+                            })()}
                         </div>
+
+                        {/* Receipt / Invoice attachment */}
+                        {viewingPayment.receipt_url && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>Receipt / Bill</span>
+                                {(/\.(png|jpe?g|gif|webp|svg)(\?|$)/i).test(viewingPayment.receipt_url) ? (
+                                    <a href={viewingPayment.receipt_url} target="_blank" rel="noopener noreferrer">
+                                        <img src={viewingPayment.receipt_url} alt="Receipt" style={{ maxWidth: '100%', maxHeight: '320px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                                    </a>
+                                ) : (
+                                    <a href={viewingPayment.receipt_url} target="_blank" rel="noopener noreferrer"
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border)', backgroundColor: '#f8fafc', fontSize: '13px', fontWeight: '600', color: 'var(--primary)', textDecoration: 'none' }}>
+                                        <Download size={14} /> View Attachment
+                                    </a>
+                                )}
+                            </div>
+                        )}
 
                         {/* Description */}
                         {viewingPayment.description && (

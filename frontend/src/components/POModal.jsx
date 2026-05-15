@@ -204,7 +204,10 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
     };
 
     const handleItemChange = (id, field, value) => {
-        setItems(items.map(item => {
+        // Compute the new items list explicitly so we can both call
+        // setItems AND pass the same list into the warehouse-check (state
+        // updates are async — the post-set `items` ref is stale).
+        const newItems = items.map(item => {
             if (item.id === id) {
                 const updatedItem = { ...item, [field]: value };
                 if (field === 'name') {
@@ -216,13 +219,42 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 return updatedItem;
             }
             return item;
-        }));
+        });
+        setItems(newItems);
+        // Direct-entry flow: when the user picks a material in the dropdown,
+        // refresh warehouse stock so the "Warehouse" column shows the live
+        // count instead of staying at 0.
+        if (field === 'name' && value) {
+            checkWarehouseForItems(newItems);
+        }
     };
 
     // Apply a single vendor to all items (bulk assign)
     const applyVendorToAll = (vendorName) => {
         setItems(items.map(item => ({ ...item, vendor_name: vendorName })));
     };
+
+    // Determines whether an item is being sourced from the central warehouse.
+    // In single-vendor mode the PO header's vendor applies to every item; in
+    // multi-vendor mode each item carries its own vendor.
+    const isWarehouseSourced = (item) => {
+        const vendor = isMultiVendor ? (item.vendor_name || '') : (formData.vendor_name || '');
+        return vendor.trim().toLowerCase() === 'warehouse';
+    };
+
+    // Per-row warehouse over-commit check. Returns the overage (qty − stock)
+    // when positive, else 0. Used to surface inline errors and disable Submit.
+    const warehouseOvercommitQty = (item) => {
+        if (!isWarehouseSourced(item)) return 0;
+        const stock = parseFloat(warehouseStock[item.name]?.stock ?? 0);
+        const qty = parseFloat(item.qty || 0);
+        return qty > stock ? qty - stock : 0;
+    };
+
+    // True if any row asks the warehouse for more than it currently holds.
+    // Submit is blocked while this is true so the user must split / reduce
+    // the order before it can leave the modal.
+    const hasWarehouseOvercommit = items.some(it => it.name && warehouseOvercommitQty(it) > 0);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -247,6 +279,18 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
         const validItems = items.filter(i => i.name && parseFloat(i.qty) > 0);
         if (validItems.length === 0) {
             toast.warning('Please add at least one item with name and quantity');
+            return;
+        }
+
+        // Block any row asking the warehouse for more than it has on hand.
+        // Site demand exceeding warehouse stock must be split into a
+        // warehouse PO (up to current stock) + a separate external-vendor PO
+        // for the shortfall, or the warehouse must be replenished first.
+        const overcommit = items
+            .filter(i => i.name && warehouseOvercommitQty(i) > 0)
+            .map(i => `${i.name}: requested ${i.qty}, warehouse has ${warehouseStock[i.name]?.stock ?? 0}`);
+        if (overcommit.length > 0) {
+            toast.warning(`Warehouse stock insufficient — ${overcommit[0]}. Reduce qty or change vendor.`);
             return;
         }
 
@@ -559,18 +603,28 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                                                 const mat = materials.find(m => m.name === item.name);
                                                 const isWhControlled = mat && (mat.stock_handling_type === 'Warehouse Controlled' || mat.tracking_type === 'Warehouse Controlled' || mat.stock_handling_type === 'Warehouse');
                                                 if (!item.name) return <span style={{ color: '#94A3B8', fontSize: 11 }}>—</span>;
+                                                // When this item is sourced from Warehouse vendor
+                                                // AND requested qty exceeds available stock, flag
+                                                // it red — Submit is blocked while any row is over.
+                                                const overcommit = warehouseOvercommitQty(item);
+                                                const isOver = overcommit > 0;
                                                 return (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                                         <span style={{
                                                             fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                                            backgroundColor: sufficient ? '#DCFCE7' : whQty > 0 ? '#FEF3C7' : '#F1F5F9',
-                                                            color: sufficient ? '#15803D' : whQty > 0 ? '#92400E' : '#94A3B8',
-                                                        }} title={sufficient ? 'Available in warehouse — use Inventory → Send to Site' : ''}>
+                                                            backgroundColor: isOver ? '#FEE2E2' : sufficient ? '#DCFCE7' : whQty > 0 ? '#FEF3C7' : '#F1F5F9',
+                                                            color: isOver ? '#B91C1C' : sufficient ? '#15803D' : whQty > 0 ? '#92400E' : '#94A3B8',
+                                                        }} title={isOver ? `Warehouse short by ${overcommit}` : sufficient ? 'Available in warehouse — use Inventory → Send to Site' : ''}>
                                                             {whQty}
                                                         </span>
                                                         {isWhControlled && (
                                                             <span style={{ fontSize: 9, fontWeight: 700, color: '#6366F1', backgroundColor: '#EEF2FF', padding: '1px 4px', borderRadius: 3, textAlign: 'center' }}>
                                                                 WH Controlled
+                                                            </span>
+                                                        )}
+                                                        {isOver && (
+                                                            <span style={{ fontSize: 9, fontWeight: 700, color: '#B91C1C', textAlign: 'center' }}>
+                                                                Short {overcommit}
                                                             </span>
                                                         )}
                                                     </div>
@@ -653,11 +707,24 @@ const POModal = ({ isOpen, onClose, onSuccess, requestId: requestIdProp }) => {
                 </div>
 
                 {/* Footer */}
-                <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
-                    <button type="button" className="btn btn-outline" onClick={onClose} style={{ padding: '10px 24px' }}>Cancel</button>
-                    <button type="submit" disabled={isSaving} className="btn btn-primary" style={{ padding: '10px 32px' }}>
-                        {isSaving ? <Loader2 size={16} className="animate-spin" /> : 'Submit for Approval'}
-                    </button>
+                <div style={{ borderTop: '1px solid var(--border)', backgroundColor: '#f8fafc', borderBottomLeftRadius: '12px', borderBottomRightRadius: '12px' }}>
+                    {hasWarehouseOvercommit && (
+                        <div style={{ padding: '10px 24px', backgroundColor: '#FEF2F2', borderBottom: '1px solid #FECACA', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>
+                            One or more rows ask the warehouse for more than it has on hand. Reduce the quantity to within warehouse stock, change the vendor, or split into two POs.
+                        </div>
+                    )}
+                    <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                        <button type="button" className="btn btn-outline" onClick={onClose} style={{ padding: '10px 24px' }}>Cancel</button>
+                        <button
+                            type="submit"
+                            disabled={isSaving || hasWarehouseOvercommit}
+                            title={hasWarehouseOvercommit ? 'Fix warehouse over-commit before submitting' : ''}
+                            className="btn btn-primary"
+                            style={{ padding: '10px 32px', opacity: (isSaving || hasWarehouseOvercommit) ? 0.55 : 1, cursor: (isSaving || hasWarehouseOvercommit) ? 'not-allowed' : 'pointer' }}
+                        >
+                            {isSaving ? <Loader2 size={16} className="animate-spin" /> : 'Submit for Approval'}
+                        </button>
+                    </div>
                 </div>
             </form>
 

@@ -2,13 +2,13 @@ import React from 'react';
 import { Users, FileText, AlertTriangle, Layers, Building } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const ProjectCoordinatorView = ({ projects }) => {
+const ProjectCoordinatorView = ({ projects, roleLabel }) => {
     const navigate = useNavigate();
 
     return (
         <div className="coordinator-view animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                Project Coordinator Dashboard
+                {roleLabel ? `${roleLabel} Dashboard` : 'Project Coordinator Dashboard'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Overview of Task Progress, Delays, Site Attendance & Workforce.

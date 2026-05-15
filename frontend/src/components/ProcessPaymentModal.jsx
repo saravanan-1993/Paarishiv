@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, Calendar, CreditCard, User, FileText, AlertCircle } from 'lucide-react';
-import { financeAPI } from '../utils/api';
+import { financeAPI, chatAPI } from '../utils/api';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { hasPermission } from '../utils/rbac';
@@ -27,6 +27,8 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [loading, setLoading] = useState(false);
     const [invoiceFile, setInvoiceFile] = useState(null);
+    const [invoiceFileUrl, setInvoiceFileUrl] = useState(null);
+    const [uploadingInvoice, setUploadingInvoice] = useState(false);
     const [remarks, setRemarks] = useState('');
     const [paymentType, setPaymentType] = useState('Full');
     const [partialAmount, setPartialAmount] = useState('');
@@ -145,7 +147,7 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                 reference,
                 grn_id: invoice.id,
                 voucher_no: invoice.voucher_no,
-                receipt_url: invoiceFile ? "file_uploaded.pdf" : null,
+                receipt_url: invoiceFileUrl || null,
                 mark_as_paid: !isPending && (paymentType === 'Full' || (Math.abs(remainingBalance - paymentAmountToSend) < 0.01)),
                 items: items,
                 total_amount: totalAmount,
@@ -324,10 +326,29 @@ const ProcessPaymentModal = ({ isOpen, onClose, invoice, onPaymentProcessed }) =
                                 <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', marginBottom: '6px' }}>UPLOAD INVOICE COPY (PDF/IMAGE)</label>
                                 <input
                                     type="file"
-                                    onChange={(e) => setInvoiceFile(e.target.files[0])}
+                                    onChange={async (e) => {
+                                        const file = e.target.files[0];
+                                        setInvoiceFile(file || null);
+                                        setInvoiceFileUrl(null);
+                                        if (!file) return;
+                                        setUploadingInvoice(true);
+                                        try {
+                                            const fd = new FormData();
+                                            fd.append('file', file);
+                                            const res = await chatAPI.uploadFile(fd);
+                                            if (res.data?.url) setInvoiceFileUrl(res.data.url);
+                                        } catch (err) {
+                                            console.error('Invoice upload failed:', err);
+                                            toast.error('Failed to upload invoice copy.');
+                                        } finally {
+                                            setUploadingInvoice(false);
+                                        }
+                                    }}
                                     style={{ width: '100%', fontSize: '12px' }}
                                     accept="image/*,.pdf"
                                 />
+                                {uploadingInvoice && <p style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Uploading…</p>}
+                                {invoiceFileUrl && <p style={{ fontSize: '11px', color: '#16a34a', marginTop: '4px', fontWeight: '600' }}>File uploaded successfully.</p>}
                             </div>
                         </div>
                     </div>

@@ -3,7 +3,7 @@ import { Package, AlertTriangle, Building, MapPin, Warehouse } from 'lucide-reac
 import { useNavigate } from 'react-router-dom';
 import { inventoryAPI } from '../../utils/api';
 
-const InventoryManagerView = () => {
+const InventoryManagerView = ({ roleLabel }) => {
     const navigate = useNavigate();
     const [totalItems, setTotalItems] = useState(0);
     const [lowStockCount, setLowStockCount] = useState(0);
@@ -30,7 +30,7 @@ const InventoryManagerView = () => {
     return (
         <div className="inventory-view animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                Inventory Dashboard
+                {roleLabel ? `${roleLabel} Dashboard` : 'Inventory Dashboard'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Overview of Central Warehouse Stock, Site Inventory & Alerts.
