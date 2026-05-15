@@ -1,7 +1,6 @@
 import cloudinary
 import cloudinary.uploader
 import os
-import uuid
 from dotenv import load_dotenv
 from fastapi import HTTPException
 
@@ -11,23 +10,20 @@ CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
 API_KEY = os.getenv("CLOUDINARY_API_KEY")
 API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 
-# C11 Fix: File upload validation constants
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_EXTENSIONS = {
-    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',  # Images
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',  # Documents
-    '.txt', '.zip', '.rar',                              # Other
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',
+    '.txt', '.zip', '.rar',
 }
 
+
 def validate_upload(file_content: bytes, filename: str):
-    """C11 Fix: Validate file type and size before upload."""
-    # Check file size
     if len(file_content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=400,
-            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB."
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB."
         )
-    # Check file extension
     ext = os.path.splitext(filename)[1].lower()
     if ext and ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -35,7 +31,7 @@ def validate_upload(file_content: bytes, filename: str):
             detail=f"File type '{ext}' not allowed. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
         )
 
-# Configure only if credentials exist
+
 if CLOUD_NAME and API_KEY and API_SECRET:
     cloudinary.config(
         cloud_name=CLOUD_NAME,
@@ -44,67 +40,64 @@ if CLOUD_NAME and API_KEY and API_SECRET:
         secure=True
     )
 
-async def upload_file(file_content, filename="file"):
+
+async def _get_credentials():
+    """Returns (cloud_name, api_key, api_secret). ENV first, DB fallback. Raises if missing."""
+    c_name, c_key, c_secret = CLOUD_NAME, API_KEY, API_SECRET
+
+    if not (c_name and c_key and c_secret):
+        try:
+            from database import db
+            settings = await db.settings.find_one({"type": "cloudinary_config"})
+            if settings:
+                c_name = c_name or settings.get("cloudName")
+                c_key = c_key or settings.get("apiKey")
+                c_secret = c_secret or settings.get("apiSecret")
+        except Exception as e:
+            print(f"[Cloudinary] DB settings lookup failed: {e}")
+
+    if not (c_name and c_key and c_secret):
+        raise HTTPException(
+            status_code=500,
+            detail="Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in environment or settings."
+        )
+
+    return c_name, c_key, c_secret
+
+
+async def upload_file(file_content, filename="file", folder="civil_erp_chat"):
     """
-    Uploads a file to Cloudinary if configured, otherwise saves locally.
-    C11 Fix: Validates file type and size before upload.
+    Uploads to Cloudinary. No local fallback - fails loudly if Cloudinary unreachable.
     """
     validate_upload(file_content, filename)
-    c_name = CLOUD_NAME
-    c_key = API_KEY
-    c_secret = API_SECRET
+    c_name, c_key, c_secret = await _get_credentials()
 
-    # Try to fetch from DB if not in ENV
-    if not (c_name and c_key and c_secret):
-        from database import db
-        settings = await db.settings.find_one({"type": "cloudinary_config"})
-        if settings:
-            c_name = settings.get("cloudName")
-            c_key = settings.get("apiKey")
-            c_secret = settings.get("apiSecret")
+    if not (CLOUD_NAME and API_KEY and API_SECRET):
+        cloudinary.config(
+            cloud_name=c_name,
+            api_key=c_key,
+            api_secret=c_secret,
+            secure=True
+        )
 
-    if c_name and c_key and c_secret:
-        try:
-            # Re-configure if needed (thread-safe? Cloudinary config is global, 
-            # but we only do this if ENV is missing)
-            cloudinary.config(
-                cloud_name=c_name,
-                api_key=c_key,
-                api_secret=c_secret,
-                secure=True
-            )
-            response = cloudinary.uploader.upload(file_content, folder="civil_erp_chat")
-            return {
-                "url": response.get("secure_url"),
-                "type": response.get("resource_type")
-            }
-        except Exception as e:
-            print(f"Cloudinary upload error, falling back to local: {e}")
-
-    # Local storage fallback
     try:
-        upload_dir = os.path.join(os.getcwd(), "static", "uploads")
-        if not os.path.exists(upload_dir):
-            try:
-                os.makedirs(upload_dir, exist_ok=True)
-            except Exception as e:
-                print(f"Cannot create local upload dir: {e}")
-                return None
-
-        # Create unique filename
-        ext = os.path.splitext(filename)[1]
-        unique_name = f"{uuid.uuid4()}{ext}"
-        file_path = os.path.join(upload_dir, unique_name)
-
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-
-        # Return local path (served via FastAPI static)
-        # Note: In production you'd use a full static URL
-        return {
-            "url": f"/static/uploads/{unique_name}",
-            "type": "image" if ext.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp'] else "file"
-        }
+        response = cloudinary.uploader.upload(file_content, folder=folder)
     except Exception as e:
-        print(f"Local storage error: {e}")
-        return None
+        print(f"[Cloudinary] Upload failed for {filename}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"File upload to Cloudinary failed: {str(e)}"
+        )
+
+    secure_url = response.get("secure_url")
+    if not secure_url:
+        raise HTTPException(
+            status_code=502,
+            detail="Cloudinary returned no URL. Upload may have failed."
+        )
+
+    return {
+        "url": secure_url,
+        "type": response.get("resource_type", "file"),
+        "public_id": response.get("public_id"),
+    }
