@@ -3,7 +3,7 @@ import { ShoppingCart, Clock, CheckCircle, Truck, FileText, Plus } from 'lucide-
 import { useNavigate } from 'react-router-dom';
 import { inventoryAPI, purchaseOrderAPI } from '../../utils/api';
 
-const PurchaseOfficerView = () => {
+const PurchaseOfficerView = ({ roleLabel }) => {
     const navigate = useNavigate();
     const [pendingRequests, setPendingRequests] = useState(0);
     const [activePOs, setActivePOs] = useState(0);
@@ -34,7 +34,7 @@ const PurchaseOfficerView = () => {
     return (
         <div className="po-view animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                Procurement Dashboard
+                {roleLabel ? `${roleLabel} Dashboard` : 'Procurement Dashboard'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Overview of Purchase Requests, Purchase Orders, and Vendor Deliveries.

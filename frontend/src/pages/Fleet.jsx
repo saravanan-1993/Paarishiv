@@ -522,7 +522,7 @@ const Fleet = () => {
                                 </td>
                                 <td>
                                     <div style={{ fontSize: '13px' }}>{driver.phone}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{driver.email}</div>
+                                    {/* <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{driver.email}</div> */}
                                 </td>
                                 <td style={{ fontWeight: '700' }}>₹{driver.dailyWage || 0} / Day</td>
                                 <td>{driver.licenseNumber || 'N/A'}</td>

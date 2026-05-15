@@ -406,7 +406,7 @@ class StockReturn(BaseModel):
 
 # ── Return to Warehouse Request Flow ──────────────────────────────────────────
 
-@router.post("/return-requests", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+@router.post("/return-requests", dependencies=[Depends(RBACPermission("Inventory Management", "add"))])
 async def create_return_request(body: dict = Body(...), db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     """Site Engineer requests to return materials from site to warehouse."""
     items = body.get("items", [])
@@ -704,7 +704,7 @@ class MaterialTransfer(BaseModel):
     items: List[dict] # [{"name": "Switch", "quantity": 50, "unit": "Nos", "price": 100}]
     notes: Optional[str] = ""
 
-@router.post("/transfers/request", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
+@router.post("/transfers/request", dependencies=[Depends(RBACPermission("Inventory Management", "add"))])
 async def request_material_transfer(transfer: MaterialTransferRequest, db = Depends(get_database), current_user: dict = Depends(get_current_user)):
     request_dict = transfer.dict()
     request_dict["from_project"] = request_dict.get("from_project", "").strip()
@@ -1066,6 +1066,16 @@ class WarehouseBulkIssue(BaseModel):
     request_id: Optional[str] = ""
     project_name: str
     items: List[WarehouseBulkIssueItem]
+    # Optional: when admin acts on a pending warehouse deployment, the
+    # client sends per-item PO attributions so we can mark fulfillment
+    # against the originating PO line. Shape:
+    #   [{ po_id: "...", material_name: "Fan", quantity: 5 }, ...]
+    po_attributions: Optional[List[dict]] = None
+    # Optional: same idea at the material-request (DPR) level. Used when
+    # the shortfall came from "DPR asked more than warehouse had at PO time"
+    # rather than from an under-fulfilled PO. Shape:
+    #   [{ request_id: "...", material_name: "PVC", quantity: 5 }, ...]
+    request_attributions: Optional[List[dict]] = None
 
 
 @router.post("/warehouse/check-availability")
@@ -1102,6 +1112,173 @@ async def check_warehouse_availability(
             "last_rate": rate_map.get(name, 0),
         }
     return result
+
+
+@router.get("/warehouse/pending-deployments", dependencies=[Depends(RBACPermission("Inventory Management", "view"))])
+async def pending_warehouse_deployments(db=Depends(get_database), current_user: dict = Depends(get_current_user)):
+    """Returns PO line items where the warehouse was the source vendor and
+    fewer units have been shipped to the requesting project than ordered.
+
+    Used by the Inventory Management → Send to Site alert. Each row tells
+    admin: "Project X still needs Y units of Material Z, and the warehouse
+    currently has W in stock you could send right now."
+
+    Pending formula:
+        pending = ordered − GRN_received_against_this_PO
+                          − warehouse_fulfilled_qty (set when admin uses Send to Site)
+    """
+    pos = await db.purchase_orders.find({}).to_list(2000)
+    grns = await db.grns.find({}).to_list(5000)
+    warehouse_docs = await db.warehouse_inventory.find({}).to_list(1000)
+    wh_stock = {w.get("material_name", ""): float(w.get("stock", 0) or 0) for w in warehouse_docs}
+
+    # Group GRNs by po_id for quick lookup.
+    grns_by_po: dict = {}
+    for g in grns:
+        pid = g.get("po_id")
+        if not pid:
+            continue
+        grns_by_po.setdefault(str(pid), []).append(g)
+
+    pending = []
+    EXCLUDED_PO_STATUSES = {"Cancelled", "Rejected"}
+
+    for po in pos:
+        if (po.get("status") or "") in EXCLUDED_PO_STATUSES:
+            continue
+        po_id = str(po["_id"])
+        po_number = po.get("po_number") or f"PO-{po_id[-6:].upper()}"
+        project = (po.get("project_name") or "").strip()
+        if not project or project.lower() == "warehouse":
+            # Skip non-project POs (e.g., warehouse-replenishment POs)
+            continue
+        is_multi = bool(po.get("is_multi_vendor"))
+        top_vendor = (po.get("vendor_name") or "").strip().lower()
+
+        for pi in po.get("items", []):
+            name = (pi.get("name") or "").strip()
+            if not name:
+                continue
+
+            # Determine item-level source vendor
+            item_vendor = (pi.get("vendor_name") or "").strip().lower() if is_multi else top_vendor
+            if item_vendor != "warehouse":
+                continue
+
+            ordered = float(pi.get("qty", 0) or 0)
+            if ordered <= 0:
+                continue
+
+            # GRN-recorded fulfillment for this PO + item
+            grn_filled = 0.0
+            for g in grns_by_po.get(po_id, []):
+                for gi in g.get("items", []):
+                    if (gi.get("name") or "").strip() == name:
+                        recv = float(gi.get("received_qty", 0) or 0)
+                        rej = float(gi.get("rejected_qty", 0) or 0)
+                        grn_filled += max(0.0, recv - rej)
+
+            # Additional fulfillment tracked when admin uses Send to Site
+            extra_filled = float(pi.get("warehouse_fulfilled_qty", 0) or 0)
+
+            pending_qty = ordered - grn_filled - extra_filled
+            if pending_qty <= 0.0001:
+                continue
+
+            current_wh = wh_stock.get(name, 0.0)
+            pending.append({
+                "source": "po",
+                "po_id": po_id,
+                "po_number": po_number,
+                "project_name": project,
+                "material_name": name,
+                "unit": pi.get("unit", "Nos"),
+                "ordered_qty": ordered,
+                "fulfilled_qty": grn_filled + extra_filled,
+                "pending_qty": pending_qty,
+                "warehouse_stock": current_wh,
+                # `actionable` = there's stock in warehouse right now that admin
+                # can issue against this pending line.
+                "actionable": current_wh > 0,
+                "po_status": po.get("status") or "",
+            })
+
+    # ── Material-request-level shortfall ────────────────────────────────────
+    # A DPR / Material Request may ask for more than the warehouse currently
+    # holds. The POModal now blocks warehouse-vendor POs that exceed stock,
+    # which means the rest of the demand stays unallocated on the
+    # material_request. When the warehouse later receives more stock, the
+    # Send-to-Site alert should resurface the shortfall against the original
+    # project so admin can issue the remainder directly.
+    #
+    #   pending = requested_qty
+    #             − Σ(linked PO line qty across all vendors)
+    #             − direct_issued_qty (set when admin uses Send-to-Site)
+    #
+    # PO line qty (not GRN-received) is used because the PO already represents
+    # a commitment — once a PO exists for those units the demand is "covered"
+    # from the request's POV; PO-internal pending is tracked separately above.
+    # Statuses representing "request is still open" — exclude terminal states
+    # (Rejected, Closed, Fulfilled). "PO Created" is INCLUDED because creating
+    # a PO doesn't mean the original demand is met — the PO might cover only
+    # part of the request (e.g., warehouse was short at PO time).
+    mrs = await db.material_requests.find(
+        {"status": {"$in": [
+            "Pending", "Approved", "Sent to PO", "PO Created",
+            "Partial", "Partially Fulfilled", "In Progress",
+        ]}}
+    ).to_list(2000)
+
+    # Index POs by request_id for O(n) lookup instead of O(n²).
+    pos_by_request: dict = {}
+    for po in pos:
+        if (po.get("status") or "") in EXCLUDED_PO_STATUSES:
+            continue
+        rid = po.get("request_id")
+        if not rid:
+            continue
+        pos_by_request.setdefault(str(rid), []).append(po)
+
+    for mr in mrs:
+        mr_id = str(mr["_id"])
+        project = (mr.get("project_name") or "").strip()
+        if not project:
+            continue
+        for ri in mr.get("requested_items", []):
+            name = (ri.get("name") or "").strip()
+            if not name:
+                continue
+            requested = float(ri.get("quantity", 0) or 0)
+            if requested <= 0:
+                continue
+
+            po_covered = 0.0
+            for po in pos_by_request.get(mr_id, []):
+                for pi in po.get("items", []):
+                    if (pi.get("name") or "").strip() == name:
+                        po_covered += float(pi.get("qty", 0) or 0)
+
+            direct_filled = float(ri.get("direct_issued_qty", 0) or 0)
+            pending_qty = requested - po_covered - direct_filled
+            if pending_qty <= 0.0001:
+                continue
+
+            current_wh = wh_stock.get(name, 0.0)
+            pending.append({
+                "source": "material_request",
+                "request_id": mr_id,
+                "project_name": project,
+                "material_name": name,
+                "unit": ri.get("unit", "Nos"),
+                "ordered_qty": requested,
+                "fulfilled_qty": po_covered + direct_filled,
+                "pending_qty": pending_qty,
+                "warehouse_stock": current_wh,
+                "actionable": current_wh > 0,
+                "request_source": mr.get("source", ""),  # e.g. "DPR"
+            })
+
+    return pending
 
 
 @router.post("/warehouse/bulk-issue", dependencies=[Depends(RBACPermission("Inventory Management", "edit"))])
@@ -1182,6 +1359,71 @@ async def bulk_warehouse_issue(
             {"_id": ObjectId(payload.request_id)},
             {"$set": {"warehouse_issued_items": issued, "warehouse_issued_at": datetime.now()}},
         )
+
+    # Mark fulfillment on the originating material request when admin acts
+    # on a request-level shortfall (DPR demanded more than the original PO
+    # could absorb). Increments `requested_items[i].direct_issued_qty` on
+    # the matching request item.
+    if payload.request_attributions:
+        by_req: dict = {}
+        for att in payload.request_attributions:
+            rid = att.get("request_id")
+            if not rid or not ObjectId.is_valid(rid):
+                continue
+            by_req.setdefault(rid, []).append(att)
+        for rid, atts in by_req.items():
+            mr_doc = await db.material_requests.find_one({"_id": ObjectId(rid)})
+            if not mr_doc:
+                continue
+            new_req_items = []
+            for ri in mr_doc.get("requested_items", []):
+                ri_name = (ri.get("name") or "").strip()
+                add_qty = 0.0
+                for a in atts:
+                    if (a.get("material_name") or "").strip() == ri_name:
+                        add_qty += float(a.get("quantity", 0) or 0)
+                if add_qty > 0:
+                    current = float(ri.get("direct_issued_qty", 0) or 0)
+                    ri["direct_issued_qty"] = current + add_qty
+                new_req_items.append(ri)
+            await db.material_requests.update_one(
+                {"_id": ObjectId(rid)},
+                {"$set": {"requested_items": new_req_items}},
+            )
+
+    # Mark fulfillment on the originating PO line(s) when admin acts on a
+    # pending warehouse deployment. Each attribution increments the matching
+    # PO item's `warehouse_fulfilled_qty`, which the
+    # `/warehouse/pending-deployments` endpoint subtracts from the ordered
+    # quantity to compute remaining pending. Multiple POs (one per attribution)
+    # are supported in a single bulk-issue.
+    if payload.po_attributions:
+        # Group attributions by PO so we can do one update per PO doc.
+        by_po: dict = {}
+        for att in payload.po_attributions:
+            pid = att.get("po_id")
+            if not pid or not ObjectId.is_valid(pid):
+                continue
+            by_po.setdefault(pid, []).append(att)
+        for pid, atts in by_po.items():
+            po_doc = await db.purchase_orders.find_one({"_id": ObjectId(pid)})
+            if not po_doc:
+                continue
+            new_items = []
+            for pi in po_doc.get("items", []):
+                pi_name = (pi.get("name") or "").strip()
+                add_qty = 0.0
+                for a in atts:
+                    if (a.get("material_name") or "").strip() == pi_name:
+                        add_qty += float(a.get("quantity", 0) or 0)
+                if add_qty > 0:
+                    current = float(pi.get("warehouse_fulfilled_qty", 0) or 0)
+                    pi["warehouse_fulfilled_qty"] = current + add_qty
+                new_items.append(pi)
+            await db.purchase_orders.update_one(
+                {"_id": ObjectId(pid)},
+                {"$set": {"items": new_items}},
+            )
 
     return {"success": True, "issued_count": len(issued), "issued_items": issued, "total_value": total_value}
 

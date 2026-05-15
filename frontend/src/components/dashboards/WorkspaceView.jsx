@@ -7,7 +7,8 @@ const WS_PAGE_SIZE = 5;
 
 const WorkspaceView = ({
     user,
-    projects = []
+    projects = [],
+    roleLabel
 }) => {
     const navigate = useNavigate();
     // Bug 47: Pagination state
@@ -74,10 +75,10 @@ const WorkspaceView = ({
     return (
         <div className="workspace-view">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                Welcome back, {user?.full_name || user?.name || 'Engineer'}
+                {roleLabel ? `${roleLabel} Dashboard` : 'My Workspace'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
-                Your daily tasks, attendance, and requests at a glance.
+                Welcome back, {user?.full_name || user?.name || 'Engineer'} — your daily tasks, attendance, and requests at a glance.
             </p>
 
 

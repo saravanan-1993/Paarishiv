@@ -55,7 +55,10 @@ const RecordExpenseModal = ({ isOpen, onClose, onExpenseRecorded }) => {
             await onExpenseRecorded?.({
                 ...formData,
                 amount: parseFloat(formData.amount),
-                attachment: attachmentUrl
+                // Field must match ExpenseBase.receipt_url — sending
+                // `attachment` was silently dropped by the Pydantic model,
+                // so the uploaded URL never reached the DB.
+                receipt_url: attachmentUrl || null,
             });
             onClose();
         } catch (err) {

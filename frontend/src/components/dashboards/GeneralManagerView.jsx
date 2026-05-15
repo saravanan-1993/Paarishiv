@@ -2,13 +2,13 @@ import React from 'react';
 import { Briefcase, Users, FileText, CheckCircle, AlertTriangle, Building } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const GeneralManagerView = ({ projects, pendingApprovalsAmount }) => {
+const GeneralManagerView = ({ projects, pendingApprovalsAmount, roleLabel }) => {
     const navigate = useNavigate();
 
     return (
         <div className="gm-view animate-fade-in">
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '4px' }}>
-                General Manager Dashboard
+                {roleLabel ? `${roleLabel} Dashboard` : 'General Manager Dashboard'}
             </h2>
             <p style={{ color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', marginBottom: '32px' }}>
                 Overview of Projects, Attendance, Payroll, and Site Operations.

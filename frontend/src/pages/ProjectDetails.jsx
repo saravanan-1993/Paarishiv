@@ -434,8 +434,17 @@ const ProjectDetails = () => {
     const [isUrgentMaterialOpen, setIsUrgentMaterialOpen] = useState(false);
     const [isReturnWarehouseOpen, setIsReturnWarehouseOpen] = useState(false);
     const [returnSubmitting, setReturnSubmitting] = useState(false);
+    // Controlled inputs for return modal — used so we can validate live
+    // (return qty cannot exceed available, both fields must be non-negative)
+    // and disable the submit button when any row is invalid.
+    const [returnInputs, setReturnInputs] = useState({}); // { materialName: { used: '', returnQty: '' } }
     const [siteMaterials, setSiteMaterials] = useState([]);
     const [siteMaterialsLoading, setSiteMaterialsLoading] = useState(false);
+    // Return-modal context: list of materials that exist in the central
+    // warehouse master, plus this project's stock ledger entries (used to
+    // compute "used qty"). Only loaded when the Return modal opens.
+    const [warehouseMaterialNames, setWarehouseMaterialNames] = useState(new Set());
+    const [projectStockLedger, setProjectStockLedger] = useState([]);
 
     const reloadProject = async () => {
         try {
@@ -567,6 +576,35 @@ const ProjectDetails = () => {
     useEffect(() => {
         if (activeTab === 'Site Materials' && project) loadSiteMaterials();
     }, [activeTab, project?.name]);
+
+    // When Return-to-Warehouse modal opens, load the warehouse master and
+    // this project's stock ledger so the modal can:
+    //   1. Filter rows to only materials that the warehouse actually stocks
+    //      (PO-procured-only items can't be returned to a warehouse master
+    //      that has no record of them).
+    //   2. Show "Used Qty" per material (received total − current stock).
+    useEffect(() => {
+        if (!isReturnWarehouseOpen || !project) {
+            // Clear stale input state when the modal closes.
+            if (!isReturnWarehouseOpen) setReturnInputs({});
+            return;
+        }
+        // Fresh per-open state.
+        setReturnInputs({});
+        (async () => {
+            try {
+                const [whRes, ledgerRes] = await Promise.all([
+                    inventoryAPI.getWarehouse(),
+                    inventoryAPI.getLedger({ project_name: project.name }),
+                ]);
+                const names = new Set((whRes.data || []).map(w => (w.material_name || '').trim()).filter(Boolean));
+                setWarehouseMaterialNames(names);
+                setProjectStockLedger(ledgerRes.data || []);
+            } catch (err) {
+                console.error('Failed to load return-modal context:', err);
+            }
+        })();
+    }, [isReturnWarehouseOpen, project?.name]);
 
     // Load labour data when Labour Attendance tab is active
     const loadLabourData = async () => {
@@ -1455,54 +1493,142 @@ const ProjectDetails = () => {
                             <button onClick={() => setIsReturnWarehouseOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', fontSize: 20 }}>&times;</button>
                         </div>
                         <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                <thead>
-                                    <tr style={{ backgroundColor: '#F8FAFC' }}>
-                                        <th style={{ padding: 10, textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Material</th>
-                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Available</th>
-                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Return Qty</th>
-                                        <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Unit</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {siteMaterials.map((m, i) => (
-                                        <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
-                                            <td style={{ padding: 10, fontWeight: 600 }}>{m.material_name}</td>
-                                            <td style={{ padding: 10, textAlign: 'center', fontWeight: 700 }}>{m.stock}</td>
-                                            <td style={{ padding: 10, textAlign: 'center' }}>
-                                                <input type="number" min="0" max={m.stock} defaultValue={0} id={`return-qty-${i}`}
-                                                    style={{ width: 70, padding: 6, borderRadius: 6, border: '1px solid #E2E8F0', textAlign: 'center', fontSize: 13 }} />
-                                            </td>
-                                            <td style={{ padding: 10, textAlign: 'center', color: '#64748B' }}>{m.unit || 'Nos'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div style={{ padding: '14px 22px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                            <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(false)}>Cancel</button>
-                            <button className="btn btn-primary" disabled={returnSubmitting} onClick={async () => {
-                                if (returnSubmitting) return;
-                                const items = siteMaterials.map((m, i) => {
-                                    const qty = parseFloat(document.getElementById(`return-qty-${i}`)?.value) || 0;
-                                    return qty > 0 ? { name: m.material_name, quantity: qty, unit: m.unit || 'Nos' } : null;
-                                }).filter(Boolean);
-                                if (!items.length) { toast.warning('Select at least one material to return'); return; }
-                                setReturnSubmitting(true);
-                                try {
-                                    await inventoryAPI.createReturnRequest({ project_name: project.name, items, notes: '' });
-                                    toast.success('Return request submitted for admin approval');
-                                    setIsReturnWarehouseOpen(false);
-                                    loadSiteMaterials();
-                                } catch (err) {
-                                    toast.error(err.response?.data?.detail || 'Failed to submit return request');
-                                } finally {
-                                    setReturnSubmitting(false);
+                            {(() => {
+                                // Only materials that the central warehouse stocks are
+                                // returnable. Directly-procured (PO/GRN) materials with no
+                                // warehouse master entry are hidden — they were never in
+                                // the warehouse, so they can't be "returned" there.
+                                const returnable = siteMaterials.filter(m =>
+                                    warehouseMaterialNames.has((m.material_name || '').trim())
+                                );
+
+                                if (returnable.length === 0) {
+                                    return (
+                                        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748B' }}>
+                                            <p style={{ fontWeight: 600, marginBottom: 6 }}>No returnable materials at this site.</p>
+                                            <p style={{ fontSize: 12 }}>Only materials issued from the central warehouse can be returned to the warehouse. PO/GRN-procured items are not returnable here.</p>
+                                        </div>
+                                    );
                                 }
-                            }} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <ArrowUpFromLine size={16} /> {returnSubmitting ? 'Submitting...' : 'Submit Return Request'}
-                            </button>
+
+                                return (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                        <thead>
+                                            <tr style={{ backgroundColor: '#F8FAFC' }}>
+                                                <th style={{ padding: 10, textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Material</th>
+                                                <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Used Qty</th>
+                                                <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Available</th>
+                                                <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Return Qty</th>
+                                                <th style={{ padding: 10, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#64748B' }}>Unit</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {returnable.map((m) => {
+                                                const key = m.material_name;
+                                                const row = returnInputs[key] || { used: '', returnQty: '' };
+                                                const usedNum = parseFloat(row.used) || 0;
+                                                const retNum = parseFloat(row.returnQty) || 0;
+                                                const stock = parseFloat(m.stock) || 0;
+                                                // Validation rules:
+                                                //   • Return Qty must not exceed Available (m.stock).
+                                                //   • Both fields must be ≥ 0 (HTML min handles, but state may
+                                                //     hold "-5" via paste — re-check here).
+                                                const retOverflow = retNum > stock;
+                                                const retNegative = retNum < 0;
+                                                const usedNegative = usedNum < 0;
+                                                const setField = (field, val) =>
+                                                    setReturnInputs(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [field]: val } }));
+                                                return (
+                                                    <tr key={key} style={{ borderTop: '1px solid #F1F5F9' }}>
+                                                        <td style={{ padding: 10, fontWeight: 600 }}>{m.material_name}</td>
+                                                        <td style={{ padding: 10, textAlign: 'center' }}>
+                                                            <input
+                                                                type="number" min="0" placeholder="0"
+                                                                value={row.used}
+                                                                onChange={e => setField('used', e.target.value)}
+                                                                style={{ width: 70, padding: 6, borderRadius: 6, border: `1px solid ${usedNegative ? '#EF4444' : '#FDE68A'}`, backgroundColor: usedNegative ? '#FEF2F2' : '#FFFBEB', color: '#92400E', textAlign: 'center', fontSize: 13, fontWeight: 700 }}
+                                                            />
+                                                        </td>
+                                                        <td style={{ padding: 10, textAlign: 'center', fontWeight: 700 }}>{stock}</td>
+                                                        <td style={{ padding: 10, textAlign: 'center' }}>
+                                                            <input
+                                                                type="number" min="0" max={stock} placeholder="0"
+                                                                value={row.returnQty}
+                                                                onChange={e => setField('returnQty', e.target.value)}
+                                                                style={{ width: 70, padding: 6, borderRadius: 6, border: `1px solid ${(retOverflow || retNegative) ? '#EF4444' : '#E2E8F0'}`, backgroundColor: (retOverflow || retNegative) ? '#FEF2F2' : 'white', textAlign: 'center', fontSize: 13, fontWeight: (retOverflow || retNegative) ? 700 : 400, color: (retOverflow || retNegative) ? '#B91C1C' : 'inherit' }}
+                                                            />
+                                                            {retOverflow && (
+                                                                <div style={{ fontSize: 10, color: '#B91C1C', marginTop: 4, fontWeight: 600 }}>
+                                                                    Max {stock}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: 10, textAlign: 'center', color: '#64748B' }}>{m.unit || 'Nos'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                );
+                            })()}
                         </div>
+                        {(() => {
+                            // Compute validity once for the footer — used by both the
+                            // disabled state on the submit button and the error banner.
+                            const returnable = siteMaterials.filter(m =>
+                                warehouseMaterialNames.has((m.material_name || '').trim())
+                            );
+                            const rows = returnable.map(m => {
+                                const r = returnInputs[m.material_name] || {};
+                                const used = parseFloat(r.used) || 0;
+                                const qty = parseFloat(r.returnQty) || 0;
+                                const stock = parseFloat(m.stock) || 0;
+                                return { m, used, qty, stock, overflow: qty > stock, negative: qty < 0 || used < 0 };
+                            });
+                            const hasInvalid = rows.some(r => r.overflow || r.negative);
+                            const hasAnyReturn = rows.some(r => r.qty > 0);
+                            const disabled = returnSubmitting || hasInvalid || !hasAnyReturn;
+
+                            return (
+                                <div style={{ borderTop: '1px solid #E2E8F0' }}>
+                                    {hasInvalid && (
+                                        <div style={{ padding: '10px 22px', backgroundColor: '#FEF2F2', borderBottom: '1px solid #FECACA', color: '#B91C1C', fontSize: 12, fontWeight: 600 }}>
+                                            Some return quantities exceed available stock — fix the highlighted rows before submitting.
+                                        </div>
+                                    )}
+                                    <div style={{ padding: '14px 22px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                                        <button className="btn btn-outline" onClick={() => setIsReturnWarehouseOpen(false)}>Cancel</button>
+                                        <button
+                                            className="btn btn-primary"
+                                            disabled={disabled}
+                                            title={hasInvalid ? 'Fix invalid quantities first' : (!hasAnyReturn ? 'Enter a return quantity for at least one material' : '')}
+                                            style={{ opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                                            onClick={async () => {
+                                                if (returnSubmitting) return;
+                                                if (hasInvalid) { toast.warning('Return quantity cannot exceed available stock'); return; }
+                                                const items = rows
+                                                    .filter(r => r.qty > 0)
+                                                    .map(r => ({ name: r.m.material_name, quantity: r.qty, used_qty: r.used, unit: r.m.unit || 'Nos' }));
+                                                if (!items.length) { toast.warning('Enter a return quantity for at least one material'); return; }
+                                                setReturnSubmitting(true);
+                                                try {
+                                                    await inventoryAPI.createReturnRequest({ project_name: project.name, items, notes: '' });
+                                                    toast.success('Return request submitted for admin approval');
+                                                    setIsReturnWarehouseOpen(false);
+                                                    loadSiteMaterials();
+                                                } catch (err) {
+                                                    toast.error(err.response?.data?.detail || 'Failed to submit return request');
+                                                } finally {
+                                                    setReturnSubmitting(false);
+                                                }
+                                            }}
+                                        >
+                                            <ArrowUpFromLine size={16} /> {returnSubmitting ? 'Submitting...' : 'Submit Return Request'}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}

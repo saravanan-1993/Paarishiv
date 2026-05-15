@@ -429,7 +429,7 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                                 </div>
                             </section>
 
-                            <section style={{ marginTop: 'auto' }}>
+                            {/* <section style={{ marginTop: 'auto' }}>
                                 {canGeneratePayslip && (
                                     <button
                                         onClick={handleGeneratePayslip}
@@ -458,7 +458,7 @@ const EmployeeDetailsModal = ({ isOpen, onClose, employee, onEdit }) => {
                                 }}>
                                     <ExternalLink size={20} /> PERFORMANCE LOG
                                 </button>
-                            </section>
+                            </section> */}
                         </div>
                     </div>
                 </div>

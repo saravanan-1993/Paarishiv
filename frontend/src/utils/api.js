@@ -276,6 +276,7 @@ export const inventoryAPI = {
     consolidateRequests: (data) => api.post('/inventory/requests/consolidate', data),
     // Warehouse-aware PO flow
     checkWarehouseAvailability: (data) => api.post('/inventory/warehouse/check-availability', data),
+    getPendingWarehouseDeployments: () => api.get('/inventory/warehouse/pending-deployments'),
     bulkWarehouseIssue: (data) => api.post('/inventory/warehouse/bulk-issue', data),
     getMaterialWiseReport: () => api.get('/inventory/report/material-wise'),
 };

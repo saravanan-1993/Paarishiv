@@ -118,7 +118,15 @@ const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
                     <div style={{ flex: 1 }}>
                         <div style={{ marginBottom: '20px' }}>
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px' }}>From Project (Source)</label>
-                            <select required value={fromProject} onChange={(e) => setFromProject(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <select required value={fromProject} onChange={(e) => {
+                                const next = e.target.value;
+                                setFromProject(next);
+                                // If source is changed to match the current
+                                // destination, clear destination — otherwise
+                                // the select holds a value no longer present
+                                // in its filtered option list.
+                                if (next && next === toProject) setToProject('');
+                            }} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                                 <option value="">-- Select Source --</option>
                                 {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                             </select>
@@ -132,7 +140,9 @@ const MaterialTransferModal = ({ isOpen, onClose, onSuccess }) => {
                             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px' }}>To Project (Destination)</label>
                             <select required value={toProject} onChange={(e) => setToProject(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                                 <option value="">-- Select Destination --</option>
-                                {allProjects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                {/* Exclude the source project — transferring to the same
+                                    project is a no-op and was already validated on submit. */}
+                                {allProjects.filter(p => p.name !== fromProject).map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                             </select>
                         </div>
 

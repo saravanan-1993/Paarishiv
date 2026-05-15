@@ -143,7 +143,7 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    {/* <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                         <div>
                             <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>Avg. Mileage (km/l)</label>
                             <input type="number" step="0.1" value={formData.avgMileage} onChange={e => setFormData({ ...formData, avgMileage: parseFloat(e.target.value) })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
@@ -152,7 +152,7 @@ const VehicleModal = ({ isOpen, onClose, onSuccess, vehicle = null }) => {
                             <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '700' }}>Current Odometer (km)</label>
                             <input type="number" value={formData.currentKm} onChange={e => setFormData({ ...formData, currentKm: parseInt(e.target.value) })} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
                         </div>
-                    </div>
+                    </div> */}
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
                         <button type="button" className="btn btn-outline" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
