@@ -212,7 +212,11 @@ async def delete_employee(emp_id: str, db = Depends(get_database), current_user:
     emp_code = emp.get("employeeCode") or emp.get("username", "")
     active_assignments = await db.projects.count_documents({
         "status": {"$in": ["Ongoing", "Planning"]},
-        "$or": [{"engineer_id": emp_code}, {"coordinator_id": emp_code}, {"engineer_id": emp_id}, {"coordinator_id": emp_id}]
+        "$or": [
+            {"engineer_id": emp_code}, {"coordinator_id": emp_code},
+            {"engineer_id": emp_id}, {"coordinator_id": emp_id},
+            {"assigned_members": emp_code}, {"assigned_members": emp_id},
+        ]
     })
     if active_assignments > 0:
         raise HTTPException(status_code=400, detail=f"Cannot delete: Employee is assigned to {active_assignments} active project(s). Reassign them first.")

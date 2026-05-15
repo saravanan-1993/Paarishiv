@@ -93,10 +93,13 @@ const Projects = () => {
         if (hasPermission(user, 'Projects', 'delete')) {
             return matchSearch && matchStatus; // Full access users see all
         }
-        // Non-admin: show only projects where user is engineer or coordinator
+        // Non-admin: show only projects where user is engineer, coordinator,
+        // or part of the new multi-select assigned_members list.
         const uid = user?.username || user?.employeeCode || user?.id;
+        const members = Array.isArray(p.assigned_members) ? p.assigned_members : [];
         const isAssigned = p.engineer_id === uid || p.coordinator_id === uid ||
-                           p.site_engineer === uid || p.assigned_to === uid;
+                           p.site_engineer === uid || p.assigned_to === uid ||
+                           members.includes(uid);
         return matchSearch && matchStatus && isAssigned;
     });
     const paginatedProjects = filtered.slice((projPage - 1) * PROJ_PAGE_SIZE, projPage * PROJ_PAGE_SIZE);

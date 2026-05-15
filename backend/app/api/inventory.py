@@ -104,6 +104,8 @@ async def create_material_request(request: MaterialRequestCreate, db = Depends(g
         recipients = await get_users_with_permission(db, "Inventory Management", "edit")
         stakeholders = await get_project_stakeholders(db, project_id=request.project_id, project_name=request.project_name)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        for m in stakeholders.get("members") or []:
+            recipients.append(m)
         sender = current_user.get("full_name") or current_user.get("username", "")
         await notify(db, sender, recipients, EVENT_MATERIAL,
             "New Material Request",

@@ -41,6 +41,12 @@ class ProjectModel(BaseModel):
     progress: Optional[int] = 0
     engineer_id: Optional[str] = None
     coordinator_id: Optional[str] = None
+    # Multi-assignment: list of employee codes/usernames assigned to the
+    # project. Frontend's CreateProjectModal lets admin pick any number of
+    # staff (regardless of role); engineer_id/coordinator_id are kept for
+    # backward compatibility with existing widgets that read a single
+    # primary assignee.
+    assigned_members: Optional[List[str]] = []
     tasks: List[Any] = []            # List of task dicts
     dprs: List[Any] = []             # List of DPR dicts
     documents: List[Any] = []        # List of document metadata dicts

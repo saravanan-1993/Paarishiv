@@ -132,14 +132,16 @@ async def get_project_stakeholders(db, project_id: str = None, project_name: str
         return {}
 
     project = await db.projects.find_one(query, {
-        "engineer_id": 1, "coordinator_id": 1, "name": 1
+        "engineer_id": 1, "coordinator_id": 1, "assigned_members": 1, "name": 1
     })
     if not project:
         return {}
 
+    members = project.get("assigned_members") or []
     return {
         "engineer": project.get("engineer_id", ""),
         "coordinator": project.get("coordinator_id", ""),
+        "members": [m for m in members if m],
         "project_name": project.get("name", "")
     }
 

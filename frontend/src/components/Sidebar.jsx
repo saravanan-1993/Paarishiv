@@ -275,9 +275,13 @@ const Sidebar = ({ activeTab, setActiveTab, isOpen, setIsOpen }) => {
 
                 projects.forEach(project => {
                     const projectTasks = project.tasks || [];
+                    const members = Array.isArray(project.assigned_members) ? project.assigned_members : [];
+                    const isOnProject = project.engineer_id === user.username
+                        || project.coordinator_id === user.username
+                        || members.includes(user.username);
                     projectTasks.forEach(t => {
                         if (t.status === 'Pending') {
-                            if (isLimitedUser && t.assignedTo !== user.username && project.engineer_id !== user.username && project.coordinator_id !== user.username) {
+                            if (isLimitedUser && t.assignedTo !== user.username && !isOnProject) {
                                 return;
                             }
                             count++;

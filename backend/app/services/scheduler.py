@@ -66,6 +66,8 @@ async def check_overdue_tasks():
                             recipients.append(task["assignedTo"])
                         if project.get("engineer_id"):
                             recipients.append(project["engineer_id"])
+                        for m in (project.get("assigned_members") or []):
+                            if m: recipients.append(m)
                         await notify(db, "System", recipients, EVENT_TASK,
                             "Task Overdue",
                             msg,
@@ -434,7 +436,7 @@ async def check_budget_overspend():
 
     projects = await db.projects.find(
         {"status": {"$in": ["Ongoing", "Planning"]}},
-        {"name": 1, "estimated_budget": 1, "budget": 1, "spent": 1, "engineer_id": 1, "coordinator_id": 1}
+        {"name": 1, "estimated_budget": 1, "budget": 1, "spent": 1, "engineer_id": 1, "coordinator_id": 1, "assigned_members": 1}
     ).to_list(500)
 
     for project in projects:
@@ -455,6 +457,8 @@ async def check_budget_overspend():
             recipients.append(project["engineer_id"])
         if project.get("coordinator_id"):
             recipients.append(project["coordinator_id"])
+        for m in (project.get("assigned_members") or []):
+            if m: recipients.append(m)
 
         try:
             if pct >= 100:
