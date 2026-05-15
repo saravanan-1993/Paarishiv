@@ -6,10 +6,25 @@ from app.utils.auth import get_current_user
 from app.utils.rbac import RBACPermission, is_admin_role, role_in, get_users_with_permission
 from app.utils.notifications import notify, EVENT_HR
 from database import get_database
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 import math
 import re
+
+# IST is the operating timezone for the business — site attendance, payroll
+# windows, and "today" buckets all reflect Indian local time. On production
+# (Vercel serverless) the Python process runs in UTC, so calling a bare
+# `datetime.now()` stores UTC clock values into Mongo and the dashboard
+# then shows times 5h30m behind reality. We store NAIVE IST datetimes
+# (clock-time without offset) so the frontend's `new Date(isoStr)` reads
+# them as local time on any IST client without a timezone-conversion
+# round-trip.
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+def _now_ist():
+    """Current IST clock time as a naive datetime — safe to store in Mongo
+    and to emit via .isoformat() for IST-rendering frontends."""
+    return datetime.now(_IST).replace(tzinfo=None)
 
 def calculate_distance(lat1, lon1, lat2, lon2):
     """Calculate distance in meters using Haversine formula."""
@@ -30,7 +45,7 @@ class BreakRequest(BaseModel):
 
 @router.post("/clock-in")
 async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user), db = Depends(get_database)):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = _now_ist().strftime("%Y-%m-%d")
     username = current_user.get("username")
     print(f"Clock-in attempt for: {username} at {today}")
 
@@ -44,7 +59,7 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
             # The previous session's work_hours are kept (last clock-out total)
             # and breaks history is cleared for the new session.
             if existing.get("check_out"):
-                now = datetime.now()
+                now = _now_ist()
                 await db.attendance.update_one(
                     {"_id": existing["_id"]},
                     {"$set": {
@@ -101,12 +116,12 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
             "employeeId": username,
             "employeeName": current_user.get("full_name") or username,
             "date": today,
-            "check_in": datetime.now(),
+            "check_in": _now_ist(),
             "status": "Present",
             "location": req.location or "Site Office",
             "latitude": req.latitude,
             "longitude": req.longitude,
-            "created_at": datetime.now(),
+            "created_at": _now_ist(),
         }
         
         result = await db.attendance.insert_one(record)
@@ -119,7 +134,7 @@ async def clock_in(req: ClockInRequest, current_user = Depends(get_current_user)
         try:
             from datetime import time as _time
             LATE_THRESHOLD = _time(9, 30)
-            clock_in_time = datetime.now().time()
+            clock_in_time = _now_ist().time()
             if clock_in_time > LATE_THRESHOLD:
                 actor = current_user.get("full_name") or username
                 recipients = await get_users_with_permission(db, "HRMS", "edit")
@@ -153,7 +168,7 @@ async def end_break(current_user = Depends(get_current_user), db = Depends(get_d
 
 @router.post("/clock-out")
 async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends(get_current_user), db = Depends(get_database)):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = _now_ist().strftime("%Y-%m-%d")
     username = current_user["username"]
     
     existing = await db.attendance.find_one({"username": username, "date": today})
@@ -173,7 +188,7 @@ async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends
                 if dist > 500:
                     raise HTTPException(status_code=400, detail=f"You must be at the site to check out. Current distance: {round(dist)}m")
     
-    check_out_time = datetime.now()
+    check_out_time = _now_ist()
     check_in_time = existing["check_in"]
 
     # Simplified work-hours: pure (check_out − check_in). Break / official-duty
@@ -192,11 +207,11 @@ async def clock_out(req: Optional[ClockInRequest] = None, current_user = Depends
 async def get_my_summary(current_user = Depends(get_current_user), db = Depends(get_database)):
     try:
         username = current_user.get("username")
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = _now_ist().strftime("%Y-%m-%d")
 
         session = await db.attendance.find_one({"username": username, "date": today})
 
-        now = datetime.now()
+        now = _now_ist()
         month_start = f"{now.year}-{now.month:02d}"
         records = await db.attendance.find({
             "username": username,
@@ -238,7 +253,7 @@ async def get_my_summary(current_user = Depends(get_current_user), db = Depends(
 
 @router.get("/{username}/summary", dependencies=[Depends(RBACPermission("HRMS", "view"))])
 async def get_user_summary(username: str, db = Depends(get_database)):
-    now = datetime.now()
+    now = _now_ist()
     month_prefix = f"{now.year}-{now.month:02d}"
     records = await db.attendance.find({
         "username": username,
