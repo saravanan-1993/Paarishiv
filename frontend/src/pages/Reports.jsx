@@ -10,7 +10,7 @@ import CustomSelect from '../components/CustomSelect';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { projectAPI, materialAPI, labourAPI, financeAPI, hrmsAPI, billingAPI, settingsAPI, inventoryAPI, grnAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { hasPermission } from '../utils/rbac';
+import { hasPermission, hasSubTabAccess } from '../utils/rbac';
 import { fmt } from '../utils/format';
 import Pagination from '../components/Pagination';
 
@@ -860,16 +860,47 @@ const Reports = () => {
     const urlTab = searchParams.get('tab');
     const [activeCategory, setActiveCategory] = useState('All');
 
-    // Filter reports based on dynamic permissions only — no role-name strings.
-    const canViewFinancial = hasPermission(user, 'Accounts', 'view') || hasPermission(user, 'Finance', 'view');
+    // Tab visibility is driven by the role's `Reports.subTabs` config (same
+    // source the Sidebar uses) so admins controlling RBAC have one knob. As
+    // a safety net, also require the module-level view perm for that
+    // category — a role can't see "Financial reports" if it can't even view
+    // Accounts data.
+    const moduleViewMap = {
+        Financial: hasPermission(user, 'Accounts', 'view') || hasPermission(user, 'Finance', 'view'),
+        Project: hasPermission(user, 'Projects', 'view'),
+        HRMS: hasPermission(user, 'HRMS', 'view'),
+        Inventory: hasPermission(user, 'Inventory Management', 'view') || hasPermission(user, 'Inventory', 'view'),
+    };
+    const categoryPermMap = {
+        Financial: moduleViewMap.Financial && hasSubTabAccess(user, 'Reports', 'Financial'),
+        Project: moduleViewMap.Project && hasSubTabAccess(user, 'Reports', 'Project'),
+        HRMS: moduleViewMap.HRMS && hasSubTabAccess(user, 'Reports', 'HRMS'),
+        Inventory: moduleViewMap.Inventory && hasSubTabAccess(user, 'Reports', 'Inventory'),
+    };
+    const allowedCategories = CATEGORIES.filter(c => c === 'All' ? true : categoryPermMap[c]);
+    const hasAnyCategory = allowedCategories.some(c => c !== 'All');
+    const visibleCategories = hasAnyCategory ? allowedCategories : [];
 
     useEffect(() => {
-        if (urlTab) {
-            if (CATEGORIES.includes(urlTab)) {
-                setActiveCategory(urlTab);
-            }
+        if (urlTab && visibleCategories.includes(urlTab)) {
+            setActiveCategory(urlTab);
+        } else if (urlTab && !visibleCategories.includes(urlTab) && visibleCategories.length > 0) {
+            // URL asks for a tab the user can't see → fall back to All
+            setActiveCategory('All');
         }
-    }, [urlTab]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [urlTab, visibleCategories.length]);
+
+    // Reset activeCategory if the current one is no longer allowed (e.g.
+    // permissions just changed). Prevents an invisible filter from hiding
+    // every card.
+    useEffect(() => {
+        if (visibleCategories.length === 0) return;
+        if (!visibleCategories.includes(activeCategory)) {
+            setActiveCategory('All');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visibleCategories.length]);
 
     const handleCategoryChange = (cat) => {
         setActiveCategory(cat);
@@ -1105,8 +1136,9 @@ const Reports = () => {
         const matchCat = activeCategory === 'All' || r.category === activeCategory;
         const matchSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             r.description.toLowerCase().includes(searchTerm.toLowerCase());
-        // Bug 7.4 - Coordinators cannot see Financial reports directly
-        if (!canViewFinancial && r.category === 'Financial') return false;
+        // Hide any report whose category the user can't view — so the
+        // "All" tab also respects permissions instead of leaking cards.
+        if (categoryPermMap.hasOwnProperty(r.category) && !categoryPermMap[r.category]) return false;
         return matchCat && matchSearch;
     });
 
@@ -1199,7 +1231,7 @@ const Reports = () => {
                         )}
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                        {CATEGORIES.map(cat => (
+                        {visibleCategories.map(cat => (
                             <button
                                 key={cat}
                                 onClick={() => handleCategoryChange(cat)}
