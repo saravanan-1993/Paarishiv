@@ -188,6 +188,8 @@ async def create_po(po: POCreate, background_tasks: BackgroundTasks):
         stakeholders = await get_project_stakeholders(db, project_name=po.project_name)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        for m in stakeholders.get("members") or []:
+            recipients.append(m)
         po_id_short = str(result.inserted_id)[-6:].upper()
         await notify(db, "Purchase Officer", recipients, EVENT_WORKFLOW,
             "New Purchase Order",
@@ -257,6 +259,8 @@ async def approve_po(id: str, current_user: dict = Depends(get_current_user)):
         stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        for m in stakeholders.get("members") or []:
+            recipients.append(m)
         await notify(db, approver, recipients, EVENT_APPROVAL,
             "PO Approved",
             f"PO for {po.get('vendor_name', '')} ({po.get('project_name', '')}) has been approved by {approver}. Vendor has been notified.",

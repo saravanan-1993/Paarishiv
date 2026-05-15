@@ -132,15 +132,18 @@ const Tasks = () => {
     }, [user]);
 
     // Mirror the exact same project-level filter as Projects.jsx:
-    // admins (Projects:delete) see all; others see only projects where they are engineer/coordinator
+    // admins (Projects:delete) see all; others see only projects where they
+    // are engineer/coordinator or in the multi-select assigned_members list.
     const assignedProjects = canSeeAllProjects
         ? projectsData
-        : projectsData.filter(p =>
-            p.engineer_id === uid ||
-            p.coordinator_id === uid ||
-            p.site_engineer === uid ||
-            p.assigned_to === uid
-        );
+        : projectsData.filter(p => {
+            const members = Array.isArray(p.assigned_members) ? p.assigned_members : [];
+            return p.engineer_id === uid ||
+                p.coordinator_id === uid ||
+                p.site_engineer === uid ||
+                p.assigned_to === uid ||
+                members.includes(uid);
+        });
     const assignedProjectIds = new Set(assignedProjects.map(p => getStringId(p._id || p.id)));
 
     // Derived Data — keep only tasks from the user's assigned projects

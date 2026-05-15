@@ -80,6 +80,8 @@ async def save_surprise_attendance(
         stakeholders = await get_project_stakeholders(db, project_id=project_id)
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+        for m in stakeholders.get("members") or []:
+            recipients.append(m)
         present_count = len(record.get("present_employees", []))
         await notify(db, sender, recipients, EVENT_HR,
             "Surprise Visit Conducted",

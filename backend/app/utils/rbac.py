@@ -91,18 +91,23 @@ def is_admin_role(role_name: str) -> bool:
 
 async def _build_assignment_or_clauses(db, user: dict) -> list:
     """Build the $or clauses for finding projects this user is assigned to
-    (as engineer or coordinator). Resolves via username, employee code, _id,
-    employee record, and siteId.
+    (as engineer, coordinator, or one of the `assigned_members` of the
+    project). Resolves via username, employee code, _id, employee record,
+    and siteId. Mongo treats `{"assigned_members": "X"}` as "array contains
+    X" so the same key works for both legacy single-field assignments and
+    the new multi-member array.
     """
     emp_code = user.get("username") or user.get("employeeCode") or ""
     emp_id_str = str(user.get("_id") or user.get("id") or "")
     or_clauses = [
         {"engineer_id": emp_code},
         {"coordinator_id": emp_code},
+        {"assigned_members": emp_code},
     ]
     if emp_id_str:
         or_clauses.append({"engineer_id": emp_id_str})
         or_clauses.append({"coordinator_id": emp_id_str})
+        or_clauses.append({"assigned_members": emp_id_str})
     try:
         emp = await db.employees.find_one({"$or": [{"employeeCode": emp_code}, {"username": emp_code}]})
         if emp:
@@ -110,9 +115,11 @@ async def _build_assignment_or_clauses(db, user: dict) -> list:
             if emp_real_id:
                 or_clauses.append({"engineer_id": emp_real_id})
                 or_clauses.append({"coordinator_id": emp_real_id})
+                or_clauses.append({"assigned_members": emp_real_id})
             if emp.get("employeeCode"):
                 or_clauses.append({"engineer_id": emp["employeeCode"]})
                 or_clauses.append({"coordinator_id": emp["employeeCode"]})
+                or_clauses.append({"assigned_members": emp["employeeCode"]})
             if emp.get("siteId"):
                 or_clauses.append({"_id": emp["siteId"]})
     except Exception:

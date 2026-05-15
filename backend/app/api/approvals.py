@@ -784,6 +784,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     stakeholders = await get_project_stakeholders(db, project_name=po.get("project_name"))
                     if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
                     if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+                    for m in stakeholders.get("members") or []:
+                        recipients.append(m)
                     await notify(db, approver_name, recipients, EVENT_APPROVAL,
                         f"PO {status}",
                         f"Purchase Order for {po.get('vendor_name', '')} ({po.get('project_name', '')}) has been {status.lower()} by {approver_name}" + (f". Reason: {reason}" if reason else ""),
@@ -819,6 +821,8 @@ async def action_approval(type: str, obj_id: str, action: str, request_data: dic
                     recipients = await get_users_with_permission(db, "HRMS", "edit")
                     stakeholders = await get_project_stakeholders(db, project_id=mp.get("project_id"))
                     if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
+                    for m in stakeholders.get("members") or []:
+                        recipients.append(m)
                     # Always notify the original requester so they know the outcome
                     requester = mp.get("requested_by") or mp.get("engineer_id") or mp.get("submitted_by")
                     if requester and requester not in recipients:

@@ -492,6 +492,8 @@ async def create_expense(expense: ExpenseBase, db = Depends(get_database), curre
         if expense.project and expense.project != "General":
             stakeholders = await get_project_stakeholders(db, project_name=expense.project)
             if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+            for m in stakeholders.get("members") or []:
+                recipients.append(m)
             recipients.append("Purchase Officer")
         if expense.mark_as_paid:
             await notify(db, sender, recipients, EVENT_FINANCE,
@@ -604,6 +606,8 @@ async def create_bill(bill: BillCreate, db = Depends(get_database)):
             recipients = await get_users_with_permission(db, "Accounts", "edit")
             stakeholders = await get_project_stakeholders(db, project_name=proj_clean)
             if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+            for m in stakeholders.get("members") or []:
+                recipients.append(m)
             await notify(db, "Accountant", recipients, EVENT_FINANCE,
                 "Client Bill Created",
                 f"Bill #{no_clean} created for {proj_clean}. Amount: Rs.{total_amount:,.0f} (incl. GST Rs.{gst_amount:,.0f})",

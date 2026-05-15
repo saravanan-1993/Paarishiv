@@ -339,6 +339,8 @@ async def create_grn(grn: GRNCreate, current_user: dict = Depends(get_current_us
         stakeholders = await get_project_stakeholders(db, project_name=project_name)
         if stakeholders.get("engineer"): recipients.append(stakeholders["engineer"])
         if stakeholders.get("coordinator"): recipients.append(stakeholders["coordinator"])
+        for m in stakeholders.get("members") or []:
+            recipients.append(m)
         recipients.append("Purchase Officer")
         grn_ref = str(result.inserted_id)[-6:].upper()
         vendor_name = ""

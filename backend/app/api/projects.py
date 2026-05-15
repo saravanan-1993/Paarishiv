@@ -102,12 +102,15 @@ async def create_project(project: ProjectModel, db = Depends(get_database), curr
         "success"
     )
 
-    # Notify assigned engineer and coordinator
+    # Notify every assigned team member (multi-member array) plus the
+    # legacy single-field engineer/coordinator for backward compatibility.
     try:
         sender = current_user.get("full_name") or current_user.get("username", "")
         recipients = await get_users_with_permission(db, "Projects", "view")
         if project_dict.get("engineer_id"): recipients.append(project_dict["engineer_id"])
         if project_dict.get("coordinator_id"): recipients.append(project_dict["coordinator_id"])
+        for m in (project_dict.get("assigned_members") or []):
+            if m: recipients.append(m)
         await notify(db, sender, recipients, EVENT_PROJECT,
             "New Project Created",
             f"Project '{project_dict.get('name')}' has been created. Client: {project_dict.get('client', 'N/A')}. Budget: Rs.{project_dict.get('estimated_budget', 0):,.0f}",
@@ -153,6 +156,11 @@ async def get_projects(all: bool = False, db = Depends(get_database), current_us
             p["engineer_name"] = emp_map[p["engineer_id"]]
         if p.get("coordinator_id") and p["coordinator_id"] in emp_map:
             p["coordinator_name"] = emp_map[p["coordinator_id"]]
+        # Resolve every assigned-member ID into a display name so the UI
+        # can show the full team without doing N round-trips.
+        members = p.get("assigned_members") or []
+        if members:
+            p["assigned_member_names"] = [emp_map.get(m, m) for m in members]
 
     return projects
 
@@ -209,18 +217,24 @@ async def get_project(project_id: str, db = Depends(get_database), current_user:
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    # RBAC: scoped users can only view projects they're assigned to.
+    # RBAC: scoped users can only view projects they're assigned to —
+    # either as engineer/coordinator (legacy single-field) OR as one of the
+    # `assigned_members` (new multi-select). Any positive match grants access.
     from app.utils.rbac import is_admin_role as _is_admin_role
     if not _is_admin_role(current_user.get("role", "")):
         eng = project.get("engineer_id")
         coord = project.get("coordinator_id")
+        members = project.get("assigned_members") or []
         emp_keys = {
             current_user.get("username"),
             current_user.get("employeeCode"),
             str(current_user.get("id") or ""),
             str(current_user.get("_id") or ""),
         }
-        if eng not in emp_keys and coord not in emp_keys:
+        # Drop empty/None keys to avoid false-positive matches.
+        emp_keys = {k for k in emp_keys if k}
+        is_member = any(m in emp_keys for m in members)
+        if eng not in emp_keys and coord not in emp_keys and not is_member:
             raise HTTPException(status_code=403, detail="Not authorized to view this project")
 
     new_progress = _calc_progress(project)
@@ -312,6 +326,8 @@ async def update_project_status(project_id: str, data: dict, db = Depends(get_da
             recipients = await get_users_with_permission(db, "Projects", "edit")
             if project.get("engineer_id"): recipients.append(project["engineer_id"])
             if project.get("coordinator_id"): recipients.append(project["coordinator_id"])
+            for m in (project.get("assigned_members") or []):
+                if m: recipients.append(m)
             await notify(db, sender, recipients, EVENT_PROJECT,
                 f"Project {new_status}",
                 f"Project '{project.get('name', '')}' status changed to {new_status} by {sender}",
